@@ -14,7 +14,7 @@ class VerdictStage(StrEnum):
 
 
 class ActorType(str):
-    """봇 유형 id · 기본 7종 = 아래 상수 · 화면에서 추가한 유형 = QA DB bot_types · 전체 목록은 macro_bots/bot_catalog"""
+    """봇 유형 id · 기본 8종 = 아래 상수 · 화면에서 추가한 유형 = QA DB bot_types · 전체 목록은 macro_bots/bot_catalog"""
     __slots__ = ()
 
     HUMAN: "ActorType"
@@ -23,6 +23,7 @@ class ActorType(str):
     BOT_C: "ActorType"
     BOT_D: "ActorType"
     BOT_CAPTCHA: "ActorType"  # 보안문자 반복 시도 · 화면 추가 id(BOT_E …)와 겹치지 않게 이름 id
+    BOT_REENTRY: "ActorType"  # 대기열 재진입 반복
     BOT_NEW: "ActorType"  # 새 유형 · 목표 없음 · 결과만 공개
 
     @property
@@ -44,10 +45,11 @@ ActorType.BOT_B = ActorType("BOT_B")
 ActorType.BOT_C = ActorType("BOT_C")
 ActorType.BOT_D = ActorType("BOT_D")
 ActorType.BOT_CAPTCHA = ActorType("BOT_CAPTCHA")
+ActorType.BOT_REENTRY = ActorType("BOT_REENTRY")
 ActorType.BOT_NEW = ActorType("BOT_NEW")
 BUILT_IN_ACTOR_TYPES: tuple[ActorType, ...] = (
     ActorType.HUMAN, ActorType.BOT_A, ActorType.BOT_B, ActorType.BOT_C, ActorType.BOT_D, ActorType.BOT_CAPTCHA,
-    ActorType.BOT_NEW,
+    ActorType.BOT_REENTRY, ActorType.BOT_NEW,
 )
 
 
@@ -67,6 +69,7 @@ class BookingSequence(IntEnum):
     CAPTCHA_REFRESH = 1  # 보안문자 여러 번 새로 받은 뒤 입력
     CAPTCHA_WRONG_ANSWER = 2  # 제한 직전까지 오답 뒤 정답
     CAPTCHA_REFRESH_AND_WRONG_ANSWER = 3  # 오답 → 새로 받기 반복 뒤 정답
+    QUEUE_REENTRY = 4  # 대기열 진입 → 취소 → 재진입 반복 뒤 진행
 
 
 class BookingOutcome(StrEnum):

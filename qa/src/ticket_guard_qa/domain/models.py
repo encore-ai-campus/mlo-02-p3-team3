@@ -106,6 +106,7 @@ class SessionBehavior:
 CAPTCHA_ATTEMPT_LIMIT = 5  # 시스템 오답 제한 · web/services.verify · 5회째 = 예매 취소
 CAPTCHA_REFRESH_COUNT = 4  # 새로 받기 · 시스템 횟수 제한 없음
 CAPTCHA_WRONG_ANSWER_COUNT = CAPTCHA_ATTEMPT_LIMIT - 1  # 제한 직전 · 다음 정답으로 통과
+QUEUE_REENTRY_COUNT = 3  # 진입 → 취소 반복 · 시스템 취소 후 재진입 허용 · 횟수 제한 없음
 CAPTCHA_WRONG_ANSWER_ACTION = "wrong_answer"
 CAPTCHA_REFRESH_ACTION = "refresh"
 
@@ -115,6 +116,7 @@ class BookingSequenceSteps:
     """예매 순서별 기본 순서와 다른 단계 · 실제 · 모의 대상이 같이 사용"""
     captcha_refresh_count: int = 0  # 정답 입력 전 새로 받기 횟수
     captcha_wrong_answer_count: int = 0  # 정답 입력 전 오답 횟수 · 제한 미만
+    queue_reentry_count: int = 0  # 마지막 진입 전 진입 → 취소 횟수 · 취소한 예매 시도는 정답표 밖
 
     @property
     def captcha_retry_actions(self) -> tuple[str, ...]:
@@ -134,6 +136,7 @@ BOOKING_SEQUENCE_STEPS: dict[int, BookingSequenceSteps] = {
     BookingSequence.CAPTCHA_WRONG_ANSWER: BookingSequenceSteps(captcha_wrong_answer_count=CAPTCHA_WRONG_ANSWER_COUNT),
     BookingSequence.CAPTCHA_REFRESH_AND_WRONG_ANSWER: BookingSequenceSteps(
         captcha_refresh_count=CAPTCHA_REFRESH_COUNT, captcha_wrong_answer_count=CAPTCHA_WRONG_ANSWER_COUNT),
+    BookingSequence.QUEUE_REENTRY: BookingSequenceSteps(queue_reentry_count=QUEUE_REENTRY_COUNT),
 }
 
 

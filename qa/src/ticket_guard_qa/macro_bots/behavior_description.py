@@ -95,10 +95,20 @@ def describe_captcha_retries(behavior: SessionBehavior) -> BehaviorLine | None:
                         "시도마다 예매 웹에 오답 · 새로 받기 기록 · 좌석 클릭과 같은 간격 · 오답 제한(5회) 미도달")
 
 
+def describe_queue_reentry(behavior: SessionBehavior) -> BehaviorLine | None:
+    """기본 순서 = 표시 안 함 · 대기열 재진입만 한 줄"""
+    count = find_sequence_steps(behavior).queue_reentry_count
+    if not count:
+        return None
+    return BehaviorLine("대기열 단계", f"대기열 진입 → 취소 {count}회 반복 뒤 마지막 진입으로 진행",
+                        "진입마다 새 예매 시도 · 진입 · 취소 기록 · 좌석 클릭과 같은 간격의 연속 요청")
+
+
 def describe_behavior(behavior: SessionBehavior) -> list[BehaviorLine]:
-    """예매 순서대로 · 화면 조회 → 예매 시작 → 보안문자(반복 시도만) → 좌석 클릭 → 매진 대응 → 동시 창 → 브라우저 흔적"""
+    """예매 순서대로 · 화면 조회 → 예매 시작 → 대기열 · 보안문자(반복 시도만) → 좌석 클릭 → 매진 대응 → 동시 창 → 브라우저 흔적"""
     lines = [
-        describe_browsing(behavior), describe_start_timing(behavior), describe_captcha_retries(behavior),
+        describe_browsing(behavior), describe_start_timing(behavior), describe_queue_reentry(behavior),
+        describe_captcha_retries(behavior),
         describe_click_rhythm(behavior), describe_sold_out_reaction(behavior), describe_parallel_sessions(behavior),
         describe_browser_trace(behavior),
     ]

@@ -47,6 +47,13 @@ DEFAULT_BEHAVIOR_BY_ACTOR_TYPE: dict[ActorType, SessionBehavior] = {
         sold_out_retry_count=2, sold_out_retry_delay_ms=300, browser_trace_level=0,
         booking_sequence=BookingSequence.CAPTCHA_REFRESH_AND_WRONG_ANSWER,
     ),
+    ActorType.BOT_REENTRY: SessionBehavior(
+        entry_delay_after_open_ms=0, entry_delay_deviation_ms=30,
+        click_interval_mean_ms=120, click_interval_deviation_ms=10,
+        browse_page_count=0, page_dwell_mean_ms=0, page_dwell_deviation_ms=0, sessions_per_device=1,
+        sold_out_retry_count=5, sold_out_retry_delay_ms=100, browser_trace_level=0,
+        booking_sequence=BookingSequence.QUEUE_REENTRY,
+    ),
     ActorType.BOT_NEW: SessionBehavior(
         entry_delay_after_open_ms=1_000, entry_delay_deviation_ms=500,
         click_interval_mean_ms=900, click_interval_deviation_ms=300,

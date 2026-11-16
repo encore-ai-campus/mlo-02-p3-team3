@@ -113,6 +113,7 @@ FAKE_INGEST_LATENCY_MS = 120  # 원본 적재 지연 예시 · 배치 1초 이�
 FAKE_MISROUTE_COLLECTION_NAME = "collector_events"  # QA 이벤트가 오지 않는 컬렉션 · 오분류 · 중복 흉내
 CAPTCHA_REFRESH_EVENT_TYPE = "captcha_refresh"  # 시스템 web/services.challenge
 CAPTCHA_WRONG_EVENT_TYPE = "captcha_wrong"  # 시스템 web/services.verify
+FAKE_CANCELLED_ATTEMPT_EVENT_TYPES = ("queue_enter", "queue_register", "queue_cancel")  # 대기열 재진입 · web/services.start · cancel
 FAKE_BOOKED_SERVER_EVENT_TYPES = (
     "queue_enter", "queue_register", "queue_admitted", "captcha_success", "booking_confirm_request", "booking_confirm_success",
 )
@@ -359,6 +360,10 @@ class FakeBookingApi:
         sent_event_ids = tuple(str(uuid.uuid4()) for _ in range(FAKE_SEAT_CLICK_COUNT))
         for event_id in sent_event_ids:
             self.state.publish_to_stream(build_fake_event("seat_select", user_id, session_key, event_id), session_key)
+        for reentry_index in range(1, find_sequence_steps(behavior).queue_reentry_count + 1):  # 취소한 시도 = 별도 예매 시도 번호
+            cancelled_key = f"{session_key}-cancelled-{reentry_index}"
+            for event_type in FAKE_CANCELLED_ATTEMPT_EVENT_TYPES:
+                self.state.publish_to_stream(build_fake_event(event_type, user_id, cancelled_key), cancelled_key)
         for event_type in build_booked_server_event_types(behavior):
             self.state.publish_to_stream(build_fake_event(event_type, user_id, session_key), session_key)
         return VirtualUserSessionResult(session_key, latency_ms, is_error=False, booking_outcome=BookingOutcome.BOOKED,

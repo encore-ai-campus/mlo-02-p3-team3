@@ -1,4 +1,4 @@
-"""예매 순서 선택 · 봇 E 보안문자 반복 시도 · 기존 봇 기본 순서 유지 · 실제 · 모의 대상 같은 이벤트"""
+"""예매 순서 선택 · 봇 E 보안문자 반복 시도 · 봇 F 대기열 재진입 · 기존 봇 기본 순서 유지 · 실제 · 모의 대상 같은 이벤트"""
 import asyncio
 import json
 import time
@@ -13,6 +13,7 @@ from ticket_guard_qa.domain.models import (
     CAPTCHA_ATTEMPT_LIMIT,
     CAPTCHA_REFRESH_COUNT,
     CAPTCHA_WRONG_ANSWER_COUNT,
+    QUEUE_REENTRY_COUNT,
     VirtualUserSessionPlan,
     find_sequence_steps,
 )
@@ -29,6 +30,8 @@ from ticket_guard_qa.system_targets.fake_system import (
 from ticket_guard_qa.system_targets.live_booking_client import BookingFlowError, LiveBookingClient
 
 CAPTCHA_BOT_BEHAVIOR = DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.BOT_CAPTCHA]
+REENTRY_BOT_BEHAVIOR = DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.BOT_REENTRY]
+SEQUENCE_BOTS = (ActorType.BOT_CAPTCHA, ActorType.BOT_REENTRY)
 CAPTCHA_ANSWER = "QA123"
 
 
@@ -38,7 +41,7 @@ def with_sequence(sequence: BookingSequence):
 
 def test_existing_bots_keep_standard_sequence():
     for actor_type, behavior in DEFAULT_BEHAVIOR_BY_ACTOR_TYPE.items():
-        if actor_type != ActorType.BOT_CAPTCHA:
+        if actor_type not in SEQUENCE_BOTS:
             assert behavior.booking_sequence == BookingSequence.STANDARD, actor_type
             assert not find_sequence_steps(behavior).captcha_retry_actions
 
@@ -49,11 +52,15 @@ def test_wrong_answers_stay_below_system_limit():
     assert steps.captcha_retry_actions == ("wrong_answer", "refresh") * CAPTCHA_REFRESH_COUNT
 
 
-def test_captcha_bot_is_listed_in_captcha_category_and_counts_toward_macro_target():
-    info = find_bot_type_info(ActorType.BOT_CAPTCHA)
-    assert (info.short_name, info.category.title, info.detection_target_id) == ("E", "보안문자 우회", "bot_abd_detection")
+@pytest.mark.parametrize(("actor_type", "short_name", "category_title", "slug"), [
+    (ActorType.BOT_CAPTCHA, "E", "보안문자 우회", "bot_captcha"),
+    (ActorType.BOT_REENTRY, "F", "요청 자동화", "bot_reentry"),
+])
+def test_sequence_bots_are_listed_and_count_toward_macro_target(actor_type, short_name, category_title, slug):
+    info = find_bot_type_info(actor_type)
+    assert (info.short_name, info.category.title, info.detection_target_id) == (short_name, category_title, "bot_abd_detection")
     assert info.traffic_channel == "HTTP 트래픽"  # 예매 순서 선택 = HTTP 트래픽 봇만
-    assert info.slug == "bot_captcha"
+    assert info.slug == slug
 
 
 def test_version_saved_before_sequence_field_reads_as_standard():
@@ -77,12 +84,22 @@ def test_description_adds_captcha_line_only_for_retry_sequence():
     assert "보안문자 단계" not in [line.step_title for line in describe_behavior(with_sequence(BookingSequence.STANDARD))]
 
 
+def test_description_adds_queue_line_only_for_reentry_sequence():
+    lines = {line.step_title: line.headline for line in describe_behavior(REENTRY_BOT_BEHAVIOR)}
+    assert lines["대기열 단계"] == f"대기열 진입 → 취소 {QUEUE_REENTRY_COUNT}회 반복 뒤 마지막 진입으로 진행"
+    assert "대기열 단계" not in [line.step_title for line in describe_behavior(CAPTCHA_BOT_BEHAVIOR)]
+
+
+ATTEMPT_BOUND_ACTIONS = {"heartbeat", "verify", "cancel", "confirm"}
+
+
 class CaptchaRecordingServer:
     """예매 서버 흉내 · 요청 순서 기록 · 오답 = 400 CAPTCHA_WRONG · 제한 도달 = 409 CAPTCHA_LIMIT (web/services.verify)"""
 
     def __init__(self) -> None:
         self.steps: list[str] = []
         self.wrong_count = 0
+        self.attempt_count = 0
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login/":
@@ -100,9 +117,15 @@ class CaptchaRecordingServer:
             if self.wrong_count >= CAPTCHA_ATTEMPT_LIMIT:
                 return httpx.Response(409, json={"code": "CAPTCHA_LIMIT"})
             return httpx.Response(400, json={"code": "CAPTCHA_WRONG"})
+        if action == "start":
+            self.attempt_count += 1  # 진입마다 새 예매 시도 · web/services.start
+        attempt_id = f"attempt-{self.attempt_count}"
+        if action in ATTEMPT_BOUND_ACTIONS and body.get("attemptId") != attempt_id:  # 취소한 시도 재사용 = 거부
+            return httpx.Response(409, json={"code": "STALE_ATTEMPT"})
         self.steps.append(action)
-        response_body = {"start": {"id": "attempt-1", "stage": "queue"}, "heartbeat": {"id": "attempt-1", "stage": "captcha"},
-                         "verify": {"stage": "select"}, "confirm": {"redirect": "/complete/TG-1/"}}.get(action, {})
+        response_body = {"start": {"id": attempt_id, "stage": "queue"}, "heartbeat": {"id": attempt_id, "stage": "captcha"},
+                         "verify": {"stage": "select"}, "cancel": {"stage": "cancelled"},
+                         "confirm": {"redirect": "/complete/TG-1/"}}.get(action, {})
         return httpx.Response(200, json=response_body)
 
 
@@ -119,6 +142,15 @@ def run_live_flow(behavior, server: CaptchaRecordingServer | None = None):
             await client.close()
 
     return asyncio.run(run()), server.steps
+
+
+def test_live_reentry_cancels_and_restarts_before_booking_with_last_attempt():
+    server = CaptchaRecordingServer()
+    result, steps = run_live_flow(REENTRY_BOT_BEHAVIOR, server)
+    assert result.booking_outcome == BookingOutcome.BOOKED
+    assert steps == ["login", "start", *["heartbeat", "cancel", "start"] * QUEUE_REENTRY_COUNT, "heartbeat",
+                     "captcha_image · initial", *FLOW_END]
+    assert result.booking_attempt_id == f"attempt-{QUEUE_REENTRY_COUNT + 1}"  # 정답표 = 마지막 시도
 
 
 FLOW_START = ["login", "start", "heartbeat", "captcha_image · initial"]
@@ -144,6 +176,16 @@ def test_live_wrong_answer_reaching_limit_is_reported_as_error():
     with pytest.raises(BookingFlowError) as raised:
         run_live_flow(with_sequence(BookingSequence.CAPTCHA_WRONG_ANSWER), server)
     assert (raised.value.step, raised.value.error_code) == ("verify · wrong_answer", "CAPTCHA_LIMIT")
+
+
+def test_mock_publishes_cancelled_attempts_with_own_attempt_ids():
+    target = build_fake_system_target()
+    result = target.booking_api.record_session(REENTRY_BOT_BEHAVIOR)
+    cancelled = [record.event for record in target.booking_api.state.stream_records
+                 if record.event is not None and record.event["eventType"] == "queue_cancel"]
+    assert len(cancelled) == QUEUE_REENTRY_COUNT
+    assert all(event["bookingAttemptId"] != result.session_key for event in cancelled)  # 취소한 시도 = 정답표 밖
+    assert len({event["bookingAttemptId"] for event in cancelled}) == QUEUE_REENTRY_COUNT
 
 
 def test_mock_publishes_same_retry_events_as_live():

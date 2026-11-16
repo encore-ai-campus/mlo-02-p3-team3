@@ -57,7 +57,7 @@ def test_custom_bot_type_flows_from_draft_to_run_targets(qa_database):
     type_store = BotTypeStore(qa_database)
     bot_a = find_bot_type_by_slug("bot_a")
     draft = type_store.create_draft(bot_a, DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.BOT_A], SAVED_AT)
-    assert (draft.actor_type, draft.short_name, draft.status) == ("BOT_F", "F", BotStatus.DRAFT)
+    assert (draft.actor_type, draft.short_name, draft.status) == ("BOT_G", "G", BotStatus.DRAFT)
     assert not draft.is_in_traffic_mix  # 작성 중 = Run 제외
 
     with pytest.raises(BotTypeInputError):
@@ -68,12 +68,12 @@ def test_custom_bot_type_flows_from_draft_to_run_targets(qa_database):
     reviewed = type_store.change_status(draft.actor_type, BotStatus.REVIEW, SAVED_AT)
 
     assert reviewed.is_in_traffic_mix and reviewed.detection_signals == ("짧고 일정한 주기의 좌석 조회",)
-    assert reviewed.display_name == "봇 F · 취소표 감시 매크로" and reviewed.category.title == "재고 선점"
-    assert ActorType("BOT_F") in find_detection_target(ActorType("BOT_F")).actor_types  # A · B · D와 합산
-    assert ActorType("BOT_F") in [info.actor_type for info in list_bot_types()]
+    assert reviewed.display_name == "봇 G · 취소표 감시 매크로" and reviewed.category.title == "재고 선점"
+    assert ActorType("BOT_G") in find_detection_target(ActorType("BOT_G")).actor_types  # A · B · D와 합산
+    assert ActorType("BOT_G") in [info.actor_type for info in list_bot_types()]
     registry = BotProfileStore(qa_database).load_current_registry()
-    assert registry.get_profile(ActorType("BOT_F")).behavior == DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.BOT_A]  # 시작 봇 복사
-    assert type_store.create_draft(bot_a, DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.BOT_A], SAVED_AT).short_name == "G"
+    assert registry.get_profile(ActorType("BOT_G")).behavior == DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.BOT_A]  # 시작 봇 복사
+    assert type_store.create_draft(bot_a, DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.BOT_A], SAVED_AT).short_name == "H"
 
 
 def test_behavior_description_reads_values_in_plain_words():

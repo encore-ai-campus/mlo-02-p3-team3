@@ -3,7 +3,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields
 
 from ticket_guard_qa.domain.enums import ActorType, BookingSequence
-from ticket_guard_qa.domain.models import CAPTCHA_REFRESH_COUNT, CAPTCHA_WRONG_ANSWER_COUNT, SessionBehavior
+from ticket_guard_qa.domain.models import (
+    CAPTCHA_REFRESH_COUNT,
+    CAPTCHA_WRONG_ANSWER_COUNT,
+    QUEUE_REENTRY_COUNT,
+    SessionBehavior,
+)
 from ticket_guard_qa.macro_bots.bot_profiles import DEFAULT_BEHAVIOR_BY_ACTOR_TYPE
 
 
@@ -34,6 +39,7 @@ BOOKING_SEQUENCE_CHOICES: tuple[tuple[int, str], ...] = (
     (BookingSequence.CAPTCHA_WRONG_ANSWER.value, f"보안문자 오답 {CAPTCHA_WRONG_ANSWER_COUNT}회 뒤 정답 입력"),
     (BookingSequence.CAPTCHA_REFRESH_AND_WRONG_ANSWER.value,
      f"보안문자 오답 · 새로 받기 {CAPTCHA_WRONG_ANSWER_COUNT}회 반복 뒤 정답 입력"),
+    (BookingSequence.QUEUE_REENTRY.value, f"대기열 진입 → 취소 {QUEUE_REENTRY_COUNT}회 반복 뒤 진행"),
 )
 
 BEHAVIOR_FIELD_SPECS: tuple[BehaviorFieldSpec, ...] = (  # SessionBehavior 필드 순서 = 화면 순서
