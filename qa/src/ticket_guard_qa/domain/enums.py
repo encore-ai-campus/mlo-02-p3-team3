@@ -1,5 +1,5 @@
 """용어집의 고정 값 · AGENTS.md 10장"""
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 
 class VerdictStage(StrEnum):
@@ -14,7 +14,7 @@ class VerdictStage(StrEnum):
 
 
 class ActorType(str):
-    """봇 유형 id · 기본 6종 = 아래 상수 · 화면에서 추가한 유형 = QA DB bot_types · 전체 목록은 macro_bots/bot_catalog"""
+    """봇 유형 id · 기본 7종 = 아래 상수 · 화면에서 추가한 유형 = QA DB bot_types · 전체 목록은 macro_bots/bot_catalog"""
     __slots__ = ()
 
     HUMAN: "ActorType"
@@ -22,6 +22,7 @@ class ActorType(str):
     BOT_B: "ActorType"
     BOT_C: "ActorType"
     BOT_D: "ActorType"
+    BOT_CAPTCHA: "ActorType"  # 보안문자 반복 시도 · 화면 추가 id(BOT_E …)와 겹치지 않게 이름 id
     BOT_NEW: "ActorType"  # 새 유형 · 목표 없음 · 결과만 공개
 
     @property
@@ -42,9 +43,11 @@ ActorType.BOT_A = ActorType("BOT_A")
 ActorType.BOT_B = ActorType("BOT_B")
 ActorType.BOT_C = ActorType("BOT_C")
 ActorType.BOT_D = ActorType("BOT_D")
+ActorType.BOT_CAPTCHA = ActorType("BOT_CAPTCHA")
 ActorType.BOT_NEW = ActorType("BOT_NEW")
 BUILT_IN_ACTOR_TYPES: tuple[ActorType, ...] = (
-    ActorType.HUMAN, ActorType.BOT_A, ActorType.BOT_B, ActorType.BOT_C, ActorType.BOT_D, ActorType.BOT_NEW,
+    ActorType.HUMAN, ActorType.BOT_A, ActorType.BOT_B, ActorType.BOT_C, ActorType.BOT_D, ActorType.BOT_CAPTCHA,
+    ActorType.BOT_NEW,
 )
 
 
@@ -56,6 +59,14 @@ class SessionStep(StrEnum):
     SEAT_SELECTED = "SEAT_SELECTED"
     CONFIRMED = "CONFIRMED"
     VERDICT_RECEIVED = "VERDICT_RECEIVED"
+
+
+class BookingSequence(IntEnum):
+    """예매 순서 · 행동 값 booking_sequence · 단계 차이는 domain/models.BOOKING_SEQUENCE_STEPS"""
+    STANDARD = 0  # 로그인 → 대기열 → 보안문자 → 좌석 → 확정
+    CAPTCHA_REFRESH = 1  # 보안문자 여러 번 새로 받은 뒤 입력
+    CAPTCHA_WRONG_ANSWER = 2  # 제한 직전까지 오답 뒤 정답
+    CAPTCHA_REFRESH_AND_WRONG_ANSWER = 3  # 오답 → 새로 받기 반복 뒤 정답
 
 
 class BookingOutcome(StrEnum):

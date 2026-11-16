@@ -9,7 +9,12 @@ from typing import Any
 import httpx
 
 from ticket_guard_qa.domain.enums import BookingOutcome
-from ticket_guard_qa.domain.models import SessionBehavior, VirtualUserSessionPlan
+from ticket_guard_qa.domain.models import (
+    CAPTCHA_REFRESH_ACTION,
+    SessionBehavior,
+    VirtualUserSessionPlan,
+    find_sequence_steps,
+)
 from ticket_guard_qa.system_targets.target_interfaces import HttpResult
 
 CSRF_COOKIE_NAME = "csrftoken"
@@ -28,6 +33,10 @@ SHOW_DETAIL_PAGE = "detail"
 SEAT_SELECTION_PAGE = "select"
 CAPTCHA_PAGE = "captcha"
 EVENT_ACCEPTED_STATUS_CODES = (200, 202)  # 202 = Kafka 전달 대기
+CAPTCHA_INITIAL_REASON = "initial"  # 시스템 web/views.captcha 교체 사유
+CAPTCHA_REFRESH_REASON = "user_refresh"  # 시스템 captcha_refresh 이벤트
+CAPTCHA_WRONG_ERROR_CODE = "CAPTCHA_WRONG"  # HTTP 400 · 시스템 captcha_wrong 이벤트
+WRONG_ANSWER_SUFFIX = "X"  # 정답 + X = 항상 오답 · 정답 길이 5자
 
 STAGE_QUEUE = "queue"
 STAGE_CAPTCHA = "captcha"
@@ -145,13 +154,33 @@ class LiveBookingClient:
                 raise BookingFlowError("heartbeat", result.status_code, "QUEUE_TIMEOUT")
             await asyncio.sleep(poll_interval_sec)
 
-    async def pass_captcha(self, answer: str) -> HttpResult:
-        """이미지 요청으로 문제 발급 → 정답 제출 · 정답은 시스템 테스트 훅 고정값"""
+    async def request_captcha_image(self, reason: str = CAPTCHA_INITIAL_REASON) -> None:
+        """initial = 첫 발급 · user_refresh = 새로 받기"""
         image_response = await self.http_client.get("/captcha.png", params={
-            "pageId": self.page_instance_id, "attemptId": self.booking_attempt_id,
+            "pageId": self.page_instance_id, "attemptId": self.booking_attempt_id, "reason": reason,
         })
         if image_response.status_code != 200:
-            raise BookingFlowError("captcha_image", image_response.status_code, None)
+            raise BookingFlowError(f"captcha_image · {reason}", image_response.status_code, None)
+
+    async def submit_wrong_answer(self, answer: str) -> None:
+        """400 CAPTCHA_WRONG만 정상 · 제한 도달(CAPTCHA_LIMIT) 등은 오류"""
+        result = await self._post_action("verify", answer=answer + WRONG_ANSWER_SUFFIX)
+        if result.status_code != 400 or result.body.get("code") != CAPTCHA_WRONG_ERROR_CODE:
+            raise BookingFlowError("verify · wrong_answer", result.status_code, result.body.get("code"))
+
+    async def pass_captcha(self, answer: str, retry_actions: tuple[str, ...] = (),
+                           retry_intervals_ms: tuple[float, ...] = ()) -> HttpResult:
+        """문제 발급 → 반복 시도(오답 · 새로 받기) → 정답 제출 · 정답은 시스템 테스트 훅 고정값"""
+        await self.request_captcha_image()
+        for index, action in enumerate(retry_actions):
+            if retry_intervals_ms:
+                await asyncio.sleep(retry_intervals_ms[index % len(retry_intervals_ms)] / 1000)
+            if action == CAPTCHA_REFRESH_ACTION:
+                await self.request_captcha_image(CAPTCHA_REFRESH_REASON)
+            else:
+                await self.submit_wrong_answer(answer)
+        if retry_actions and retry_intervals_ms:
+            await asyncio.sleep(retry_intervals_ms[len(retry_actions) % len(retry_intervals_ms)] / 1000)
         return self._expect_ok("verify", await self._post_action("verify", answer=answer))
 
     async def post_page_event(self, event_type: str, page_name: str, previous_page_name: str | None, page_view_id: str,
@@ -257,7 +286,10 @@ class LiveBookingClient:
         step_latency_ms["queue"] = (time.perf_counter() - queue_started_at) * 1000
         if admission.body.get("stage") != STAGE_CAPTCHA:
             raise BookingFlowError("heartbeat", admission.status_code, f"UNEXPECTED_STAGE_{admission.body.get('stage')}")
-        step_latency_ms["captcha"] = (await self.pass_captcha(captcha_answer)).latency_ms
+        retry_actions = find_sequence_steps(behavior).captcha_retry_actions
+        captcha_started_at = time.perf_counter()  # 반복 시도 대기 포함
+        captcha = await self.pass_captcha(captcha_answer, retry_actions, session_plan.click_intervals_ms)
+        step_latency_ms["captcha"] = (time.perf_counter() - captcha_started_at) * 1000 if retry_actions else captcha.latency_ms
 
         sold_seat_ids: set[str] = set()
         step_latency_ms["seat_select"] = step_latency_ms["confirm"] = 0.0

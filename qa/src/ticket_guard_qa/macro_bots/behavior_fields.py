@@ -2,8 +2,8 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 
-from ticket_guard_qa.domain.enums import ActorType
-from ticket_guard_qa.domain.models import SessionBehavior
+from ticket_guard_qa.domain.enums import ActorType, BookingSequence
+from ticket_guard_qa.domain.models import CAPTCHA_REFRESH_COUNT, CAPTCHA_WRONG_ANSWER_COUNT, SessionBehavior
 from ticket_guard_qa.macro_bots.bot_profiles import DEFAULT_BEHAVIOR_BY_ACTOR_TYPE
 
 
@@ -28,6 +28,14 @@ BROWSER_TRACE_CHOICES: tuple[tuple[int, str], ...] = (
     (1, "화면 조회 · 화면 이벤트 · 브라우저 정보 전송"),
 )
 
+BOOKING_SEQUENCE_CHOICES: tuple[tuple[int, str], ...] = (
+    (BookingSequence.STANDARD.value, "기본 순서 · 로그인 → 대기열 → 보안문자 → 좌석 → 확정"),
+    (BookingSequence.CAPTCHA_REFRESH.value, f"보안문자 새로 받기 {CAPTCHA_REFRESH_COUNT}회 뒤 입력"),
+    (BookingSequence.CAPTCHA_WRONG_ANSWER.value, f"보안문자 오답 {CAPTCHA_WRONG_ANSWER_COUNT}회 뒤 정답 입력"),
+    (BookingSequence.CAPTCHA_REFRESH_AND_WRONG_ANSWER.value,
+     f"보안문자 오답 · 새로 받기 {CAPTCHA_WRONG_ANSWER_COUNT}회 반복 뒤 정답 입력"),
+)
+
 BEHAVIOR_FIELD_SPECS: tuple[BehaviorFieldSpec, ...] = (  # SessionBehavior 필드 순서 = 화면 순서
     BehaviorFieldSpec("entry_delay_after_open_ms", "① 예매 시작 시점", "오픈 후 예매 시작까지(평균)", "ms", 0, 600_000,
                       "0 = 예매 오픈 순간(T0)"),
@@ -47,6 +55,8 @@ BEHAVIOR_FIELD_SPECS: tuple[BehaviorFieldSpec, ...] = (  # SessionBehavior 필�
     BehaviorFieldSpec("sold_out_retry_delay_ms", "⑤ 매진 좌석 대응", "재시도 전 대기", "ms", 0, 60_000),
     BehaviorFieldSpec("browser_trace_level", "⑥ 브라우저 흔적", "화면 이벤트 · 브라우저 정보", "", 0, 1,
                       choices=BROWSER_TRACE_CHOICES),
+    BehaviorFieldSpec("booking_sequence", "⑦ 예매 순서", "예매 단계 진행 방식", "", 0, max(BookingSequence),
+                      "HTTP 트래픽 봇만 적용 · 간격 = 좌석 클릭 간격", choices=BOOKING_SEQUENCE_CHOICES),
 )
 
 # 아직 행동 값이 없는 항목 · 트래픽 생성기 구현 후 SessionBehavior에 추가

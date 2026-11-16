@@ -1,7 +1,7 @@
 """행동 값 → 처음 보는 사람이 읽는 문장 · B1 카드 "예매 중 행동" · 값이 바뀌면 문장도 같이 바뀜"""
 from dataclasses import dataclass
 
-from ticket_guard_qa.domain.models import SessionBehavior
+from ticket_guard_qa.domain.models import SessionBehavior, find_sequence_steps
 
 SAME_MOMENT_DEVIATION_MS = 100  # 이 편차 안 = 모든 세션이 같은 순간 시작
 CROWDED_DEVIATION_MS = 1_000
@@ -84,9 +84,22 @@ def describe_browser_trace(behavior: SessionBehavior) -> BehaviorLine:
     return BehaviorLine("브라우저 흔적", "화면 이벤트 없이 예매 요청만 전송", "자동화 프로그램 기본 접속 정보 그대로")
 
 
+def describe_captcha_retries(behavior: SessionBehavior) -> BehaviorLine | None:
+    """기본 순서 = 표시 안 함 · 보안문자 반복 시도만 한 줄"""
+    steps = find_sequence_steps(behavior)
+    parts = [f"오답 {steps.captcha_wrong_answer_count}회"] if steps.captcha_wrong_answer_count else []
+    parts += [f"새로 받기 {steps.captcha_refresh_count}회"] if steps.captcha_refresh_count else []
+    if not parts:
+        return None
+    return BehaviorLine("보안문자 단계", f"보안문자 {' · '.join(parts)} 뒤 정답 입력",
+                        "시도마다 예매 웹에 오답 · 새로 받기 기록 · 좌석 클릭과 같은 간격 · 오답 제한(5회) 미도달")
+
+
 def describe_behavior(behavior: SessionBehavior) -> list[BehaviorLine]:
-    """예매 순서대로 · 화면 조회 → 예매 시작 → 좌석 클릭 → 매진 대응 → 동시 창 → 브라우저 흔적"""
-    return [
-        describe_browsing(behavior), describe_start_timing(behavior), describe_click_rhythm(behavior),
-        describe_sold_out_reaction(behavior), describe_parallel_sessions(behavior), describe_browser_trace(behavior),
+    """예매 순서대로 · 화면 조회 → 예매 시작 → 보안문자(반복 시도만) → 좌석 클릭 → 매진 대응 → 동시 창 → 브라우저 흔적"""
+    lines = [
+        describe_browsing(behavior), describe_start_timing(behavior), describe_captcha_retries(behavior),
+        describe_click_rhythm(behavior), describe_sold_out_reaction(behavior), describe_parallel_sessions(behavior),
+        describe_browser_trace(behavior),
     ]
+    return [line for line in lines if line is not None]
