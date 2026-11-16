@@ -81,6 +81,14 @@ def choose_user_agent(behavior: SessionBehavior) -> str | None:
     return BROWSER_USER_AGENT if has_browser_trace(behavior) else None
 
 
+def choose_request_headers(session_plan: VirtualUserSessionPlan) -> dict[str, str]:
+    """기기 정보 변경 세션 = 배정된 브라우저 정보 · 나머지 = 브라우저 흔적 설정 기준 · 빈 값 = 라이브러리 기본값"""
+    if session_plan.browser_profile is not None:
+        return session_plan.browser_profile.to_request_headers()
+    user_agent = choose_user_agent(session_plan.behavior)
+    return {"User-Agent": user_agent} if user_agent else {}
+
+
 def build_browse_pages(page_count: int) -> list[str]:
     """마지막 = 공연 상세(예매하기 버튼 화면) · 앞으로 목록 · 상세 번갈아 · 3회 = 상세 → 목록 → 상세"""
     return [SHOW_DETAIL_PAGE if (page_count - 1 - index) % 2 == 0 else SHOW_LIST_PAGE for index in range(page_count)]
@@ -93,10 +101,11 @@ def utc_now_iso() -> str:
 class LiveBookingClient:
     """예매 화면(static/app.js)이 보내는 요청과 같은 순서 · 같은 본문 · VU 하나 = 클라이언트 하나"""
 
-    def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None, user_agent: str | None = None) -> None:
-        headers = {"User-Agent": user_agent} if user_agent else None
+    def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None, user_agent: str | None = None,
+                 request_headers: dict[str, str] | None = None) -> None:
+        headers = {**({"User-Agent": user_agent} if user_agent else {}), **(request_headers or {})}  # 모든 요청에 같은 값
         self.http_client = httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=REQUEST_TIMEOUT_SEC, transport=transport,
-                                             headers=headers)
+                                             headers=headers or None)
         self.page_instance_id = str(uuid.uuid4())  # 탭 하나
         self.page_view_id = str(uuid.uuid4())  # 화면 한 번 표시
         self.booking_attempt_id: str | None = None

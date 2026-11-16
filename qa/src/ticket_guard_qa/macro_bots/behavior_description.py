@@ -1,7 +1,9 @@
 """행동 값 → 처음 보는 사람이 읽는 문장 · B1 카드 "예매 중 행동" · 값이 바뀌면 문장도 같이 바뀜"""
 from dataclasses import dataclass
 
+from ticket_guard_qa.domain.enums import BrowserIdentity
 from ticket_guard_qa.domain.models import SessionBehavior, find_sequence_steps
+from ticket_guard_qa.macro_bots.browser_profiles import ROTATING_BROWSER_PROFILES
 
 SAME_MOMENT_DEVIATION_MS = 100  # 이 편차 안 = 모든 세션이 같은 순간 시작
 CROWDED_DEVIATION_MS = 1_000
@@ -79,9 +81,15 @@ def describe_sold_out_reaction(behavior: SessionBehavior) -> BehaviorLine:
 
 
 def describe_browser_trace(behavior: SessionBehavior) -> BehaviorLine:
+    if behavior.browser_identity == BrowserIdentity.ROTATING:
+        identity = f"세션마다 다른 PC · 모바일 브라우저 정보 · {len(ROTATING_BROWSER_PROFILES)}종 중 선택"
+    elif behavior.browser_trace_level >= 1:
+        identity = "일반 PC 브라우저와 같은 접속 정보"
+    else:
+        identity = "자동화 프로그램 기본 접속 정보 그대로"
     if behavior.browser_trace_level >= 1:
-        return BehaviorLine("브라우저 흔적", "화면 이벤트 · 브라우저 정보 함께 전송", "일반 PC 브라우저와 같은 접속 정보")
-    return BehaviorLine("브라우저 흔적", "화면 이벤트 없이 예매 요청만 전송", "자동화 프로그램 기본 접속 정보 그대로")
+        return BehaviorLine("브라우저 흔적", "화면 이벤트 · 브라우저 정보 함께 전송", identity)
+    return BehaviorLine("브라우저 흔적", "화면 이벤트 없이 예매 요청만 전송", identity)
 
 
 def describe_captcha_retries(behavior: SessionBehavior) -> BehaviorLine | None:

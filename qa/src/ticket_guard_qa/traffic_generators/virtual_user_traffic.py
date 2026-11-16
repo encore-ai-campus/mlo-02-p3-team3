@@ -16,6 +16,7 @@ from ticket_guard_qa.domain.models import (
 from ticket_guard_qa.macro_bots.bot_catalog import BROWSER_TRAFFIC, get_bot_type_info, list_bot_types
 from ticket_guard_qa.macro_bots.bot_profiles import BotProfileRegistry
 from ticket_guard_qa.macro_bots.browser_capture import save_browser_capture_frames
+from ticket_guard_qa.macro_bots.browser_profiles import assign_browser_profiles
 from ticket_guard_qa.macro_bots.behavior_sampling import pick_click_interval_ms, pick_entry_delay_ms, pick_page_dwell_ms
 from ticket_guard_qa.system_targets.target_interfaces import AccountPoolExhaustedError, BookingApi
 
@@ -52,7 +53,7 @@ def build_session_plans(
     for wave in split_into_waves(len(plans), wave_size):
         used_device_count = len({plan.device_key for plan in assigned})
         assigned.extend(assign_devices([plans[index] for index in wave], first_device_number=used_device_count + 1))
-    return assigned
+    return assign_browser_profiles(assigned, random_seed)
 
 
 def build_planned_user_session_plans(

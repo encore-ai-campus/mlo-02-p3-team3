@@ -9,6 +9,7 @@ from ticket_guard_qa.domain.enums import (
     AlertPolicy,
     BookingOutcome,
     BookingSequence,
+    BrowserIdentity,
     RunStatus,
     SuiteOutcome,
     TargetKind,
@@ -101,6 +102,18 @@ class SessionBehavior:
     sold_out_retry_delay_ms: int
     browser_trace_level: int  # 0 = API 요청만 · 1 = 화면 조회 · 화면 이벤트 · 브라우저 정보 전송
     booking_sequence: int = BookingSequence.STANDARD  # 예매 순서 · 필드 추가 전 저장 버전 = 기본 순서
+    browser_identity: int = BrowserIdentity.FIXED  # 기기 정보 · 필드 추가 전 저장 버전 = 고정
+
+
+@dataclass(frozen=True)
+class BrowserProfile:
+    """세션 하나가 보내는 브라우저 정보 · 요청 헤더 그대로 · 시스템 server_request 이벤트에 기록"""
+    profile_id: str
+    user_agent: str
+    accept_language: str
+
+    def to_request_headers(self) -> dict[str, str]:
+        return {"User-Agent": self.user_agent, "Accept-Language": self.accept_language}
 
 
 CAPTCHA_ATTEMPT_LIMIT = 5  # 시스템 오답 제한 · web/services.verify · 5회째 = 예매 취소
@@ -154,6 +167,7 @@ class VirtualUserSessionPlan:
     page_dwell_ms: tuple[float, ...] = ()  # 예매 전 화면마다 머무는 시간 · 길이 = 조회 화면 수
     device_key: str = ""  # 같은 값 = 같은 기기(쿠키 · 브라우저 정보 공유) · 봇 D 예매 창 묶음
     uses_browser: bool = False  # 브라우저 트래픽 유형(봇 C 등) · 실제 화면 열고 버튼 클릭
+    browser_profile: BrowserProfile | None = None  # 기기 정보 변경 세션만 · None = 브라우저 흔적 설정 기준
 
 
 @dataclass(frozen=True)
@@ -205,6 +219,7 @@ FEATURE_FIELD_BY_BEHAVIOR_FIELD: dict[str, str | None] = {
     "sold_out_retry_delay_ms": None,
     "browser_trace_level": None,
     "booking_sequence": None,
+    "browser_identity": None,
 }
 
 

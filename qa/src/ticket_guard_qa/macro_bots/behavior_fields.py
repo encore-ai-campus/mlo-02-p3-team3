@@ -2,7 +2,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 
-from ticket_guard_qa.domain.enums import ActorType, BookingSequence
+from ticket_guard_qa.domain.enums import ActorType, BookingSequence, BrowserIdentity
 from ticket_guard_qa.domain.models import (
     CAPTCHA_REFRESH_COUNT,
     CAPTCHA_WRONG_ANSWER_COUNT,
@@ -10,6 +10,7 @@ from ticket_guard_qa.domain.models import (
     SessionBehavior,
 )
 from ticket_guard_qa.macro_bots.bot_profiles import DEFAULT_BEHAVIOR_BY_ACTOR_TYPE
+from ticket_guard_qa.macro_bots.browser_profiles import ROTATING_BROWSER_PROFILES
 
 
 class BehaviorInputError(ValueError):
@@ -42,6 +43,11 @@ BOOKING_SEQUENCE_CHOICES: tuple[tuple[int, str], ...] = (
     (BookingSequence.QUEUE_REENTRY.value, f"대기열 진입 → 취소 {QUEUE_REENTRY_COUNT}회 반복 뒤 진행"),
 )
 
+BROWSER_IDENTITY_CHOICES: tuple[tuple[int, str], ...] = (
+    (BrowserIdentity.FIXED.value, "고정 · ⑥ 브라우저 흔적 설정 기준"),
+    (BrowserIdentity.ROTATING.value, f"세션마다 다른 브라우저 정보 · PC · 모바일 {len(ROTATING_BROWSER_PROFILES)}종 중 선택"),
+)
+
 BEHAVIOR_FIELD_SPECS: tuple[BehaviorFieldSpec, ...] = (  # SessionBehavior 필드 순서 = 화면 순서
     BehaviorFieldSpec("entry_delay_after_open_ms", "① 예매 시작 시점", "오픈 후 예매 시작까지(평균)", "ms", 0, 600_000,
                       "0 = 예매 오픈 순간(T0)"),
@@ -63,6 +69,8 @@ BEHAVIOR_FIELD_SPECS: tuple[BehaviorFieldSpec, ...] = (  # SessionBehavior 필�
                       choices=BROWSER_TRACE_CHOICES),
     BehaviorFieldSpec("booking_sequence", "⑦ 예매 순서", "예매 단계 진행 방식", "", 0, max(BookingSequence),
                       "HTTP 트래픽 봇만 적용 · 간격 = 좌석 클릭 간격", choices=BOOKING_SEQUENCE_CHOICES),
+    BehaviorFieldSpec("browser_identity", "⑧ 기기 정보", "브라우저 정보 변경", "", 0, max(BrowserIdentity),
+                      "HTTP 트래픽 봇만 적용 · 같은 기기 예매 창 = 같은 정보", choices=BROWSER_IDENTITY_CHOICES),
 )
 
 # 아직 행동 값이 없는 항목 · 트래픽 생성기 구현 후 SessionBehavior에 추가

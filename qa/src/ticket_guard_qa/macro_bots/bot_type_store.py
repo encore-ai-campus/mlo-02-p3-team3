@@ -33,7 +33,7 @@ class BotTypeInputError(ValueError):
 
 
 def generate_short_names():
-    """A, B, … Z, AA, AB, … · 기본 유형 코드(A ~ F)는 pick_next_short_name에서 건너뜀"""
+    """A, B, … Z, AA, AB, … · 기본 유형 코드(A ~ G)는 pick_next_short_name에서 건너뜀"""
     letters = string.ascii_uppercase
     for letter in letters:
         yield letter

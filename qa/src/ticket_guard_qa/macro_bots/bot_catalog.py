@@ -1,4 +1,4 @@
-"""봇 유형 목록 한 곳 · 기본 8종(코드) + 화면에서 추가한 유형(QA DB bot_types) · 이름 · 분류 · 상태 · 설명 · 탐지 흔적 · 색"""
+"""봇 유형 목록 한 곳 · 기본 9종(코드) + 화면에서 추가한 유형(QA DB bot_types) · 이름 · 분류 · 상태 · 설명 · 탐지 흔적 · 색"""
 from dataclasses import dataclass, replace
 from enum import Enum
 
@@ -158,6 +158,13 @@ BUILT_IN_BOT_TYPES: tuple[BotTypeInfo, ...] = (
         HTTP_TRAFFIC, "bot-reentry", BotRole.DETECTION_TARGET, "zap",
         ("한 계정에서 짧은 시간 안에 대기열 진입 · 취소 여러 번", "진입 · 취소 간격이 거의 일정", "화면 조회 없이 예매 요청만 연속 전송"),
         "request_automation", "bot_abd_detection",
+    ),
+    BotTypeInfo(
+        ActorType.BOT_DEVICE_SPOOF, "봇 G · 기기 정보 위장 매크로", "G",
+        "세션마다 PC · 모바일 브라우저 정보를 바꿔 서로 다른 기기처럼 보이게 예매하는 매크로",
+        HTTP_TRAFFIC, "bot-device-spoof", BotRole.DETECTION_TARGET, "fingerprint",
+        ("같은 접속 주소에서 세션마다 다른 브라우저 정보", "브라우저 정보는 다양하나 화면 이벤트 없음", "세션마다 새 기기 쿠키"),
+        "session_device", "bot_abd_detection",
     ),
     BotTypeInfo(
         ActorType.BOT_NEW, "미학습 유형 봇", "미학습", "탐지 규칙을 만들 때 쓰지 않은 행동 패턴의 봇",

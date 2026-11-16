@@ -18,6 +18,7 @@ from ticket_guard_qa.domain.raw_event_routing import find_expected_raw_collectio
 from ticket_guard_qa.domain.rule_sets import MOCK_RULE_SET_VERSION, find_matched_rule_ids
 from ticket_guard_qa.domain.models import (
     CAPTCHA_REFRESH_ACTION,
+    BrowserProfile,
     LiveMetrics,
     QuarantineRecord,
     SessionBehavior,
@@ -114,6 +115,9 @@ FAKE_MISROUTE_COLLECTION_NAME = "collector_events"  # QA 이벤트가 오지 않
 CAPTCHA_REFRESH_EVENT_TYPE = "captcha_refresh"  # 시스템 web/services.challenge
 CAPTCHA_WRONG_EVENT_TYPE = "captcha_wrong"  # 시스템 web/services.verify
 FAKE_CANCELLED_ATTEMPT_EVENT_TYPES = ("queue_enter", "queue_register", "queue_cancel")  # 대기열 재진입 · web/services.start · cancel
+FAKE_SERVER_REQUEST_EVENT_TYPE = "server_request"  # 시스템 web/middleware.py · 요청 헤더 · 접속 주소 · 기기 쿠키 기록
+FAKE_CAPTURE_SCHEMA_VERSION = 2  # 관측 이벤트 · PR #12
+FAKE_QA_REMOTE_ADDRESS = "172.18.0.10"  # QA 컨테이너 한 곳에서 나감 · 접속 주소 변경 불가
 FAKE_BOOKED_SERVER_EVENT_TYPES = (
     "queue_enter", "queue_register", "queue_admitted", "captcha_success", "booking_confirm_request", "booking_confirm_success",
 )
@@ -305,6 +309,19 @@ def build_fake_event(event_type: str, user_id: str, booking_attempt_id: str | No
     }
 
 
+def build_fake_server_request_event(user_id: str, booking_attempt_id: str, profile: BrowserProfile,
+                                   device_key: str) -> dict[str, Any]:
+    """기기 정보 변경 세션 · 예매 시작 요청 관측 한 건 · 같은 기기 = 같은 기기 쿠키(anonymousId)"""
+    anonymous_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"fake-device-{device_key or booking_attempt_id}"))
+    headers = [{"name": name, "value": value} for name, value in profile.to_request_headers().items()]
+    return {
+        **build_fake_event(FAKE_SERVER_REQUEST_EVENT_TYPE, user_id, booking_attempt_id),
+        "schemaVersion": FAKE_CAPTURE_SCHEMA_VERSION, "source": "server", "capture": {"anonymousId": anonymous_id},
+        "details": {"request": {"url": "/api/action/", "method": "POST", "headers": headers,
+                                "remoteAddress": FAKE_QA_REMOTE_ADDRESS}},
+    }
+
+
 class FakeBookingApi:
     def __init__(self, state: FakeSystemState | None = None) -> None:
         self.state = state or FakeSystemState()
@@ -339,9 +356,10 @@ class FakeBookingApi:
         self, session_plan: VirtualUserSessionPlan, open_at_monotonic: float
     ) -> VirtualUserSessionResult:
         """대기 없이 바로 판정 · 생성 순서대로 끝나서 같은 시드 = 같은 결과"""
-        return self.record_session(session_plan.behavior, session_plan.device_key)
+        return self.record_session(session_plan.behavior, session_plan.device_key, session_plan.browser_profile)
 
-    def record_session(self, behavior: SessionBehavior, device_key: str = "") -> VirtualUserSessionResult:
+    def record_session(self, behavior: SessionBehavior, device_key: str = "",
+                       browser_profile: BrowserProfile | None = None) -> VirtualUserSessionResult:
         session_key = SessionKey(f"attempt-{len(self.state.session_verdicts) + 1:05d}")
         stage = judge_behavior(behavior, self.random_source)
         feature_record = build_mock_feature_record(session_key, behavior, self.pipeline_random_source, datetime.now(timezone.utc))
@@ -364,6 +382,9 @@ class FakeBookingApi:
             cancelled_key = f"{session_key}-cancelled-{reentry_index}"
             for event_type in FAKE_CANCELLED_ATTEMPT_EVENT_TYPES:
                 self.state.publish_to_stream(build_fake_event(event_type, user_id, cancelled_key), cancelled_key)
+        if browser_profile is not None:
+            self.state.publish_to_stream(
+                build_fake_server_request_event(user_id, session_key, browser_profile, device_key), session_key)
         for event_type in build_booked_server_event_types(behavior):
             self.state.publish_to_stream(build_fake_event(event_type, user_id, session_key), session_key)
         return VirtualUserSessionResult(session_key, latency_ms, is_error=False, booking_outcome=BookingOutcome.BOOKED,
