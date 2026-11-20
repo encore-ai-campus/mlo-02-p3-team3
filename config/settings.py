@@ -1,3 +1,7 @@
+"""
+[홍석환] Django 공통 실행 설정
+웹·인증·수집·Kafka 및 시뮬레이션 설정을 환경변수에서 구성한다.
+"""
 import os
 from pathlib import Path
 
@@ -37,6 +41,9 @@ QA_TEST_ACCOUNT_PASSWORD = os.environ.get('QA_TEST_ACCOUNT_PASSWORD', '') if DEB
 QA_CAPTCHA_FIXED_ANSWER = os.environ.get('QA_CAPTCHA_FIXED_ANSWER', '').strip().upper() if DEBUG else ''
 QA_RESET_ENABLED = DEBUG and os.environ.get('QA_RESET_ENABLED') == '1'
 ATTEMPT_TIMEOUT_SECONDS = 60
+# 로그인 실패 제한 · 브라우저별(tg_login 쿠키) 연속 실패 횟수와 잠금 시간(초, 화면에는 표시하지 않음)
+LOGIN_MAX_FAILURES = max(1, int(os.environ.get('LOGIN_MAX_FAILURES') or 5))
+LOGIN_LOCK_SECONDS = max(1, int(os.environ.get('LOGIN_LOCK_SECONDS') or 300))
 EVENT_PUBLISHER = os.environ.get('EVENT_PUBLISHER', 'mock')
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092')
 KAFKA_EVENTS_TOPIC = os.environ.get('KAFKA_EVENTS_TOPIC', 'ticketguard.events.v1')

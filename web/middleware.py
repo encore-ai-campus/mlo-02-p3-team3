@@ -1,4 +1,8 @@
-"""Server observation copies bodies; collection failures never replace business responses."""
+"""
+[홍석환] 서버 요청·응답 관측 미들웨어
+요청 식별자와 본문·응답·처리 시간을 수집하고 비밀값을 가린다.
+관측 실패로 업무 응답을 대체하지 않는다.
+"""
 import logging
 import time
 import traceback
@@ -30,6 +34,7 @@ class RequestTelemetryMiddleware:
         incoming=request.headers.get('X-Capture-Request-ID')
         try: request_id=str(UUID(incoming))
         except (ValueError,TypeError,AttributeError): request_id=str(uuid4())
+        request.capture_request_id=request_id  # 에러 페이지 오류 번호 = server_request.details.requestId
         request_body={'state':'unavailable','reason':'not_observed'}
         known=[]
         if not excluded:
