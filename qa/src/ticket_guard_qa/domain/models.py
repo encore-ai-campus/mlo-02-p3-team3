@@ -8,6 +8,8 @@ from ticket_guard_qa.domain.enums import (
     ActorType,
     AlertPolicy,
     BookingOutcome,
+    BookingSequence,
+    BrowserIdentity,
     RunStatus,
     SuiteOutcome,
     TargetKind,
@@ -99,6 +101,60 @@ class SessionBehavior:
     sold_out_retry_count: int  # 먼저 팔린 좌석 → 다른 좌석 재시도 · 0 = 바로 포기
     sold_out_retry_delay_ms: int
     browser_trace_level: int  # 0 = API 요청만 · 1 = 화면 조회 · 화면 이벤트 · 브라우저 정보 전송
+    booking_sequence: int = BookingSequence.STANDARD  # 예매 순서 · 필드 추가 전 저장 버전 = 기본 순서
+    browser_identity: int = BrowserIdentity.FIXED  # 기기 정보 · 필드 추가 전 저장 버전 = 고정
+
+
+@dataclass(frozen=True)
+class BrowserProfile:
+    """세션 하나가 보내는 브라우저 정보 · 요청 헤더 그대로 · 시스템 server_request 이벤트에 기록"""
+    profile_id: str
+    user_agent: str
+    accept_language: str
+
+    def to_request_headers(self) -> dict[str, str]:
+        return {"User-Agent": self.user_agent, "Accept-Language": self.accept_language}
+
+
+CAPTCHA_ATTEMPT_LIMIT = 5  # 시스템 오답 제한 · web/services.verify · 5회째 = 예매 취소
+CAPTCHA_REFRESH_COUNT = 4  # 새로 받기 · 시스템 횟수 제한 없음
+CAPTCHA_WRONG_ANSWER_COUNT = CAPTCHA_ATTEMPT_LIMIT - 1  # 제한 직전 · 다음 정답으로 통과
+QUEUE_REENTRY_COUNT = 3  # 진입 → 취소 반복 · 시스템 취소 후 재진입 허용 · 횟수 제한 없음
+CAPTCHA_WRONG_ANSWER_ACTION = "wrong_answer"
+CAPTCHA_REFRESH_ACTION = "refresh"
+
+
+@dataclass(frozen=True)
+class BookingSequenceSteps:
+    """예매 순서별 기본 순서와 다른 단계 · 실제 · 모의 대상이 같이 사용"""
+    captcha_refresh_count: int = 0  # 정답 입력 전 새로 받기 횟수
+    captcha_wrong_answer_count: int = 0  # 정답 입력 전 오답 횟수 · 제한 미만
+    queue_reentry_count: int = 0  # 마지막 진입 전 진입 → 취소 횟수 · 취소한 예매 시도는 정답표 밖
+
+    @property
+    def captcha_retry_actions(self) -> tuple[str, ...]:
+        """정답 전 보안문자 동작 순서 · 오답 → 새로 받기 번갈아 · 남는 쪽은 뒤에 이어서"""
+        actions: list[str] = []
+        for index in range(max(self.captcha_refresh_count, self.captcha_wrong_answer_count)):
+            if index < self.captcha_wrong_answer_count:
+                actions.append(CAPTCHA_WRONG_ANSWER_ACTION)
+            if index < self.captcha_refresh_count:
+                actions.append(CAPTCHA_REFRESH_ACTION)
+        return tuple(actions)
+
+
+BOOKING_SEQUENCE_STEPS: dict[int, BookingSequenceSteps] = {
+    BookingSequence.STANDARD: BookingSequenceSteps(),
+    BookingSequence.CAPTCHA_REFRESH: BookingSequenceSteps(captcha_refresh_count=CAPTCHA_REFRESH_COUNT),
+    BookingSequence.CAPTCHA_WRONG_ANSWER: BookingSequenceSteps(captcha_wrong_answer_count=CAPTCHA_WRONG_ANSWER_COUNT),
+    BookingSequence.CAPTCHA_REFRESH_AND_WRONG_ANSWER: BookingSequenceSteps(
+        captcha_refresh_count=CAPTCHA_REFRESH_COUNT, captcha_wrong_answer_count=CAPTCHA_WRONG_ANSWER_COUNT),
+    BookingSequence.QUEUE_REENTRY: BookingSequenceSteps(queue_reentry_count=QUEUE_REENTRY_COUNT),
+}
+
+
+def find_sequence_steps(behavior: SessionBehavior) -> BookingSequenceSteps:
+    return BOOKING_SEQUENCE_STEPS.get(behavior.booking_sequence, BookingSequenceSteps())
 
 
 @dataclass(frozen=True)
@@ -111,6 +167,7 @@ class VirtualUserSessionPlan:
     page_dwell_ms: tuple[float, ...] = ()  # 예매 전 화면마다 머무는 시간 · 길이 = 조회 화면 수
     device_key: str = ""  # 같은 값 = 같은 기기(쿠키 · 브라우저 정보 공유) · 봇 D 예매 창 묶음
     uses_browser: bool = False  # 브라우저 트래픽 유형(봇 C 등) · 실제 화면 열고 버튼 클릭
+    browser_profile: BrowserProfile | None = None  # 기기 정보 변경 세션만 · None = 브라우저 흔적 설정 기준
 
 
 @dataclass(frozen=True)
@@ -161,6 +218,8 @@ FEATURE_FIELD_BY_BEHAVIOR_FIELD: dict[str, str | None] = {
     "sold_out_retry_count": None,
     "sold_out_retry_delay_ms": None,
     "browser_trace_level": None,
+    "booking_sequence": None,
+    "browser_identity": None,
 }
 
 

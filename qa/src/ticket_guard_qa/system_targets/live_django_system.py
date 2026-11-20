@@ -22,6 +22,7 @@ from ticket_guard_qa.system_targets.live_booking_client import (
     BookingFlowError,
     LiveBookingClient,
     build_test_account_username,
+    choose_request_headers,
     choose_user_agent,
     has_browser_trace,
 )
@@ -305,7 +306,7 @@ class LiveDjangoBookingApi:
             return await self.run_browser_session(session_plan, open_at_monotonic)
         account_number = self.acquire_account_number()
         username = build_test_account_username(account_number)
-        client = LiveBookingClient(self.base_url, self.transport, choose_user_agent(session_plan.behavior))
+        client = LiveBookingClient(self.base_url, self.transport, request_headers=choose_request_headers(session_plan))
         try:
             await self.attach_device(client, session_plan)
             flow_result = await client.run_booking_flow(

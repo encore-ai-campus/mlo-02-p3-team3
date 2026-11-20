@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from ticket_guard_qa.domain.enums import ActorType
+from ticket_guard_qa.domain.enums import ActorType, BookingSequence, BrowserIdentity
 from ticket_guard_qa.domain.models import SessionBehavior
 from ticket_guard_qa.macro_bots.bot_catalog import BotTypeInfo, find_bot_type_info, get_bot_type_info, list_bot_types
 
@@ -39,6 +39,27 @@ DEFAULT_BEHAVIOR_BY_ACTOR_TYPE: dict[ActorType, SessionBehavior] = {
         click_interval_mean_ms=150, click_interval_deviation_ms=20,
         browse_page_count=0, page_dwell_mean_ms=0, page_dwell_deviation_ms=0, sessions_per_device=8,
         sold_out_retry_count=3, sold_out_retry_delay_ms=150, browser_trace_level=0,
+    ),
+    ActorType.BOT_CAPTCHA: SessionBehavior(
+        entry_delay_after_open_ms=300, entry_delay_deviation_ms=200,
+        click_interval_mean_ms=250, click_interval_deviation_ms=40,
+        browse_page_count=0, page_dwell_mean_ms=0, page_dwell_deviation_ms=0, sessions_per_device=1,
+        sold_out_retry_count=2, sold_out_retry_delay_ms=300, browser_trace_level=0,
+        booking_sequence=BookingSequence.CAPTCHA_REFRESH_AND_WRONG_ANSWER,
+    ),
+    ActorType.BOT_REENTRY: SessionBehavior(
+        entry_delay_after_open_ms=0, entry_delay_deviation_ms=30,
+        click_interval_mean_ms=120, click_interval_deviation_ms=10,
+        browse_page_count=0, page_dwell_mean_ms=0, page_dwell_deviation_ms=0, sessions_per_device=1,
+        sold_out_retry_count=5, sold_out_retry_delay_ms=100, browser_trace_level=0,
+        booking_sequence=BookingSequence.QUEUE_REENTRY,
+    ),
+    ActorType.BOT_DEVICE_SPOOF: SessionBehavior(
+        entry_delay_after_open_ms=100, entry_delay_deviation_ms=80,
+        click_interval_mean_ms=200, click_interval_deviation_ms=30,
+        browse_page_count=0, page_dwell_mean_ms=0, page_dwell_deviation_ms=0, sessions_per_device=1,
+        sold_out_retry_count=3, sold_out_retry_delay_ms=200, browser_trace_level=0,
+        browser_identity=BrowserIdentity.ROTATING,
     ),
     ActorType.BOT_NEW: SessionBehavior(
         entry_delay_after_open_ms=1_000, entry_delay_deviation_ms=500,

@@ -9,7 +9,12 @@ from typing import Any
 import httpx
 
 from ticket_guard_qa.domain.enums import BookingOutcome
-from ticket_guard_qa.domain.models import SessionBehavior, VirtualUserSessionPlan
+from ticket_guard_qa.domain.models import (
+    CAPTCHA_REFRESH_ACTION,
+    SessionBehavior,
+    VirtualUserSessionPlan,
+    find_sequence_steps,
+)
 from ticket_guard_qa.system_targets.target_interfaces import HttpResult
 
 CSRF_COOKIE_NAME = "csrftoken"
@@ -28,6 +33,11 @@ SHOW_DETAIL_PAGE = "detail"
 SEAT_SELECTION_PAGE = "select"
 CAPTCHA_PAGE = "captcha"
 EVENT_ACCEPTED_STATUS_CODES = (200, 202)  # 202 = Kafka 전달 대기
+CAPTCHA_INITIAL_REASON = "initial"  # 시스템 web/views.captcha 교체 사유
+CAPTCHA_REFRESH_REASON = "user_refresh"  # 시스템 captcha_refresh 이벤트
+CAPTCHA_WRONG_ERROR_CODE = "CAPTCHA_WRONG"  # HTTP 400 · 시스템 captcha_wrong 이벤트
+WRONG_ANSWER_SUFFIX = "X"  # 정답 + X = 항상 오답 · 정답 길이 5자
+QUEUE_CANCEL_REASON = "user_cancel"  # 시스템 queue_cancel 이벤트 사유
 
 STAGE_QUEUE = "queue"
 STAGE_CAPTCHA = "captcha"
@@ -71,6 +81,14 @@ def choose_user_agent(behavior: SessionBehavior) -> str | None:
     return BROWSER_USER_AGENT if has_browser_trace(behavior) else None
 
 
+def choose_request_headers(session_plan: VirtualUserSessionPlan) -> dict[str, str]:
+    """기기 정보 변경 세션 = 배정된 브라우저 정보 · 나머지 = 브라우저 흔적 설정 기준 · 빈 값 = 라이브러리 기본값"""
+    if session_plan.browser_profile is not None:
+        return session_plan.browser_profile.to_request_headers()
+    user_agent = choose_user_agent(session_plan.behavior)
+    return {"User-Agent": user_agent} if user_agent else {}
+
+
 def build_browse_pages(page_count: int) -> list[str]:
     """마지막 = 공연 상세(예매하기 버튼 화면) · 앞으로 목록 · 상세 번갈아 · 3회 = 상세 → 목록 → 상세"""
     return [SHOW_DETAIL_PAGE if (page_count - 1 - index) % 2 == 0 else SHOW_LIST_PAGE for index in range(page_count)]
@@ -83,10 +101,11 @@ def utc_now_iso() -> str:
 class LiveBookingClient:
     """예매 화면(static/app.js)이 보내는 요청과 같은 순서 · 같은 본문 · VU 하나 = 클라이언트 하나"""
 
-    def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None, user_agent: str | None = None) -> None:
-        headers = {"User-Agent": user_agent} if user_agent else None
+    def __init__(self, base_url: str, transport: httpx.AsyncBaseTransport | None = None, user_agent: str | None = None,
+                 request_headers: dict[str, str] | None = None) -> None:
+        headers = {**({"User-Agent": user_agent} if user_agent else {}), **(request_headers or {})}  # 모든 요청에 같은 값
         self.http_client = httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=REQUEST_TIMEOUT_SEC, transport=transport,
-                                             headers=headers)
+                                             headers=headers or None)
         self.page_instance_id = str(uuid.uuid4())  # 탭 하나
         self.page_view_id = str(uuid.uuid4())  # 화면 한 번 표시
         self.booking_attempt_id: str | None = None
@@ -94,6 +113,7 @@ class LiveBookingClient:
         self.confirm_sequence = 0
         self.is_booked = False
         self.sent_event_ids: list[str] = []  # 받음(200 · 202) 응답 받은 이벤트만
+        self.cancelled_attempt_ids: list[str] = []  # 대기열 재진입 전 취소한 예매 시도
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -145,13 +165,47 @@ class LiveBookingClient:
                 raise BookingFlowError("heartbeat", result.status_code, "QUEUE_TIMEOUT")
             await asyncio.sleep(poll_interval_sec)
 
-    async def pass_captcha(self, answer: str) -> HttpResult:
-        """이미지 요청으로 문제 발급 → 정답 제출 · 정답은 시스템 테스트 훅 고정값"""
+    async def request_captcha_image(self, reason: str = CAPTCHA_INITIAL_REASON) -> None:
+        """initial = 첫 발급 · user_refresh = 새로 받기"""
         image_response = await self.http_client.get("/captcha.png", params={
-            "pageId": self.page_instance_id, "attemptId": self.booking_attempt_id,
+            "pageId": self.page_instance_id, "attemptId": self.booking_attempt_id, "reason": reason,
         })
         if image_response.status_code != 200:
-            raise BookingFlowError("captcha_image", image_response.status_code, None)
+            raise BookingFlowError(f"captcha_image · {reason}", image_response.status_code, None)
+
+    async def submit_wrong_answer(self, answer: str) -> None:
+        """400 CAPTCHA_WRONG만 정상 · 제한 도달(CAPTCHA_LIMIT) 등은 오류"""
+        result = await self._post_action("verify", answer=answer + WRONG_ANSWER_SUFFIX)
+        if result.status_code != 400 or result.body.get("code") != CAPTCHA_WRONG_ERROR_CODE:
+            raise BookingFlowError("verify · wrong_answer", result.status_code, result.body.get("code"))
+
+    async def reenter_queue(self, show_id: str, reentry_count: int, intervals_ms: tuple[float, ...]) -> None:
+        """진입 상태에서 heartbeat → 취소 → 재진입 반복 · 마지막 진입이 남음 · 취소한 시도 id는 cancelled_attempt_ids"""
+        for index in range(reentry_count * 3):  # 회차마다 heartbeat · 취소 · 재진입 3요청
+            if intervals_ms:
+                await asyncio.sleep(intervals_ms[index % len(intervals_ms)] / 1000)
+            step = index % 3
+            if step == 0:
+                self._expect_ok("reentry · heartbeat", await self._post_action("heartbeat"))
+            elif step == 1:
+                self._expect_ok("reentry · cancel", await self._post_action("cancel", reason=QUEUE_CANCEL_REASON))
+                self.cancelled_attempt_ids.append(self.booking_attempt_id or "")
+            else:
+                await self.start_booking(show_id)
+
+    async def pass_captcha(self, answer: str, retry_actions: tuple[str, ...] = (),
+                           retry_intervals_ms: tuple[float, ...] = ()) -> HttpResult:
+        """문제 발급 → 반복 시도(오답 · 새로 받기) → 정답 제출 · 정답은 시스템 테스트 훅 고정값"""
+        await self.request_captcha_image()
+        for index, action in enumerate(retry_actions):
+            if retry_intervals_ms:
+                await asyncio.sleep(retry_intervals_ms[index % len(retry_intervals_ms)] / 1000)
+            if action == CAPTCHA_REFRESH_ACTION:
+                await self.request_captcha_image(CAPTCHA_REFRESH_REASON)
+            else:
+                await self.submit_wrong_answer(answer)
+        if retry_actions and retry_intervals_ms:
+            await asyncio.sleep(retry_intervals_ms[len(retry_actions) % len(retry_intervals_ms)] / 1000)
         return self._expect_ok("verify", await self._post_action("verify", answer=answer))
 
     async def post_page_event(self, event_type: str, page_name: str, previous_page_name: str | None, page_view_id: str,
@@ -252,12 +306,17 @@ class LiveBookingClient:
         await asyncio.sleep(max(entry_at - time.monotonic(), 0.0))
 
         step_latency_ms["start"] = (await self.start_booking(show_id)).latency_ms
-        queue_started_at = time.perf_counter()
+        sequence_steps = find_sequence_steps(behavior)
+        queue_started_at = time.perf_counter()  # 재진입 반복 포함
+        await self.reenter_queue(show_id, sequence_steps.queue_reentry_count, session_plan.click_intervals_ms)
         admission = await self.wait_for_admission(poll_interval_sec)
         step_latency_ms["queue"] = (time.perf_counter() - queue_started_at) * 1000
         if admission.body.get("stage") != STAGE_CAPTCHA:
             raise BookingFlowError("heartbeat", admission.status_code, f"UNEXPECTED_STAGE_{admission.body.get('stage')}")
-        step_latency_ms["captcha"] = (await self.pass_captcha(captcha_answer)).latency_ms
+        retry_actions = sequence_steps.captcha_retry_actions
+        captcha_started_at = time.perf_counter()  # 반복 시도 대기 포함
+        captcha = await self.pass_captcha(captcha_answer, retry_actions, session_plan.click_intervals_ms)
+        step_latency_ms["captcha"] = (time.perf_counter() - captcha_started_at) * 1000 if retry_actions else captcha.latency_ms
 
         sold_seat_ids: set[str] = set()
         step_latency_ms["seat_select"] = step_latency_ms["confirm"] = 0.0

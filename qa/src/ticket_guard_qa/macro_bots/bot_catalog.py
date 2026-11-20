@@ -1,4 +1,4 @@
-"""봇 유형 목록 한 곳 · 기본 6종(코드) + 화면에서 추가한 유형(QA DB bot_types) · 이름 · 분류 · 상태 · 설명 · 탐지 흔적 · 색"""
+"""봇 유형 목록 한 곳 · 기본 9종(코드) + 화면에서 추가한 유형(QA DB bot_types) · 이름 · 분류 · 상태 · 설명 · 탐지 흔적 · 색"""
 from dataclasses import dataclass, replace
 from enum import Enum
 
@@ -143,6 +143,27 @@ BUILT_IN_BOT_TYPES: tuple[BotTypeInfo, ...] = (
         ActorType.BOT_D, "봇 D · 세션 복제 매크로", "D", "기기 1대의 브라우저 하나에서 계정별 예매 창 여러 개를 동시에 열어 대기열에 한꺼번에 들어가는 매크로",
         BROWSER_TRAFFIC, "bot-d", BotRole.DETECTION_TARGET, "copy",
         ("같은 기기에서 예매 창 여러 개 동시 접속", "여러 계정이 같은 시각에 대기열 진입", "기기 · 브라우저 정보가 모두 같음"),
+        "session_device", "bot_abd_detection",
+    ),
+    BotTypeInfo(
+        ActorType.BOT_CAPTCHA, "봇 E · 보안문자 반복 시도 매크로", "E",
+        "보안문자 오답을 제한 직전까지 반복하고 이미지를 여러 번 새로 받은 뒤 통과하는 매크로",
+        HTTP_TRAFFIC, "bot-captcha", BotRole.DETECTION_TARGET, "scan-text",
+        ("한 세션에서 보안문자 오답 · 새로 받기 여러 번", "오답 · 새로 받기 간격이 거의 일정", "화면 조회 없이 예매 요청만 전송"),
+        "captcha_bypass", "bot_abd_detection",
+    ),
+    BotTypeInfo(
+        ActorType.BOT_REENTRY, "봇 F · 대기열 재진입 매크로", "F",
+        "대기열 진입 · 취소 · 재진입을 짧은 간격으로 반복한 뒤 예매를 진행하는 매크로",
+        HTTP_TRAFFIC, "bot-reentry", BotRole.DETECTION_TARGET, "zap",
+        ("한 계정에서 짧은 시간 안에 대기열 진입 · 취소 여러 번", "진입 · 취소 간격이 거의 일정", "화면 조회 없이 예매 요청만 연속 전송"),
+        "request_automation", "bot_abd_detection",
+    ),
+    BotTypeInfo(
+        ActorType.BOT_DEVICE_SPOOF, "봇 G · 기기 정보 위장 매크로", "G",
+        "세션마다 PC · 모바일 브라우저 정보를 바꿔 서로 다른 기기처럼 보이게 예매하는 매크로",
+        HTTP_TRAFFIC, "bot-device-spoof", BotRole.DETECTION_TARGET, "fingerprint",
+        ("같은 접속 주소에서 세션마다 다른 브라우저 정보", "브라우저 정보는 다양하나 화면 이벤트 없음", "세션마다 새 기기 쿠키"),
         "session_device", "bot_abd_detection",
     ),
     BotTypeInfo(

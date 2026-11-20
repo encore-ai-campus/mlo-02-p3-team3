@@ -39,7 +39,7 @@ qa/
 │  │                      live_kafka_reader · live_raw_mongo_reader
 │  ├─ answer_key/         expected_verdicts · answer_key_repository
 │  ├─ macro_bots/         bot_catalog · bot_profiles · behavior_fields · bot_profile_store
-│  │                      behavior_sampling · bot_trial_run · rule_hit_preview
+│  │                      behavior_sampling · browser_profiles · bot_trial_run · rule_hit_preview
 │  ├─ test_suites/        suite_interface · suite_registry · self_check · event_contract · verdict_accuracy
 │  │                      event_delivery · raw_ingest · pipeline_latency · seat_concurrency · load_capacity · failure_recovery
 │  ├─ scoring/            latency_metrics · detection_metrics · confusion_matrix · detection_breakdown
@@ -126,7 +126,7 @@ qa/
 1. B1 "새 봇 추가" → ① 시작 봇 복사 → ② 이름 · 한 줄 정의 · 공격 수법 분류 → ③ 예매 중 행동 → ④ 탐지 흔적 · 합격 기준 묶음 → ⑤ 모의 판정 · 저장
 2. 저장 위치: QA DB `bot_types` (이름 · 분류 · 상태 · 탐지 흔적 · 합격 기준 · v1 행동 값) · 이후 행동 값은 B2 버전(`bot_versions`)
 3. 상태: 작성 중(Run 제외) → 검증 중(Run 포함) → 사용 중 · B1 상세에서 전환
-4. 유형 id `BOT_E` · `BOT_F` … 자동 · 색은 `bot_catalog.CUSTOM_BOT_COLORS` 순서 · 구분은 아이콘 + 알파벳 코드
+4. 유형 id `BOT_H` · `BOT_I` … 자동(기본 유형 코드 A ~ G 건너뜀) · 색은 `bot_catalog.CUSTOM_BOT_COLORS` 순서 · 구분은 아이콘 + 알파벳 코드
 5. 따라오는 곳: 02 트래픽 구성 칸 · 정답표 · 합격 기준 합산(`detection_target_id`) · B1 분류 타일 · B3 · B4 · 실행 트래픽
 
 **코드로 추가** · 새 행동 방식(대기열 우회 · 보안문자 판독 등)이 필요한 봇 · 빠뜨리면 `tests/unit_tests/test_macro_bots.py`가 실패해요.
@@ -134,7 +134,10 @@ qa/
 2. `macro_bots/bot_catalog.py`의 `BUILT_IN_BOT_TYPES`에 한 줄(이름 · 한 줄 정의 · 역할 · 아이콘 · 탐지 흔적 · 분류 · 합격 기준 묶음 · 색 변수)을 추가해요. 새 분류는 `BOT_CATEGORIES`에 한 줄이에요. 색은 `theme_tokens.css`와 [`ui.md`](ui.md) 2장에 함께 추가해요.
 3. `macro_bots/bot_profiles.py`의 `DEFAULT_BEHAVIOR_BY_ACTOR_TYPE`에 시작 행동 값을 추가해요.
 4. 새 합격 기준이 필요하면 `domain/pass_criteria.py`에 기준, `domain/detection_targets.py`에 묶음 한 줄을 추가해요. 소속은 봇마다 `detection_target_id`로 정해요.
-5. 새 행동 방식은 `SessionBehavior` 필드(아래 "새 행동 값") + `system_targets/live_booking_client.py` 실행 단계로 넣어요. 브라우저가 필요하면 `traffic_generators/bot_c_browser.py` 방식이에요.
+5. 새 행동 방식은 `SessionBehavior` 필드(아래 "새 행동 값") + `system_targets/live_booking_client.py` 실행 단계로 넣어요. 브라우저가 필요하면 `system_targets/live_browser_client.py` 방식이에요.
+6. 예매 순서만 다른 봇은 `domain/enums.py`의 `BookingSequence`에 순서 하나 + `domain/models.py`의 `BOOKING_SEQUENCE_STEPS`에 기본 순서와 다른 단계 + `macro_bots/behavior_fields.py`의 `BOOKING_SEQUENCE_CHOICES`에 선택지 한 줄을 넣고, 단계는 `live_booking_client.py`(실제)와 `fake_system.py`(모의) 두 곳에 같은 이벤트로 넣어요. 지금은 HTTP 트래픽 봇만 적용돼요.
+7. 기본 유형 id는 화면 추가 id(`BOT_` + 알파벳)와 겹치지 않게 이름으로 지어요. 예: `BOT_CAPTCHA` · `BOT_REENTRY` · `BOT_DEVICE_SPOOF`
+8. 브라우저 정보를 바꾸는 봇은 ⑧ 기기 정보(`browser_identity`)를 쓰고, 고를 브라우저 정보는 `macro_bots/browser_profiles.py`의 `ROTATING_BROWSER_PROFILES`에 한 줄씩 넣어요. 지금은 HTTP 트래픽 봇만 적용돼요.
 
 ### 새 행동 값 (예: ③ 화면 흐름)
 1. `domain/models.py`의 `SessionBehavior`에 필드를 추가해요.
@@ -179,6 +182,9 @@ qa/
 | 부하 (T1 · T2 · E08) | `test_suites/load_capacity.py` · `BookingApi.hold_admitted_session` · `send_request_burst` · Mock 대기열 상한 · 요청 속도 제한 | Mock 동작 (VU 동시 진입 → 입장 구간 겹침 = 최대 동시 입장 · 연속 요청 429 · 사람 속도 요청 허용 · 서버 오류 0 · 상한 붕괴 · 속도 제한 없음 결함 Mock = FAIL) · Live 연결 코드 (시험 계정 · 대기열 입장 시각 · 공연 목록 연속 요청) | Live 미실행 · 시스템 상한 · 속도 제한 미구현 | Live Run |
 | 장애 복구 (RTO) | `test_suites/failure_recovery.py` · `ProcessControl` · `PipelineReader.find_processed_event_ids` · Mock 저장 작업 중지 · 재시작 | Mock 동작 (중지 전 이벤트 저장 확인 → 중지 → 이벤트 전송 → 재시작 → 전부 저장까지 시간 · 누락 · 중복 0 · 유실 · checkpoint 결함 Mock = FAIL) · Live 연결 코드 (Docker 소켓 컨테이너 중지 · 시작 · `clean_events` · `quarantine_events` eventId 조회) | Live: 컨테이너 이름 · Docker 소켓 · 시스템 MongoDB 읽기 계정 | Live Run |
 | 봇 설정 저장 · 규칙 미리 보기 | `macro_bots/` · `domain/rule_sets.py` | 동작 · 룰셋 `mock-1`(가짜 판정과 같은 규칙 4개) · B2 · B4 일치 | 실제 판정 규칙 R1 ~ R6 | `RULE_SETS`에 버전 추가 · `TICKET_GUARD_QA_RULE_SET_VERSION` |
+| 예매 순서 선택 · 봇 E 보안문자 반복 시도 | `domain/enums.BookingSequence` · `domain/models.BOOKING_SEQUENCE_STEPS` · `live_booking_client.pass_captcha` · `fake_system.build_booked_server_event_types` · `tests/unit_tests/test_booking_sequence.py` | 동작 (행동 값 ⑦ 예매 순서 · 0 = 기본 순서 · 저장 전 버전도 기본 순서 · 봇 E(`BOT_CAPTCHA`) = 보안문자 오답 → 새로 받기 4회 반복 뒤 정답 · 오답은 제한(5회) 직전까지 · 간격 = 좌석 클릭 간격 · 시스템 `captcha_wrong` · `captcha_refresh` 이벤트 · 모의 대상도 같은 이벤트 · 분류 보안문자 우회 · 매크로 탐지율 묶음 · 기본 트래픽 구성 0%) | 브라우저 트래픽 봇은 예매 순서 미적용 · 모의 판정 규칙에 오답 · 새로 받기 규칙 없음(다른 행동 값으로 판정) · 새로 받기 횟수 제한 없음 = 시스템 결함 후보 | 실제 판정 연결 후 오답 · 새로 받기 기록 기반 탐지율 측정 |
+| 봇 F 대기열 재진입 | `live_booking_client.reenter_queue` · `fake_system.FAKE_CANCELLED_ATTEMPT_EVENT_TYPES` · `tests/unit_tests/test_booking_sequence.py` | 동작 (⑦ 예매 순서 4 · 봇 F(`BOT_REENTRY`) = 진입 뒤 heartbeat → 취소 → 재진입 3회 반복 → 마지막 진입으로 예매 · 간격 = 좌석 클릭 간격 · 진입마다 새 예매 시도 번호 · 시스템 `queue_enter` · `queue_register` · `queue_cancel` · 모의 대상도 취소한 시도마다 별도 번호로 같은 이벤트 · 분류 요청 자동화 · 매크로 탐지율 묶음 · 기본 트래픽 구성 0%) | 정답표 = 마지막 예매 시도만 · 취소한 시도는 채점 밖 → 재진입 흔적은 시스템이 계정 기준으로 묶어야 판정에 반영 · 연속 요청 차단은 T2(`load_capacity`) 몫 · 재진입 횟수 제한 없음 = 시스템 결함 후보 | 실제 판정 연결 후 계정 기준 재진입 탐지 확인 |
+| 봇 G 기기 정보 위장 | `domain/enums.BrowserIdentity` · `macro_bots/browser_profiles.py` · `live_booking_client.choose_request_headers` · `fake_system.build_fake_server_request_event` · `tests/unit_tests/test_browser_identity.py` | 동작 (행동 값 ⑧ 기기 정보 · 0 = 고정(⑥ 브라우저 흔적 기준) · 저장 전 버전도 고정 · 1 = 세션마다 PC · 모바일 브라우저 정보 8종 중 하나 · User-Agent · Accept-Language를 그 세션 모든 요청에 전송 · 배정 = 별도 시드(같은 시드 = 같은 배정 · 기존 계획 값 그대로) · 같은 기기 예매 창끼리 같은 정보 · 세션마다 새 기기 쿠키 · 시스템 `server_request` 이벤트에 요청 헤더 · 접속 주소 · 기기 쿠키 기록 · 모의 대상은 기기 정보 변경 세션만 `server_request` 1건(같은 헤더 · 같은 접속 주소) · 봇 G(`BOT_DEVICE_SPOOF`) · 분류 세션 · 기기 위장 · 매크로 탐지율 묶음 · 기본 트래픽 구성 0%) | 접속 주소는 모든 VU가 같은 컨테이너 주소 · 화면 크기는 시스템 미수집 · 브라우저 트래픽 봇 미적용 · 모의 판정 규칙에 기기 정보 규칙 없음(다른 행동 값으로 판정) | 실제 판정 연결 후 같은 접속 주소 · 다른 브라우저 정보 기반 탐지 확인 |
 | 테스트 케이스 · Ground Truth 탭 | `dashboard/routes/test_case_routes.py` · `screen_c1_test_cases.html` · `test_suites/exception_cases.py` · `case_data/exception_codes/` | 동작 (E01 ~ E22 · T1 · T2 사례 24건 · 시스템 오류 코드 · 검증 Suite = 각 Suite `related_codes` · 이벤트 계약 사례 목록 · Run별 정답표 조회) | Suite 미연결 예외 코드 16건 | 예외 흐름 Suite |
 | 봇 C 화면 캡처 (B3) | `macro_bots/browser_capture.py` | Mock 동작 (봇 C 행동 값 → 단계별 프레임 · 클릭 위치) · Live 연결 코드 (`captures/{run_id}/frames.json` + 이미지 읽기) | 브라우저 자동화 실행 환경 | 브라우저 봇이 `save_capture_frames` 호출 |
 | db 스키마 대응 (0단계) | `docs/contracts.md` 3 · 5장 · `case_data/event_contracts/` · `domain/models.py` 레코드 · `fake_system.py` | 동작 (Mock이 SESSION_VERDICTS · SESSION_FEATURES · QUARANTINE_EVENTS 모양 반환 · B4 룰별 Hit 수) | db 스키마 확정 · QA 읽기 전용 계정 | `live_mongo_reader.py` 구현 · `expected_storage` 대조 |
