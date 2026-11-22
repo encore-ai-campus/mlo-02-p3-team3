@@ -1,0 +1,30 @@
+services:
+  network-metrics:
+    image: ticket-guard-network:dev
+    build: ./pipeline
+    command: [network]
+    init: true
+    restart: "no"
+    environment:
+      SPARK_KAFKA_BOOTSTRAP_SERVERS: ${SPARK_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_EVENTS_TOPIC: ${KAFKA_EVENTS_TOPIC:-ticketguard.events.v1}
+      RAW_SOURCE_ID: ${RAW_SOURCE_ID:?Set RAW_SOURCE_ID}
+      NETWORK_RAW_MONGO_URI: ${NETWORK_RAW_MONGO_URI:?Set existing raw read connection}
+      NETWORK_TARGET_MONGO_URI: ${NETWORK_TARGET_MONGO_URI:?Set existing ticketguard write connection}
+      NETWORK_HEADERS_THRESHOLD_MS: ${NETWORK_HEADERS_THRESHOLD_MS:-}
+      NETWORK_GRACE_SECONDS: ${NETWORK_GRACE_SECONDS:-300}
+    networks: [kafka, raw, metrics]
+    volumes: [network-state:/checkpoints]
+    stop_grace_period: 30s
+networks:
+  kafka:
+    external: true
+    name: ${SPARK_KAFKA_NETWORK:-ticket-guard_default}
+  raw:
+    external: true
+    name: ${FLOW_RAW_NETWORK:-ticket-guard-raw_raw-backend}
+  metrics:
+    external: true
+    name: ${SPARK_MONGO_NETWORK:-ticket-guard-workspace-db_mongo-backend}
+volumes:
+  network-state:

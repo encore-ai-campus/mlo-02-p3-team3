@@ -1,0 +1,78 @@
+{% macro value(number) -%}
+  {{ '—' if number is none else "{:,}".format(number) }}
+{%- endmacro %}
+{% macro graph(chart, title) %}
+<svg class="mp-network-graph" viewBox="0 0 982 152" role="img" aria-label="{{ title }} · 5분 단위 KST · 건">
+  {% for tick in chart.ticks %}
+  <line x1="47" x2="959" y1="{{ tick.y }}" y2="{{ tick.y }}" class="mp-grid-line"/>
+  <text x="38" y="{{ tick.y+4 }}" text-anchor="end">{{ tick.value }}</text>
+  {% endfor %}
+  {% set has_marks = chart.slots|rejectattr('missing')|list %}
+  {% for slot in chart.slots %}
+  {% if slot.missing %}
+  <rect x="{{ slot.left }}" y="12" width="76" height="104" class="mp-network-gap"/>
+  {% if has_marks %}<text x="{{ slot.center }}" y="66" text-anchor="middle">미관측</text>{% endif %}
+  {% endif %}
+  {% for mark in slot.marks %}
+  {% if mark.value == 0 %}
+  <circle cx="{{ mark.x }}" cy="115" r="2.5" class="mp-network-zero {{ mark.key }}"><title>{{ slot.label }} · 0건</title></circle>
+  {% else %}
+  {% set width = 28 if mark.key == 'requests' else 16 %}
+  <rect x="{{ mark.x-width/2 }}" y="{{ mark.y }}" width="{{ width }}" height="{{ mark.height }}" rx="2" class="mp-network-bar {{ mark.key }}"><title>{{ slot.label }} · {{ mark.value }}건</title></rect>
+  {% endif %}
+  {% endfor %}
+  <text x="{{ slot.center }}" y="137" text-anchor="middle">{{ slot.label }}</text>
+  {% endfor %}
+  {% if not has_marks %}<text x="503" y="66" text-anchor="middle">미관측</text>{% endif %}
+</svg>
+{% endmacro %}
+<section class="mp-view mp-network" data-preview-view="network" aria-labelledby="network-title" hidden>
+  <div class="mp-heading">
+    <div><h1 id="network-title" tabindex="-1">네트워크 상태</h1>
+      <dl class="mp-network-meta">
+        <div><dt>집계 구간</dt><dd>{{ network.window }}</dd></div>
+        <div><dt>마지막 웹 상태 점검</dt><dd>미관측</dd></div>
+        <div><dt>마지막 요청 로그 적재</dt><dd>{{ network.last_ingest or '—' }}</dd></div>
+        {% if network.published %}<div><dt>마지막 게시</dt><dd>{{ network.published }}</dd></div>{% endif %}
+      </dl>
+    </div>
+    {% if network_error %}<span class="mp-pill mp-proposed" role="status">지표 조회 실패</span>
+    {% elif network.stale %}<span class="mp-pill mp-proposed" role="status">갱신 지연</span>{% endif %}
+  </div>
+  <div class="mp-network-kpis">
+    <article class="mp-card mp-compact-kpi"><header><h2>웹 도달 상태</h2><span>게이트웨이 → 웹</span></header>
+      <strong>—</strong><p>HTTP 상태 — · 연속 실패 —</p></article>
+    <article class="mp-card mp-compact-kpi"><header><h2>게이트웨이 오류</h2><span>Nginx</span></header>
+      <strong>—</strong><p>502 — · 503 — · 504 —</p></article>
+    <article class="mp-card mp-compact-kpi"><header><h2>웹 서버 5xx</h2><span>Django</span></header>
+      <strong data-network-metric="server-5xx">{{ '—' if network.ratio is none else '%.2f%%'|format(network.ratio) }}</strong>
+      <p>{{ value(network.summary.http5xx) }} / 서버 관측 요청 {{ value(network.summary.requests) }}</p></article>
+    <article class="mp-card mp-compact-kpi"><header><h2>웹 응답 준비 지연</h2><span>Django</span></header>
+      <strong>{{ value(network.summary.slow) }}{% if network.summary.slow is not none %}<small>건</small>{% endif %}</strong>
+      <p>{{ value(network.summary.slow) }} / 측정 요청 {{ value(network.summary.measured) }}</p>
+      <p>{{ '운영 기준 미설정' if network.threshold is none else '%g ms 초과'|format(network.threshold) }} · 응답 헤더 준비 시간</p></article>
+  </div>
+  <section class="mp-card mp-network-panel" aria-labelledby="network-requests-title">
+    <div class="mp-network-scroll" role="region" aria-label="웹 서버 요청량과 응답 오류 추이" tabindex="0">
+      <div class="mp-network-plots">
+        <div class="mp-card-heading"><h2 id="network-requests-title">웹 서버 요청량</h2><span>총 {{ value(network.summary.requests) }} · 단위: 건</span></div>
+        {{ graph(network.requests, '웹 서버 요청량') }}
+        <div class="mp-card-heading mp-network-divider">
+          <h2>응답 오류 추이</h2>
+          <div class="mp-network-legend"><span class="gateway">게이트웨이 오류 · 미관측</span><span class="http5xx">웹 서버 5xx · {{ value(network.summary.http5xx) }}</span></div>
+        </div>
+        {{ graph(network.errors, '응답 오류 추이') }}
+        <p class="mp-network-chart-note">○ 관측값 0건 · 시간축 KST</p>
+      </div>
+    </div>
+  </section>
+  <section class="mp-card mp-network-panel" aria-labelledby="network-feature-title">
+    <div class="mp-card-heading"><h2 id="network-feature-title">기능별 서버 요청 현황</h2><span>단위: 건</span></div>
+    <div class="mp-table-scroll"><table>
+      <thead><tr><th scope="col">기능</th><th scope="col">서버 요청 수</th><th scope="col">HTTP 5xx</th><th scope="col">HTTP 4xx</th><th scope="col">응답 준비 기준 초과</th></tr></thead>
+      <tbody>{% for row in network.features %}
+        <tr><th scope="row">{{ row.label }}</th><td>{{ value(row.counts.requests) }}</td><td>{{ value(row.counts.http5xx) }}</td><td>{{ value(row.counts.http4xx) }}</td><td>{{ value(row.counts.slow) }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </section>
+</section>

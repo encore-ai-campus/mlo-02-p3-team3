@@ -24,26 +24,30 @@ def verified_record(database, source, topic, partition, offset, value, timeout_m
     return bytes(original)
 
 
-def verified_records(database, source, rows, timeout_ms=1000):
+def verified_records(database, source, rows, timeout_ms=1000, *, include_ingested_at=False):
     """최대 100개씩 인덱스 조회하여 레코드별 아홉 번 조회하는 비용을 줄인다."""
     groups = {}
     for row in rows:
         groups.setdefault((row.topic, row.partition), []).append(row.offset)
     found = {}
+    projection = {'topic': 1, 'partition': 1, 'offset': 1, 'value': 1}
+    if include_ingested_at:
+        projection['ingestedAt'] = 1
     for (topic, partition), offsets in groups.items():
         query = {'source': source, 'topic': topic, 'partition': partition, 'offset': {'$in': offsets}}
         for name in COLLECTIONS:
-            for item in database[name].find(query, {'topic': 1, 'partition': 1, 'offset': 1, 'value': 1}).max_time_ms(timeout_ms):
+            for item in database[name].find(query, projection).max_time_ms(timeout_ms):
                 key = (topic, partition, item['offset'])
                 if key in found:
                     raise VerificationPending('원본 위치 중복')
-                found[key] = item.get('value')
+                found[key] = item
     verified = []
     for row in rows:
-        original = found.get((row.topic, row.partition, row.offset))
+        item = found.get((row.topic, row.partition, row.offset), {})
+        original = item.get('value')
         if original is None:
             raise VerificationPending('원본 적재 대기')
         if row.value is None or bytes(original) != bytes(row.value):
             raise VerificationPending('원본 내용 불일치')
-        verified.append(bytes(original))
+        verified.append((bytes(original), item.get('ingestedAt')) if include_ingested_at else bytes(original))
     return verified

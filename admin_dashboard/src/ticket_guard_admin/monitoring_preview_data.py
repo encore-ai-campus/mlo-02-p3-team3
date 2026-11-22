@@ -7,16 +7,24 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 
+FLOW_STAGES = (
+    ("shows", "공연 목록"),
+    ("detail", "상세·회차 선택"),
+    ("queue", "대기열"),
+    ("captcha", "보안문자"),
+    ("select", "좌석·수량 선택"),
+    ("complete", "예매 완료"),
+)
+
+
 def build_monitoring_preview() -> dict:
     end = datetime(2026, 11, 12, 15, tzinfo=timezone(timedelta(hours=9)))
     times = [(end - timedelta(minutes=30 * (24 - i))).isoformat() for i in range(25)]
     node_rows = [
-        ("shows", "공연 목록", 80, 1500, 42, 35),
-        ("detail", "상세·회차 선택", 100, 1300, 65, 54),
-        ("queue", "대기열", 130, 1000, 84, 72),
-        ("captcha", "보안문자", 60, 900, 18, 15),
-        ("select", "좌석·수량 선택", 95, 810, 92, 78),
-        ("complete", "예매 완료", 35, 620, 12, 10),
+        (*stage, *counts) for stage, counts in zip(FLOW_STAGES, (
+            (80, 1500, 42, 35), (100, 1300, 65, 54), (130, 1000, 84, 72),
+            (60, 900, 18, 15), (95, 810, 92, 78), (35, 620, 12, 10),
+        ))
     ]
     nodes = [dict(id=id_, label=label, current=current, entered=entered,
                   mean=mean, median=median, samples=entered-current)
