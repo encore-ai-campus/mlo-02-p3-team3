@@ -14,14 +14,16 @@
 </head>
 <body>
   <header class="top-bar">
-    <a class="brand" href="{{ base_path }}/">
+    <div class="brand-group">
+    <a class="brand" href="{{ base_path }}/" aria-label="티켓가드 관리자 콘솔 홈">
       <span class="brand-mark">{% include "brand_mark.svg" %}</span>
       <span>
         <div class="brand-name">티켓가드</div>
         <div class="brand-english">TICKET GUARD</div>
       </span>
-      <span class="brand-badge">QA 콘솔</span>
     </a>
+      <span class="brand-badge">QA 콘솔</span>
+    </div>
     <span class="vertical-line"></span>
     <nav class="main-tabs">
       <a href="{{ base_path }}/" class="{{ 'is-active' if active_tab == 'home' }}"><i data-lucide="house"></i>홈</a>

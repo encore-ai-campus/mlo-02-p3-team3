@@ -5,10 +5,12 @@
 <!doctype html><html lang="ko"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DB 대시보드 · 사용자 흐름 | 티켓가드</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 {% for filename in ('theme_tokens.css','dashboard.css','shell.css','monitor_common.css','monitor_flow.css','monitor_live.css') %}<link rel="stylesheet" href="{{ base_path }}/admin-static/{{ filename }}{% if filename == 'monitor_common.css' %}?v=queue-card{% endif %}">{% endfor %}
 {% for filename in ('monitor_charts.js','monitor_flow.js','monitor_navigation.js') %}<script src="{{ base_path }}/admin-static/{{ filename }}?v=flow-axes" defer></script>{% endfor %}
 <link rel="stylesheet" href="{{ base_path }}/admin-static/monitor_network.css?v=server-metrics">
 <link rel="stylesheet" href="{{ base_path }}/admin-static/anomaly.css"><script src="{{ base_path }}/admin-static/anomaly.js" defer></script>
+<link rel="stylesheet" href="{{ base_path }}/admin-static/dashboard_shell.css?v=shared-shell-1">
 </head><body class="monitor-preview monitoring-live" data-monitor-mode="live">
 <a class="mp-skip" href="#preview-content">본문 바로가기</a>
 {% include 'header.html' %}{% include 'monitor_navigation.html' %}

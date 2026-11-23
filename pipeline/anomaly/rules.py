@@ -51,14 +51,25 @@ def project(event):
     if event.get('source') != 'server' or event['eventType'] not in KINDS:
         return None
     details = event['details']
+    if not isinstance(details, dict):
+        return None
     kind = event['eventType']
-    request = details.get('request', {})
+    request = details.get('request')
+    request = request if isinstance(request, dict) else {}
     payload = body(request.get('body'))
-    if kind == 'server_request' and (urlsplit(request.get('url', '')).path != '/api/action/'
-                                     or payload.get('action') != 'confirm'):
-        return None  # 폴링·대기열·로그인·정상 재시도는 구매 재요청과 분리한다.
+    if kind == 'server_request':
+        url = request.get('url')
+        if not isinstance(url, str) or payload.get('action') != 'confirm':
+            return None
+        try:
+            if urlsplit(url).path != '/api/action/':
+                return None
+        except ValueError:
+            return None
     at = stamp(event['occurredAt'])
-    ms = details.get('timing', {}).get('observationDurationMs')
+    timing = details.get('timing')
+    response = details.get('response')
+    ms = timing.get('observationDurationMs') if isinstance(timing, dict) else None
     duration = ms / 1000 if type(ms) in (int, float) and math.isfinite(ms) and 0 <= ms <= 86400000 else None
     quantity = details.get('quantity')
     row = dict(id=event['eventId'], time=at, received=stamp(event['receivedAt']), kind=kind,
@@ -70,7 +81,7 @@ def project(event):
                quantity=quantity if type(quantity) is int and quantity > 0 else None,
                request=details.get('requestId') if kind == 'server_request' else None,
                start=at-duration if duration is not None and kind == 'server_request' else None,
-               duration=duration, status=details.get('response', {}).get('status'),
+               duration=duration, status=response.get('status') if isinstance(response, dict) else None,
                sequence=event.get('requestSequence'))
     row['error'] = event.get('errorCode')
     for key in ('user', 'attempt', 'page', 'show', 'schedule', 'booking', 'request', 'error'):

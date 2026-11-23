@@ -67,6 +67,26 @@ def test_polling_browser_flags_and_client_page_signals_are_excluded():
     assert project(event('page', kind='page_enter')) is None
 
 
+@pytest.mark.parametrize('details', [dict(request=None), dict(request=dict(url=None)),
+    dict(request=dict(url='http://[', body=dict(state='captured', representation='json', value=dict(action='confirm')))),
+    dict(request=dict(url='/api/action/'))])
+def test_incomplete_capture_is_not_a_batch_failure(details):
+    assert project(event('partial', 'server_request', details=details)) is None
+
+
+def test_missing_optional_capture_sections_preserve_business_observation():
+    row = project(event('business', details=dict(request=None, response=None, timing=None)))
+    assert row['kind'] == 'booking_confirm_request' and row['duration'] is None
+
+
+def test_chart_does_not_publish_zero_without_rule_specific_evidence():
+    from anomaly.store import publication
+    data, findings, decisions = evaluate(rows(event('start', 'queue_enter')), Policy(overlap=True,retry=5), 9400)
+    result = publication(data, findings, decisions, Policy(overlap=True,retry=5), 9400)
+    point = next(point for point in result['series'] if point['at'] == iso(9000))
+    assert point['overlap'] is None and point['retry'] is None
+
+
 def test_overlap_requires_server_interval_and_attempt_scope():
     def request(identity, at, duration, attempt='attempt'):
         return project(event(identity, 'server_request', at, bookingAttemptId=attempt,

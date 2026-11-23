@@ -10,12 +10,13 @@ svg.lucide { width: 18px; height: 18px; stroke-width: 2; flex-shrink: 0; }
 /* 상단 바 */
 .top-bar { height: 76px; border-bottom: 1px solid var(--line-color); display: flex; align-items: center; padding: 0 28px; gap: 26px;
   background: var(--card-background); position: sticky; top: 0; z-index: 10; }
+.brand-group { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-mark svg { width: 56px; height: 42px; display: block; }
-.brand-name { font-size: 25px; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
+.brand-name { padding-top: 15px; font-size: 25px; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
 .brand-english { font-size: 9.5px; font-weight: 700; letter-spacing: .24em; color: var(--strong-text-color); margin-top: 5px; }
-.brand-badge { margin-left: 4px; background: var(--qa-blue-light); color: var(--qa-blue-text); font-size: 11.5px; font-weight: 700; border-radius: 6px; padding: 3px 8px; }
-.vertical-line { width: 1px; height: 30px; background: var(--line-color); }
+.brand-badge { display: inline-flex; align-items: center; justify-content: center; width: 68px; flex: 0 0 68px; white-space: nowrap; margin-left: 4px; background: var(--qa-blue-light); color: var(--qa-blue-text); font-size: 11.5px; font-weight: 700; border-radius: 6px; padding: 3px 8px; }
+.vertical-line { width: 1px; height: 30px; flex-shrink: 0; background: var(--line-color); }
 .main-tabs { display: flex; gap: 30px; align-self: stretch; }
 .main-tabs a { display: flex; align-items: center; gap: 7px; font-size: 17px; font-weight: 700; color: var(--strong-text-color); position: relative; }
 .main-tabs a.is-active { color: var(--qa-blue-text); }
