@@ -33,9 +33,10 @@ HUMAN_BEHAVIOR = DEFAULT_BEHAVIOR_BY_ACTOR_TYPE[ActorType.HUMAN]
 RANDOM_SEED = 20261116
 
 
-def test_only_device_spoof_bot_rotates_browser_info():
+def test_only_device_spoof_and_human_mimic_rotate_browser_info():
     for actor_type, behavior in DEFAULT_BEHAVIOR_BY_ACTOR_TYPE.items():
-        expected = BrowserIdentity.ROTATING if actor_type == ActorType.BOT_DEVICE_SPOOF else BrowserIdentity.FIXED
+        rotating = (ActorType.BOT_DEVICE_SPOOF, ActorType.BOT_NEW_HUMAN_MIMIC)  # 봇 G · 미학습 4
+        expected = BrowserIdentity.ROTATING if actor_type in rotating else BrowserIdentity.FIXED
         assert behavior.browser_identity == expected, actor_type
 
 
