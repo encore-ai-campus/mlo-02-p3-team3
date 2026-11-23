@@ -12,13 +12,17 @@ from ingestion.mongo_writer import write_batch
 
 
 def main():
-    if sys.argv[1:] == ['flow']:
-        from user_flow.runtime import run
+    if sys.argv[1:] in (['flow'], ['network']):
+        mode = sys.argv[1]
+        if mode == 'flow':
+            from user_flow.runtime import run
+        else:
+            from network_metrics.runtime import run
         try:
             run()
             return 0
         except Exception as exc:
-            print(f'flow failed error_class={type(exc).__name__}', flush=True)
+            print(f'{mode} failed error_class={type(exc).__name__}', flush=True)
             return 1
     spark = None
     query = None

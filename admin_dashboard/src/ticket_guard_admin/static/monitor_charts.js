@@ -19,7 +19,8 @@
     const left = 44, top = 12, right = 16, bottom = 35;
     const plotWidth = width-left-right, plotHeight = height-top-bottom;
     const valid = points.filter(point => point.observed && point.value !== null);
-    if(!points.length) {
+    const axesOnly = points.length === 0 && range !== null;
+    if(!points.length && !axesOnly) {
       const empty=document.createElement('p'); empty.className='mp-empty-chart';
       empty.textContent='선택한 범위에 표시 가능한 관측 표본이 없습니다.';
       host.replaceChildren(empty); return;
@@ -32,10 +33,11 @@
     const xAt = time => left+(end===start ? .5 : (time-start)/(end-start))*plotWidth;
     const x = index => xAt(Date.parse(points[index].at));
     const y = value => top+plotHeight - value*scale/ceiling*plotHeight;
-    const svg = svgElement('svg', {viewBox:`0 0 ${width} ${height}`, role:'img', 'aria-label':`${label} · 최근 12시간 · 단위 ${unit}. 미관측 구간은 선을 끊어 표시합니다.`});
+    const svg = svgElement('svg', {viewBox:`0 0 ${width} ${height}`, role:'img',
+      'aria-label': axesOnly ? `${label} · 단위 ${unit} · 관측값 없음` : `${label} · 최근 12시간 · 단위 ${unit}. 미관측 구간은 선을 끊어 표시합니다.`});
     svg.append(svgElement('title', {}, label));
     const desc = svgElement('desc', {}, '표본에 초점을 이동하거나 포인터를 올리면 시간과 값, 미관측 여부와 시작 시도 없는 구간을 확인할 수 있습니다. 값이 없는 구간의 아래쪽 표식은 0을 의미하지 않습니다.');
-    svg.append(desc);
+    if (!axesOnly) svg.append(desc);
     for (let i=0; i<=4; i++) {
       const yy = top+i*plotHeight/4;
       svg.append(svgElement('line', {x1:left, y1:yy, x2:width-right, y2:yy, class:'mp-grid-line'}));
@@ -44,6 +46,11 @@
     for(let tick=0;tick<=6;tick++) {
       const time=start+(end-start)*tick/6;
       svg.append(svgElement('text',{x:left+plotWidth*tick/6,y:height-9,'text-anchor':'middle',class:'mp-axis-label'},timeLabel(time)));
+    }
+    if (axesOnly) {
+      svg.append(svgElement('path', {d:`M${left},${top} V${top+plotHeight} H${width-right}`, fill:'none', stroke:'#a6b5cb'}));
+      host.replaceChildren(svg);
+      return;
     }
     const segments = []; let segment = [];
     points.forEach((point,index) => {

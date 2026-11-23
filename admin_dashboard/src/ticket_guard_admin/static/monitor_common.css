@@ -32,7 +32,7 @@
 .mp-confirmed { background:#e5f3ed; color:#21734d; }
 .mp-proposed { background:#fff1df; color:#905b13; }
 .mp-period { font-size:12px; color:#66738a; padding:7px 12px; background:#fff; border:1px solid #e0e6f0; border-radius:8px; white-space:nowrap; }
-.mp-summary-grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-bottom:22px; }
+.mp-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; margin-bottom:22px; }
 .mp-card { background:#fff; border:1px solid #dfe6f0; border-radius:18px; padding:24px 26px; min-width:0; }
 .mp-kpi { display:flex; align-items:center; gap:18px; padding:23px 26px; position:relative; }
 .mp-kpi h2,.mp-compact-kpi h2 { font-size:13px; font-weight:600; color:#4d5e79; margin:0 0 6px; }

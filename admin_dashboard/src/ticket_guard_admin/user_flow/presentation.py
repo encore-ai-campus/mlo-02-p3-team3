@@ -5,6 +5,8 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+from ticket_guard_admin.monitoring_preview_data import FLOW_STAGES
+
 from .contracts import moment
 
 KST = timezone(timedelta(hours=9))
@@ -48,3 +50,16 @@ def for_display(result, now=None):
                 as_of_label=korean_time(m['asOf']), window_label=f"{korean_time(m['windowStart'])} ~ {korean_time(m['asOf'])}",
                 published_label=korean_time(result['published_at']), version=result['version'],
                 chart_range={'start': cutoff.isoformat(), 'end': now.isoformat()})
+
+
+def unpublished_layout():
+    now = datetime.now(timezone.utc)
+    return dict(
+        unpublished=True, current=None, starts=None, completed=None, ratio=None,
+        count_unit='개', presence=[], booking=[],
+        chart_range={'start': (now - timedelta(hours=12)).isoformat(), 'end': now.isoformat()},
+        nodes=[dict(id=id_, label=label, current=None, mean=None, median=None, samples=None)
+               for id_, label in FLOW_STAGES],
+        edges=[dict(source=left[0], target=right[0], ratio=None)
+               for left, right in zip(FLOW_STAGES, FLOW_STAGES[1:])],
+    )
