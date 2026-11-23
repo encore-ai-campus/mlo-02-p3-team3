@@ -1,0 +1,25 @@
+# [홍석환] 지표 DB 준비의 명시적 실행 연결
+# 기본은 사전 검사만 하며 기존 DB 계정과 뷰를 덮어쓰지 않는다.
+services:
+  flow-db-setup:
+    image: mongo:8.0.34
+    entrypoint: [mongosh, --quiet, --norc]
+    command: [--host, '${SPARK_MONGO_HOST:-ticket-guard-workspace-db-mongo-1}', --port, '${SPARK_MONGO_PORT:-27017}', /opt/flow/flow_permissions.js]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?DB 관리자 계정 필요}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?DB 관리자 비밀번호 필요}
+      FLOW_DATABASE: ${FLOW_DATABASE:-ticketguard_flow}
+      FLOW_SETUP_HOST: ${SPARK_MONGO_HOST:-ticket-guard-workspace-db-mongo-1}
+      FLOW_SETUP_PORT: ${SPARK_MONGO_PORT:-27017}
+      FLOW_WRITER_USERNAME: ${FLOW_WRITER_USERNAME:?지표 쓰기 계정 필요}
+      FLOW_WRITER_PASSWORD: ${FLOW_WRITER_PASSWORD:?지표 쓰기 비밀번호 필요}
+      FLOW_READER_USERNAME: ${FLOW_READER_USERNAME:?지표 읽기 계정 필요}
+      FLOW_READER_PASSWORD: ${FLOW_READER_PASSWORD:?지표 읽기 비밀번호 필요}
+      FLOW_APPLY_SETUP: ${FLOW_APPLY_SETUP:-0}
+    volumes:
+      - ./pipeline/database/flow_permissions.js:/opt/flow/flow_permissions.js:ro
+    networks: [metrics]
+networks:
+  metrics:
+    external: true
+    name: ${SPARK_MONGO_NETWORK:-ticket-guard-workspace-db_mongo-backend}

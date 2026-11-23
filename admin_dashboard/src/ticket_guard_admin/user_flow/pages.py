@@ -33,8 +33,7 @@ def render_published_dashboard(request, mongo_uri) -> HTMLResponse:
         context['header_tone'] = 'normal'
     except FlowError as exc:
         context['flow_error'] = dict(code=exc.code, message=exc.message)
-        if exc.code == 'no_publication':
-            context['flow'] = unpublished_layout()
+        context['flow'] = unpublished_layout()
         context['header_status'] = {'no_publication': '공개 결과 없음', 'scope_not_found': '조회 범위 없음',
                                     'unsupported_filter': '조회 조건 확인'}.get(exc.code, '공개 지표 조회 실패')
         context['header_error'] = exc.code not in ('no_publication', 'scope_not_found', 'unsupported_filter')
