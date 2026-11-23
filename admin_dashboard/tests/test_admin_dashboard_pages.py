@@ -20,7 +20,7 @@ def test_preview_never_connects_to_system_database(admin_settings, monkeypatch):
     assert page.status_code == 200
     assert 'id="mp-queue-current">130개</div>' in page.text
     assert "샘플 데이터 기반 화면 시안 · 실제 DB 연결 없음" in page.text
-    assert all(title in page.text for title in ("흐름 분석", "의심 활동", "사용자 상세"))
+    assert all(title in page.text for title in ("흐름 분석", "최근 감지 목록", "계정 상세", "사전 탐지", "사후 처리"))
     assert "RUNNING" not in page.text
     assert "&lt;script&gt;" in page.text
     assert 'href="/qa/"' in page.text

@@ -8,7 +8,7 @@ import sys
 from functools import partial
 from pyspark.sql import SparkSession
 from configuration.ingest import Settings
-from ingestion.mongo_writer import write_batch
+from ingestion.mongo_writer import write_batch, refresh_anomaly_state
 
 
 def main():
@@ -76,7 +76,9 @@ def main():
             if stopping:
                 query.stop()
             else:
-                query.awaitTermination()
+                while not query.awaitTermination(15):
+                    if not stopping:
+                        refresh_anomaly_state(config)
     except Exception as exc:
         if not stopping:
             # Full Spark/PyMongo exceptions can contain records or credentials.

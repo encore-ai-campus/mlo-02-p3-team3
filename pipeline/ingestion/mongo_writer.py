@@ -5,11 +5,17 @@
 import time
 from datetime import datetime, timezone
 from functools import partial
+from threading import RLock
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import AutoReconnect, BulkWriteError, NetworkTimeout, WTimeoutError
 from pymongo.write_concern import WriteConcern
 from ingestion.records import document
 from ingestion.normalization import normalize
+from anomaly.rules import Policy, project
+from anomaly.store import observe, refresh as refresh_anomalies, indexes as anomaly_indexes
+from user_flow.events import decode
+
+ANOMALY_LOCK = RLock()
 
 
 def client_for(config):
@@ -64,6 +70,16 @@ def write_partition(rows, config):
             item = document(row)
             clean_item, quarantine_item = normalize(item['value'], item)
             if clean_item is not None:
+                observation = project(decode(item['value']))
+                if observation is not None:
+                    observe(client[config.database], observation)
+                state = 'unsupported'
+                if observation is not None:
+                    now = datetime.now(timezone.utc).timestamp()
+                    state = ('outside_window' if observation['time'] < now-7500 else
+                             'context_only' if observation['time'] < now-3600 else
+                             'future' if observation['time'] > now+30 else 'pending')
+                clean_item.update(isAnomaly=None, evaluationStatus=state)
                 clean_pending.append(UpdateOne({'_id': clean_item['_id']}, {'$setOnInsert': clean_item}, upsert=True))
             else:
                 quarantine_pending.append(UpdateOne({'_id': quarantine_item['_id']}, {'$setOnInsert': quarantine_item}, upsert=True))
@@ -87,8 +103,42 @@ def write_partition(rows, config):
 
 
 def write_batch(batch_df, batch_id, config):
+    with ANOMALY_LOCK:
+        try:
+            _write_batch(batch_df, batch_id, config)
+        except Exception:
+            client = None
+            try:
+                client = client_for(config)
+                client[config.database].anomaly_health.update_one({'_id': 'ingest'},
+                    {'$set': {'status': 'blocked'}}, upsert=True)
+            finally:
+                if client is not None:
+                    client.close()
+            raise RuntimeError('Ingest write failed; anomaly publication blocked') from None
+
+
+def refresh_anomaly_state(config):
+    """무이벤트 시간에도 대기 판정과 오래된 화면을 갱신한다."""
+    with ANOMALY_LOCK:
+        client = client_for(config)
+        try:
+            refresh_anomalies(client[config.database], Policy.load())
+        finally:
+            client.close()
+
+
+def _write_batch(batch_df, batch_id, config):
+    policy = Policy.load()  # 설정 오류는 쓰기 전에 거부한다.
     print(f'pipeline batch_start id={batch_id}', flush=True)
     batch_df.foreachPartition(partial(write_partition, config=config))
+    client = client_for(config)
+    try:
+        database = client[config.database]
+        anomaly_indexes(database)
+        refresh_anomalies(database, policy)
+    finally:
+        client.close()
     refresh_metrics(config)
     print(f'pipeline batch_saved id={batch_id}', flush=True)
 
