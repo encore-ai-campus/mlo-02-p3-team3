@@ -14,7 +14,8 @@
   <link rel="stylesheet" href="{{ base_path }}/admin-static/monitor_flow.css">
   <script src="{{ base_path }}/admin-static/monitor_charts.js" defer></script>
   <script src="{{ base_path }}/admin-static/monitor_flow.js" defer></script>
-  <script src="{{ base_path }}/admin-static/monitor_anomaly.js" defer></script>
+  <link rel="stylesheet" href="{{ base_path }}/admin-static/anomaly.css">
+  <script src="{{ base_path }}/admin-static/anomaly.js" defer></script>
   <script src="{{ base_path }}/admin-static/monitor_navigation.js" defer></script>
 </head>
 <body class="monitor-preview" data-review-owner="{{ admin_user }}" data-review-scope="{{ base_path }}" data-reference="{{ run_id or '' }}">
@@ -25,7 +26,7 @@
   <div class="mp-notice"><span class="mp-pill">시안용 샘플 데이터</span><span>샘플 데이터 기반 화면 시안 · 실제 DB 연결 없음</span><a href="{{ base_path }}/">실제 DB 화면 보기 ↗</a></div>
   {% with flow=preview.flow, is_preview=true %}{% include "monitor_user_flow.html" %}{% endwith %}
   {% include "preview_network.html" %}
-  {% include "preview_anomaly.html" %}
+  {% include "monitor_anomaly.html" %}
   <noscript><p class="mp-warning">그래프와 관점 전환은 JavaScript를 켜야 사용할 수 있습니다.</p></noscript>
   <footer class="mp-footer">TicketGuard DB 대시보드 · 화면 구성 검토용 <span>{{ preview.snapshot }} 기준 고정 샘플</span></footer>
 </main>

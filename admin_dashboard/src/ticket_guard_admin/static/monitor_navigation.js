@@ -28,10 +28,11 @@
       if(active) tab.setAttribute('aria-current','page'); else tab.removeAttribute('aria-current');
     });
     document.title=`DB 대시보드${isLive ? '' : ' 시안'} · ${names[view]} | 티켓가드`;
+    const scopeForm=document.querySelector('.mp-live-toolbar form');
+    if(scopeForm) scopeForm.action=`${location.pathname}#${view}`;
     document.getElementById('mp-view-status').textContent=`${names[view]} 화면`;
     draw(); if(focus) document.getElementById(`${view}-title`).focus({preventScroll:true});
   }
-  if(data.anomaly) window.TGPreviewAnomaly.init(data.anomaly);
   window.addEventListener('hashchange',()=>route(true));
   let frame=0;
   function resize() { cancelAnimationFrame(frame); frame=requestAnimationFrame(draw); }
