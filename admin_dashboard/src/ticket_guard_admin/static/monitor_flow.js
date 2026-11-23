@@ -19,7 +19,7 @@
     host.style.height=`${height}px`;
     const x = i => nodes.length===1 ? width/2-77 : 12+i*(width-178)/(nodes.length-1);
     const format=value=>value===null || value===undefined ? '—' : Number(value).toLocaleString('ko-KR',{maximumFractionDigits:2});
-    const seconds=value=>value===null ? '표본 없음' : `${format(value)}초`;
+    const seconds=value=>flow.unpublished ? '\u2014' : value===null ? '표본 없음' : `${format(value)}초`;
     const rate=value=>value===null || value===undefined ? '집계 불가' : `${(value*100).toFixed(1)}%`;
     const unit=flow.count_unit || '명';
     const {svgElement} = window.TGMonitorCharts;
@@ -69,20 +69,23 @@
       const evidence=edge.denominator===undefined ? '' : ` / 진입 ${format(edge.denominator)}건 · 전환율 ${rate(edge.ratio)}`;
       const description=`${source.label} → ${targetLabel} · ${labels[edge.kind]} · 고유 이동 ${format(edge.moves ?? edge.count)}건${evidence}`;
       button.setAttribute('aria-label',description);
-      button.addEventListener('click',()=>show(description)); host.append(button);
+      if (flow.unpublished) button.disabled=true;
+      else button.addEventListener('click',()=>show(description));
+      host.append(button);
     });
     nodes.forEach((node,index)=>{
       const button=document.createElement('button'); button.type='button'; button.className=`mp-stage${node.id==='complete' ? ' mp-stage-last' : ''}`;
       button.style.left=`${x(index)}px`;
       const name=document.createElement('span'); name.className='mp-stage-name'; name.textContent=node.label;
       name.title=node.label;
-      const count=document.createElement('span'); count.className='mp-stage-count'; count.textContent=node.current;
-      const suffix=document.createElement('small'); suffix.textContent=unit; count.append(suffix);
+      const count=document.createElement('span'); count.className='mp-stage-count'; count.textContent=format(node.current);
+      const suffix=document.createElement('small'); suffix.textContent=flow.unpublished ? '' : unit; count.append(suffix);
       const times=document.createElement('span'); times.className='mp-stage-times'; times.textContent=node.samples===0 ? '완료 체류 표본 없음' : `평균 ${seconds(node.mean)} / 중앙값 ${seconds(node.median)}`;
       button.append(name,count,times);
       button.setAttribute('aria-label',`${node.label}, 현재 ${node.current}${unit}, 체류 평균 ${seconds(node.mean)}, 중앙값 ${seconds(node.median)}, 완료 표본 ${node.samples}건`);
       button.setAttribute('aria-pressed','false');
-      button.addEventListener('click',()=>{
+      if (flow.unpublished) button.disabled=true;
+      else button.addEventListener('click',()=>{
         host.querySelectorAll('.mp-stage').forEach(other=>{ other.classList.remove('selected'); other.setAttribute('aria-pressed','false'); });
         button.classList.add('selected'); button.setAttribute('aria-pressed','true');
         show(`${node.label} · 현재 ${node.current}${unit} · 완료 체류 평균 ${seconds(node.mean)} / 중앙값 ${seconds(node.median)} · 표본 ${format(node.samples)}건 · 진행 중 ${format(node.ongoing ?? null)} · 진행 중 체류는 완료 통계에서 제외`);

@@ -37,9 +37,35 @@ def test_live_page_renders_actual_database_and_empty_data(monkeypatch):
                                     "matched": 0, "is_truncated": False, "limit": 5000, "reasons": [], "options": [], "loaded_at": "now"}
     monkeypatch.setattr("ticket_guard_admin.pages.AdminMongoReader.read_dashboard", lambda *args, **kwargs: result)
     app = create_admin_dashboard_app(AdminSettings(mongo_uri="mongodb://unused/ticketguard", _env_file=None))
-    response = TestClient(app).get("/", headers={"X-Admin-User": "manager"})
+    response = TestClient(app).get("/db", headers={"X-Admin-User": "manager"})
     assert response.status_code == 200
     assert "ticketguard.clean_events" in response.text
     assert "집계 불가" in response.text
     assert 'href="/admin/admin-static/dashboard.css"' in response.text
     assert "USR-2004" not in response.text
+
+
+def test_unpublished_flow_shows_metric_panels_without_numeric_values(monkeypatch):
+    from ticket_guard_admin.user_flow.contracts import FlowError
+
+    def unpublished(*args, **kwargs):
+        raise FlowError("no_publication", "공개 결과 없음")
+
+    monkeypatch.setattr("ticket_guard_admin.user_flow.pages.PublishedFlowReader.read", unpublished)
+    app = create_admin_dashboard_app(AdminSettings(mongo_uri="mongodb://unused/ticketguard", _env_file=None))
+    response = TestClient(app).get("/", headers={"X-Admin-User": "manager"})
+
+    assert response.status_code == 200
+    assert 'data-flow-state="no_publication"' in response.text
+    assert response.text.count('class="mp-value">&#8212;</div>') == 2
+    assert 'id="mp-queue-current">&#8212;</div>' in response.text
+    assert 'id="mp-flow-graph"' in response.text
+    assert 'id="mp-presence-chart"' in response.text
+    assert 'id="mp-booking-chart"' in response.text
+    assert '"presence": []' in response.text and '"booking": []' in response.text
+    assert '"chart_range":' in response.text
+    network = response.text.split('data-preview-view="network"', 1)[1].split('data-preview-view="anomaly"', 1)[0]
+    assert network.count('class="mp-network-graph"') == 2
+    assert '기능별 서버 요청 현황' in network
+    assert '게이트웨이 오류' in network and '웹 서버 5xx' in network
+    assert '예매율' not in network and '동시 접속' not in network

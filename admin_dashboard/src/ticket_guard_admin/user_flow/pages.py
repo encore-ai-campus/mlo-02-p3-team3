@@ -4,9 +4,11 @@
 """
 from fastapi.responses import HTMLResponse
 
+from ticket_guard_admin.network_status.presentation import for_display as network_for_display
+from ticket_guard_admin.network_status.reader import NetworkReadError, read_network
 from ticket_guard_admin.pages import templates
 from .contracts import FlowError, scope_key
-from .presentation import for_display, scope_label
+from .presentation import for_display, scope_label, unpublished_layout
 from .reader import PublishedFlowReader
 
 
@@ -15,6 +17,11 @@ def render_published_dashboard(request, mongo_uri) -> HTMLResponse:
                    admin_user=getattr(request.state, 'admin_user', ''), is_preview=False,
                    flow=None, flow_error=None, scope='all', scope_choices=[{'value': 'all', 'label': '전체 공개 지표'}],
                    header_status='공개 지표 확인', header_error=False, header_tone='neutral')
+    try:
+        context['network'] = network_for_display(read_network(mongo_uri))
+    except (NetworkReadError, ValueError):
+        context['network'] = network_for_display(None)
+        context['network_error'] = True
     try:
         if set(request.query_params) - {'scope'} or len(request.query_params.getlist('scope')) > 1:
             raise FlowError('unsupported_filter', '지원하지 않는 조회 조건 · 기존 기간·공연 단독 필터 대신 공개된 범위 조합을 선택해 주세요.')
@@ -26,6 +33,8 @@ def render_published_dashboard(request, mongo_uri) -> HTMLResponse:
         context['header_tone'] = 'normal'
     except FlowError as exc:
         context['flow_error'] = dict(code=exc.code, message=exc.message)
+        if exc.code == 'no_publication':
+            context['flow'] = unpublished_layout()
         context['header_status'] = {'no_publication': '공개 결과 없음', 'scope_not_found': '조회 범위 없음',
                                     'unsupported_filter': '조회 조건 확인'}.get(exc.code, '공개 지표 조회 실패')
         context['header_error'] = exc.code not in ('no_publication', 'scope_not_found', 'unsupported_filter')

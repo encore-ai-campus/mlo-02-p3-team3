@@ -7,7 +7,7 @@ from user_flow.events import chunk_part, decode, project
 
 
 class State:
-    def __init__(self, path, max_events=250000, max_chunks=4096):
+    def __init__(self, path, max_events=250000, max_chunks=4096, *, projector=project, skip_expired=False):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=10)
         self.db.execute('PRAGMA journal_mode=WAL')
@@ -22,6 +22,8 @@ class State:
         ''')
         self.db.commit()
         self.max_events = max_events; self.max_chunks = max_chunks
+        self.projector = projector
+        self.skip_expired = skip_expired
 
     def close(self):
         self.db.close()
@@ -30,7 +32,7 @@ class State:
         self.db.execute('INSERT OR IGNORE INTO batches VALUES (?,0,?)', (batch, '[]'))
         self.db.commit()
 
-    def feed(self, raw, batch, now, oldest, future_seconds=30):
+    def feed(self, raw, batch, now, oldest, future_seconds=30, *, ingested_at=None):
         e = decode(raw)
         if e['eventType'] == 'capture_chunk':
             d, data = chunk_part(e)
@@ -44,6 +46,10 @@ class State:
             if any(m != meta or (i == d['index'] and bytes(v) != data) for i, m, v in prior):
                 raise ValueError('청크 충돌')
             self.db.execute('INSERT OR IGNORE INTO chunks VALUES (?,?,?,?,?)', (d['recordId'], d['index'], meta, data, now))
+            if ingested_at is not None:
+                self.db.execute('CREATE TABLE IF NOT EXISTS chunk_ingestion (record TEXT PRIMARY KEY, latest REAL)')
+                self.db.execute('''INSERT INTO chunk_ingestion VALUES (?,?) ON CONFLICT(record)
+                    DO UPDATE SET latest=max(latest, excluded.latest)''', (d['recordId'], ingested_at))
             count = self.db.execute('SELECT count(*) FROM chunks').fetchone()[0]
             if count > self.max_chunks:
                 raise ValueError('청크 상태 용량 초과')
@@ -58,11 +64,19 @@ class State:
                 raise ValueError('청크 식별자 오류')
             self.db.execute('DELETE FROM chunks WHERE record=?', (d['recordId'],))
             self.db.execute('INSERT INTO assembled VALUES (?,?,?)', (d['recordId'], meta, now))
-        p = project(e)
+            if ingested_at is not None:
+                ingested_at = self.db.execute('SELECT latest FROM chunk_ingestion WHERE record=?', (d['recordId'],)).fetchone()[0]
+                self.db.execute('DELETE FROM chunk_ingestion WHERE record=?', (d['recordId'],))
+        p = self.projector(e)
+        if p is None or (self.skip_expired and p['time'] < oldest):
+            self.db.commit()
+            return None
         if p['time'] > now + future_seconds:
             raise ValueError('미래 시각 허용 범위 초과')
         if p['time'] < oldest:
             raise ValueError('상태 보존 범위를 넘은 이벤트: 별도 재계산 필요')
+        if ingested_at is not None:
+            p['ingested_at'] = ingested_at
         previous = self.db.execute('SELECT payload FROM events WHERE id=?', (p['id'],)).fetchone()
         if previous and json.loads(previous[0])['fingerprint'] != p['fingerprint']:
             raise ValueError('동일 이벤트 식별자의 내용 충돌')
