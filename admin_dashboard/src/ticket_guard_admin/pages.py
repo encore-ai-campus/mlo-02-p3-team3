@@ -17,15 +17,20 @@ templates = Jinja2Templates(directory=ADMIN_DASHBOARD_DIR / "templates")
 
 
 def render_db_preview(request: Request, run_id: str | None = None) -> HTMLResponse:
+    from ticket_guard_admin.early_monitor.preview import build_preview as build_early_preview
+    from ticket_guard_admin.early_monitor.stage_detections import build as build_stage_detections
     from ticket_guard_admin.anomaly.preview import build_preview
     preview = build_monitoring_preview()
     preview['anomaly'] = build_preview()
+    early = build_early_preview()
     return templates.TemplateResponse(request, "monitor_preview.html", {
         "base_path": request.app.state.base_path,
         "admin_user": getattr(request.state, "admin_user", ""),
         "run_id": run_id,
         "preview": preview,
         "anomaly": preview['anomaly'],
+        "early": early, "is_preview": True,
+        "detection_stages": build_stage_detections(early,preview['anomaly'],preview=True),
     })
 
 

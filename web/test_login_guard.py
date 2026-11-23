@@ -27,11 +27,13 @@ class LoginLimitTests(SimpleTestCase):
         self.assertNotIn('retryAfter', locked.json())  # no remaining time is exposed
 
     def test_locked_account_rejects_correct_password_until_lock_expires(self):
-        with patch('web.login_guard.time.monotonic', return_value=1000.0):
+        # Browser guard uses monotonic time; durable account locks use wall time.
+        # Advance both clocks while preserving the original 429 -> 200 assertions.
+        with patch('web.login_guard.time.monotonic', return_value=1000.0), patch('web.prevention.time.time', return_value=1000.0):
             for _ in range(5):
                 self.login()
             self.assertEqual(self.login(password='ticketguard-demo').status_code, 429)
-        with patch('web.login_guard.time.monotonic', return_value=1301.0):
+        with patch('web.login_guard.time.monotonic', return_value=1301.0), patch('web.prevention.time.time', return_value=1301.0):
             self.assertEqual(self.login(password='ticketguard-demo').status_code, 200)
 
     def test_count_is_per_browser_across_usernames(self):
@@ -59,12 +61,23 @@ class LoginLimitTests(SimpleTestCase):
         self.assertEqual(response.json()['failureCount'], 1)
         self.assertIn('tg_login', response.cookies)
 
-    def test_old_failures_do_not_add_up(self):
+    def test_browser_window_reset_does_not_erase_account_failures(self):
         with patch('web.login_guard.time.monotonic', return_value=1000.0):
             for _ in range(4):
                 self.login()
         with patch('web.login_guard.time.monotonic', return_value=1400.0):
-            self.assertEqual(self.login().json()['failureCount'], 1)
+            response = self.login()
+            # Preserve the old browser window reset, and independently verify the
+            # newly required lifetime account counter and actual restriction.
+            self.assertEqual(next(iter(login_guard.entries.values()))['failures'], 1)
+            self.assertEqual(response.status_code, 429)
+            self.assertEqual(response.json()['code'], 'LOGIN_LOCKED')
+            from .prevention import scope
+            from .prevention_store import Store
+            with Store().transaction() as session:
+                state = session.get('policy:' + scope('ticketguard'))
+            self.assertEqual(state['counts']['login_repeated_failure'], 5)
+            self.assertEqual(len(state['locks']), 1)
 
     def test_events_for_dashboard(self):
         with patch('web.views.emit') as emit:

@@ -12,7 +12,8 @@ from pymongo.write_concern import WriteConcern
 from ingestion.records import document
 from ingestion.normalization import normalize
 from anomaly.rules import Policy, project
-from anomaly.store import observe, refresh as refresh_anomalies, indexes as anomaly_indexes
+from anomaly.store import (EVALUATION_WINDOW, GRACE, observe,
+                           refresh as refresh_anomalies, indexes as anomaly_indexes)
 from user_flow.events import decode
 
 ANOMALY_LOCK = RLock()
@@ -76,8 +77,8 @@ def write_partition(rows, config):
                 state = 'unsupported'
                 if observation is not None:
                     now = datetime.now(timezone.utc).timestamp()
-                    state = ('outside_window' if observation['time'] < now-7500 else
-                             'context_only' if observation['time'] < now-3600 else
+                    state = ('outside_window' if observation['time'] < now-EVALUATION_WINDOW-GRACE else
+                             'context_only' if observation['time'] < now-EVALUATION_WINDOW else
                              'future' if observation['time'] > now+30 else 'pending')
                 clean_item.update(isAnomaly=None, evaluationStatus=state)
                 clean_pending.append(UpdateOne({'_id': clean_item['_id']}, {'$setOnInsert': clean_item}, upsert=True))

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from .rules import LABELS, Policy, evaluate
 
 WINDOW = 3600
+EVALUATION_WINDOW = 2 * WINDOW
 GRACE = 300
 MAX_OBSERVATIONS = 25000
 
@@ -94,19 +95,22 @@ def refresh(database, policy=None, now=None):
     now = now if now is not None else datetime.now(timezone.utc).timestamp()
     database.anomaly_health.replace_one({'_id': 'ingest'}, {'_id': 'ingest', 'status': 'processing', 'asOf': date(now)}, upsert=True)
     try:
-        rows = list(database.anomaly_observations.find({'time': {'$gte': now-2*WINDOW-GRACE, '$lte': now}})
+        rows = list(database.anomaly_observations.find({'time': {'$gte': now-EVALUATION_WINDOW-GRACE, '$lte': now}})
                     .sort([('time', 1), ('_id', 1)]).limit(MAX_OBSERVATIONS+1).max_time_ms(3000))
         if len(rows) > MAX_OBSERVATIONS:
             raise ValueError('Anomaly observation capacity exceeded')
-        rows, findings, decisions = evaluate(rows, policy, now, window=2*WINDOW)
+        rows, findings, decisions = evaluate(rows, policy, now, window=EVALUATION_WINDOW)
+        # 유예 구간은 비교 근거로만 사용하고 판정 저장 범위는 2시간으로 맞춘다.
+        cutoff = now - EVALUATION_WINDOW
+        findings = [finding for finding in findings if finding['occurredAt'] >= cutoff]
         for finding in findings:
             database.anomaly_events.replace_one({'_id': finding['_id']}, finding, upsert=True)
         # 지연된 예외 근거로 철회된 신호는 이력을 보존하며 Boolean만 정정한다.
         database.anomaly_events.update_many({'ruleVersion': policy.version(),
-            'occurredAt': {'$gte': now-WINDOW, '$lte': now}, '_id': {'$nin': [f['_id'] for f in findings]}},
+            'occurredAt': {'$gte': cutoff, '$lte': now}, '_id': {'$nin': [f['_id'] for f in findings]}},
             {'$set': {'isAnomaly': False, 'evaluationStatus': 'retracted'}})
         # 이상 저장이 먼저 완료되어야 정상 문서 판정과 화면 게시를 진행한다.
-        current_ids = {r['id'] for r in rows if r['time'] >= now-WINDOW}
+        current_ids = {r['id'] for r in rows if r['time'] >= cutoff}
         for decision in decisions:
             if decision['eventId'] in current_ids:
                 database.clean_events.update_one({'_id': decision['eventId']}, {'$set': decision})

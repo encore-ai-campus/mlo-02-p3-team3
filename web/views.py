@@ -22,6 +22,7 @@ from .event_schema import EventValidationError, timestamp, validate_event, valid
 from .telemetry import TELEMETRY_EVENTS, sanitize
 from .qa_test_hooks import is_test_account_login
 from .login_guard import login_guard, login_client, issue_login_cookie
+from .prevention import login_attempt
 
 ADMIN_HOME_URL = '/qa/'  # 팀 입구(nginx)가 QA 대시보드로 넘김
 
@@ -160,14 +161,17 @@ def action(request):
             if login_guard.is_locked(client):
                 emit(None, 'login_fail', result='rejected', errorCode='LOGIN_LOCKED', details={'reason': 'locked'})
                 raise FlowError(LOGIN_LOCKED_MESSAGE, 'LOGIN_LOCKED', 429)
+            if not 1 <= len(username) <= 256:
+                raise FlowError('아이디와 비밀번호를 확인해 주세요.')
             is_admin = is_admin_login(username, password)
-            is_customer = username in (settings.DEMO_USERNAME, settings.DEMO_SECOND_USERNAME) and secrets.compare_digest(password, settings.DEMO_PASSWORD)
-            is_customer = is_customer or is_test_account_login(username, password)
-            if not (is_admin or is_customer):
+            authenticated, account_locked = login_attempt(username, lambda:
+                is_admin or (username in (settings.DEMO_USERNAME, settings.DEMO_SECOND_USERNAME)
+                and secrets.compare_digest(password, settings.DEMO_PASSWORD)) or is_test_account_login(username, password))
+            if not authenticated:
                 failures, locked_now = login_guard.fail(client)
                 emit(None, 'login_fail', result='failure', errorCode='INVALID_CREDENTIALS',
                      details={'failureCount': failures, 'maxFailures': settings.LOGIN_MAX_FAILURES})
-                if locked_now:
+                if locked_now or account_locked:
                     emit(None, 'login_fail', result='rejected', errorCode='LOGIN_LOCKED',
                          details={'reason': 'limit_reached', 'failureCount': failures})
                     raise FlowError(LOGIN_LOCKED_MESSAGE, 'LOGIN_LOCKED', 429)

@@ -13,6 +13,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - .:/app
+      - web-policy-data:/var/lib/ticketguard
     environment:
       DJANGO_DEBUG: "1"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-local-demo-only-change-before-deployment-ticket-guard}
@@ -30,6 +31,7 @@ services:
       QA_CAPTCHA_FIXED_ANSWER: ${QA_CAPTCHA_FIXED_ANSWER:-}
       QA_RESET_ENABLED: ${QA_RESET_ENABLED:-0}
       PYTHONUNBUFFERED: "1"
+      TICKETING_STATE_PATH: ${TICKETING_STATE_PATH:-/var/lib/ticketguard/web.sqlite3}
       CAPTURE_ENABLED: ${CAPTURE_ENABLED:-1}
       EVENT_PUBLISHER: ${EVENT_PUBLISHER:-kafka}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -164,6 +166,7 @@ services:
     stop_grace_period: 60s
 
 volumes:
+  web-policy-data:
   kafka-data:
   mongo-data:
   mongo-config:

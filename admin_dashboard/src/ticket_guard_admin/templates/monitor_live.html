@@ -9,6 +9,8 @@
 {% for filename in ('theme_tokens.css','dashboard.css','shell.css','monitor_common.css','monitor_flow.css','monitor_live.css') %}<link rel="stylesheet" href="{{ base_path }}/admin-static/{{ filename }}{% if filename == 'monitor_common.css' %}?v=queue-card{% endif %}">{% endfor %}
 {% for filename in ('monitor_charts.js','monitor_flow.js','monitor_navigation.js') %}<script src="{{ base_path }}/admin-static/{{ filename }}?v=flow-axes" defer></script>{% endfor %}
 <link rel="stylesheet" href="{{ base_path }}/admin-static/monitor_network.css?v=server-metrics">
+<link rel="stylesheet" href="{{ base_path }}/admin-static/stage_detections.css?v=2">
+<script src="{{ base_path }}/admin-static/stage_detections.js?v=3" defer></script>
 <link rel="stylesheet" href="{{ base_path }}/admin-static/anomaly.css"><script src="{{ base_path }}/admin-static/anomaly.js" defer></script>
 <link rel="stylesheet" href="{{ base_path }}/admin-static/dashboard_shell.css?v=shared-shell-1">
 </head><body class="monitor-preview monitoring-live" data-monitor-mode="live">

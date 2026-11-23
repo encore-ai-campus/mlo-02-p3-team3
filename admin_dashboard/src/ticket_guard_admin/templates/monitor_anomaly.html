@@ -8,6 +8,7 @@
     <section class="an-box an-chart-box"><div class="an-box-heading"><h2>요청·응답 추이</h2><div class="an-legend"><span>● 응답 전 중첩</span><span>● 재요청 시도</span></div></div><div id="an-chart" aria-label="분 단위 관측 신호 추이"></div></section>
     <div class="an-grid"><section class="an-box"><h2>최근 감지 목록</h2><div class="an-table-scroll"><table><thead><tr><th>시간</th><th>계정</th><th>이상 유형</th><th>상세</th></tr></thead><tbody>{% for row in anomaly.detections %}<tr><td data-an-time="{{ row.occurredAt }}"></td><td><button type="button" class="an-row-button" data-an-event="{{ row.eventId }}">{{ row.user }}</button></td><td>{{ row.label }}</td><td>서버 관측 · {{ row.observed|round(3) }}</td></tr>{% else %}<tr><td colspan="4">{{ '해당 조건의 감지 결과 없음' if anomaly.evaluated else '평가 완료 자료 없음 · 정책 및 수집 상태 확인' }}</td></tr>{% endfor %}</tbody></table></div></section>
       <aside class="an-box" aria-live="polite"><h2 id="an-timeline-title">계정 타임라인</h2><ol id="an-timeline" class="an-timeline"><li>목록에서 관측 대상 선택</li></ol></aside></div>
+    {% if early is defined %}{% include 'monitor_early.html' %}{% endif %}
   </section>
   <section data-an-panel="post" hidden>
     <div class="an-cards">{% for card in anomaly.post_cards %}<article class="an-card"><span class="an-symbol">{{ anomaly_icon(['users','bolt','layers','warning'][loop.index0]) }}</span><div><h2>{{ card.label }}</h2><strong>{{ card.value if card.value is not none else '—' }}{% if card.value is not none %}<small>{{ card.unit }}</small>{% endif %}</strong><span class="an-state">{{ card.state }}</span></div></article>{% endfor %}</div>

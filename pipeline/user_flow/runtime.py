@@ -14,6 +14,10 @@ from user_flow.metrics import calculate
 from user_flow.state import State
 from user_flow.store import indexes, publish, cleanup_unpublished
 from user_flow.verification import verified_records, VerificationPending
+from early_monitor.events import project as project_early
+from early_monitor.store import (begin as begin_early, block as block_early,
+                                 observe as observe_early, refresh as refresh_early)
+from early_monitor.metrics import Policy as EarlyPolicy
 
 
 def connection(uri, timeout):
@@ -56,6 +60,8 @@ class Processor:
             state.begin(batch_id)
             reference.begin(batch_id)
             try:
+                EarlyPolicy.load()  # 설정 오류는 새 관측 쓰기 전에 거부한다.
+                begin_early(self.target)
                 # 원본 전체를 모으지 않고 한 파티션씩 순회한다. 적재 전 바이트를 대조한다.
                 for row, verified in self.verified_rows(dataframe):
                     raw = bytes(row.value) if row.value is not None else None
@@ -64,8 +70,17 @@ class Processor:
                     event = decode(raw)
                     if event['eventType'] != 'capture_chunk' and project(event) != project(decode(verified)):
                         raise VerificationPending('원본 관측 재계산 불일치')
-                    state.feed(raw, batch_id, now, now - self.config.retention - self.config.grace)
-                    reference.feed(verified, batch_id, now, now - self.config.retention - self.config.grace)
+                    observed = project_early(event)
+                    if observed != project_early(decode(verified)):
+                        raise VerificationPending('사전 관측 원본 대조 불일치')
+                    if observed is not None and observed['time'] > now + 30:
+                        raise VerificationPending('사전 관측 미래 시각 허용 범위 초과')
+                    observe_early(self.target, observed, dict(source=self.config.source,
+                        topic=row.topic, partition=int(row.partition), offset=int(row.offset)))
+                    if event['eventType'] != 'ticketing_action_received' and not event['eventType'].startswith('prevention_'):
+                        # 새 수신 관측으로 기존 접속·체류 지표의 활동 시각을 바꾸지 않는다.
+                        state.feed(raw, batch_id, now, now - self.config.retention - self.config.grace)
+                        reference.feed(verified, batch_id, now, now - self.config.retention - self.config.grace)
                     key = (row.topic, row.partition)
                     r = ranges.setdefault(key, {'topic': row.topic, 'partition': row.partition, 'start': row.offset, 'end': row.offset + 1})
                     r['start'] = min(r['start'], row.offset); r['end'] = max(r['end'], row.offset + 1)
@@ -75,8 +90,11 @@ class Processor:
                 state.db.commit()
                 self.failed = False
                 self._publish(state)
+                if state.ready() and reference.ready():
+                    refresh_early(self.target, self.clock(), allow_recovery=True)
             except Exception as exc:
                 self.failed = True
+                block_early(self.target)
                 self.target.flow_health.replace_one({'_id': 'pipeline'}, {'_id': 'pipeline', 'status': 'blocked',
                     'checkedAt': iso(self.clock()), 'errorClass': type(exc).__name__,
                     'reason': str(exc) if isinstance(exc, VerificationPending) else '처리 실패'}, upsert=True)
@@ -92,8 +110,11 @@ class Processor:
             state = self.state()
             try:
                 self._publish(state)
+                if state.ready():
+                    refresh_early(self.target, self.clock())
             except Exception as exc:
                 self.failed = True
+                block_early(self.target)
                 self.target.flow_health.replace_one({'_id': 'pipeline'}, {'_id': 'pipeline',
                     'status': 'blocked', 'checkedAt': iso(self.clock()),
                     'errorClass': type(exc).__name__}, upsert=True)
