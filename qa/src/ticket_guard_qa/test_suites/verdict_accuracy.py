@@ -11,9 +11,16 @@ from ticket_guard_qa.domain.models import (
     SystemVerdicts,
     VirtualUserSessionResult,
 )
+from ticket_guard_qa.macro_bots.bot_profiles import BotProfileRegistry
 from ticket_guard_qa.scoring.confusion_matrix import build_confusion_matrix
+from ticket_guard_qa.system_targets.target_interfaces import BookingApi
 from ticket_guard_qa.scoring.detection_breakdown import count_rule_hits
-from ticket_guard_qa.scoring.detection_metrics import calculate_detection_metrics, find_false_positives, find_missed_bots
+from ticket_guard_qa.scoring.detection_metrics import (
+    calculate_detection_metrics,
+    calculate_unlearned_metrics,
+    find_false_positives,
+    find_missed_bots,
+)
 from ticket_guard_qa.scoring.latency_metrics import calculate_error_rate_percent, calculate_p95
 from ticket_guard_qa.test_suites.suite_interface import SuiteContext, SuiteGuide
 from ticket_guard_qa.traffic_generators.session_funnel import build_actor_progress, build_funnel_progress
@@ -29,10 +36,12 @@ MAX_LISTED_SESSION_COUNT = 200  # 04 · 05 화면 목록 길이
 
 
 def send_planned_user_traffic(
-    context: SuiteContext, planned_users: list[PlannedUser]
+    context: SuiteContext, planned_users: list[PlannedUser], booking_api: BookingApi | None = None,
+    bot_profile_registry: BotProfileRegistry | None = None, random_seed: int | None = None, is_capture_saved: bool = True,
 ) -> tuple[dict[str, SessionKey], list[VirtualUserSessionResult]]:
-    """가상 사용자 라벨 → 시스템이 준 세션 키 · 시스템에는 행동 값만 보냄 · VU 동시 실행"""
-    booking_api = context.system_target.booking_api
+    """가상 사용자 라벨 → 시스템이 준 세션 키 · 시스템에는 행동 값만 보냄 · VU 동시 실행
+    탐지 회귀 = 대상 · 봇 버전 · 시드 고정해서 호출 · 나머지 = Run 설정 그대로"""
+    booking_api = booking_api or context.system_target.booking_api
     context.report_progress(reset_before_traffic(booking_api))
 
     def report_traffic_progress(results: list[VirtualUserSessionResult | None]) -> None:
@@ -44,11 +53,13 @@ def send_planned_user_traffic(
 
     session_results = send_virtual_user_traffic(
         booking_api,
-        build_planned_user_session_plans(planned_users, context.bot_profile_registry, context.run_config.random_seed,
+        build_planned_user_session_plans(planned_users, bot_profile_registry or context.bot_profile_registry,
+                                         context.run_config.random_seed if random_seed is None else random_seed,
                                          context.run_config.wave_size),
         context.traffic_time_limit_sec, report_traffic_progress, context.run_config.wave_size,
     )
-    save_browser_captures(context.report_output_dir, context.run_id, planned_users, session_results)  # B3 브라우저 화면
+    if is_capture_saved:  # B3 브라우저 화면 · 판정 정확도 Run만
+        save_browser_captures(context.report_output_dir, context.run_id, planned_users, session_results)
     session_key_by_label = {
         user.virtual_user_label: result.session_key for user, result in zip(planned_users, session_results)
     }
@@ -116,6 +127,7 @@ class VerdictAccuracySuite:
         error_count = sum(1 for result in session_results if result.is_error)
         metrics = {
             **calculate_detection_metrics(answer_key, system_verdicts),
+            **calculate_unlearned_metrics(answer_key, system_verdicts),
             "api_latency_p95_sec": calculate_p95(latency_values_sec),
             "api_error_rate_percent": calculate_error_rate_percent(len(session_results), error_count),
         }

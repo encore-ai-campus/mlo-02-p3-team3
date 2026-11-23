@@ -21,12 +21,11 @@ from ticket_guard_qa.reports.json_report import write_json_report
 from ticket_guard_qa.settings import Settings
 from ticket_guard_qa.system_targets.target_factory import build_system_target
 from ticket_guard_qa.system_targets.target_interfaces import SystemTarget
-from ticket_guard_qa.test_runs.run_estimate import HISTORY_RUN_LIMIT, RunEstimate, estimate_live_run
+from ticket_guard_qa.test_runs.run_estimate import HISTORY_RUN_LIMIT, VERDICT_READING_SUITE_NAMES, RunEstimate, estimate_live_run
 from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
 from ticket_guard_qa.test_runs.run_repository import RunRepository
 from ticket_guard_qa.test_suites.suite_interface import QaSuite, SuiteContext
 from ticket_guard_qa.test_suites.suite_registry import get_suite
-from ticket_guard_qa.test_suites.verdict_accuracy import VERDICT_ACCURACY_SUITE_NAME
 
 
 PROGRESS_TICK_SEC = 1.0
@@ -107,7 +106,7 @@ class RunService:
         if run_config.target_kind is TargetKind.FAKE:
             return None
         samples = self.run_repository.list_recent_suite_durations(TargetKind.LIVE.value, HISTORY_RUN_LIMIT, run_config.wave_size)
-        skipped = frozenset({VERDICT_ACCURACY_SUITE_NAME}) if not self.can_read_verdicts(run_config) else frozenset()
+        skipped = frozenset(VERDICT_READING_SUITE_NAMES) if not self.can_read_verdicts(run_config) else frozenset()
         return estimate_live_run(run_config, self.bot_profile_store.load_current_registry(),
                                  self.settings.queue_admission_limit, samples, self.settings.max_concurrent_browsers, skipped)
 

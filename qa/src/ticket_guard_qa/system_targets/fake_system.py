@@ -270,6 +270,17 @@ class FakeSystemState:
     stored_outcomes: list[StoredOutcome] = field(default_factory=list)  # 토픽 주입 정제 · 격리 결과
     is_backlog_lost: bool = False  # True = 재시작 후 중지 중 이벤트 유실 · 장애 복구 결함 흉내
     is_checkpoint_broken: bool = False  # True = 재시작 후 처음부터 다시 처리 · 중복 저장 결함 흉내
+    session_count: int = 0  # 예매 시도 번호 · 판정이 늦어도 번호는 겹치지 않게
+    pending_judgements: list[tuple[SessionVerdictRecord, SessionFeatureRecord]] = field(default_factory=list)  # 중지 중 판정 대기
+
+    def apply_judgement(self, verdict_record: SessionVerdictRecord, feature_record: SessionFeatureRecord) -> None:
+        """판정 · 집계 저장 · 처리 중지 중이면 재시작 때까지 대기 (장애 중 탐지)"""
+        if not self.is_pipeline_running:
+            self.pending_judgements.append((verdict_record, feature_record))
+            return
+        self.session_verdicts[verdict_record.booking_attempt_id] = verdict_record.stage
+        self.verdict_records.append(verdict_record)
+        self.session_features.append(feature_record)
 
     def process_event(self, event_id: str) -> None:
         if self.is_pipeline_running:
@@ -285,6 +296,10 @@ class FakeSystemState:
             self.processed_event_ids += self.pipeline_backlog
         self.pipeline_backlog = []
         self.is_pipeline_running = True
+        pending_judgements, self.pending_judgements = self.pending_judgements, []
+        if not self.is_backlog_lost:  # 유실 결함 = 중지 중 세션 판정 없음
+            for verdict_record, feature_record in pending_judgements:
+                self.apply_judgement(verdict_record, feature_record)
 
     def publish_to_stream(self, event: dict[str, Any], key: str) -> None:
         partition = zlib.crc32(key.encode()) % FAKE_STREAM_PARTITION_COUNT  # 같은 키 = 같은 파티션
@@ -360,21 +375,20 @@ class FakeBookingApi:
 
     def record_session(self, behavior: SessionBehavior, device_key: str = "",
                        browser_profile: BrowserProfile | None = None) -> VirtualUserSessionResult:
-        session_key = SessionKey(f"attempt-{len(self.state.session_verdicts) + 1:05d}")
+        self.state.session_count += 1
+        session_key = SessionKey(f"attempt-{self.state.session_count:05d}")
         stage = judge_behavior(behavior, self.random_source)
         feature_record = build_mock_feature_record(session_key, behavior, self.pipeline_random_source, datetime.now(timezone.utc))
-        self.state.session_verdicts[session_key] = stage
-        self.state.session_features.append(feature_record)
-        self.state.verdict_records.append(SessionVerdictRecord(
+        self.state.apply_judgement(SessionVerdictRecord(
             booking_attempt_id=session_key,
             stage=stage,
             score=count_risk_signals(behavior) / MAX_RISK_SIGNAL_COUNT,
             matched_rules=find_matched_mock_rules(behavior),
             rule_set_version=MOCK_RULE_SET_VERSION,
             decided_at=feature_record.computed_at,
-        ))
+        ), feature_record)
         latency_ms = max(self.random_source.gauss(900, 350), 120)  # 예시 지연
-        user_id = f"qa-user-{len(self.state.session_verdicts):04d}"
+        user_id = f"qa-user-{self.state.session_count:04d}"
         sent_event_ids = tuple(str(uuid.uuid4()) for _ in range(FAKE_SEAT_CLICK_COUNT))
         for event_id in sent_event_ids:
             self.state.publish_to_stream(build_fake_event("seat_select", user_id, session_key, event_id), session_key)

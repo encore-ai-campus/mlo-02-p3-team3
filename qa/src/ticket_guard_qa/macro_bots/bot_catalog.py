@@ -1,4 +1,4 @@
-"""봇 유형 목록 한 곳 · 기본 9종(코드) + 화면에서 추가한 유형(QA DB bot_types) · 이름 · 분류 · 상태 · 설명 · 탐지 흔적 · 색"""
+"""봇 유형 목록 한 곳 · 기본 12종(코드) + 화면에서 추가한 유형(QA DB bot_types) · 이름 · 분류 · 상태 · 설명 · 탐지 흔적 · 색"""
 from dataclasses import dataclass, replace
 from enum import Enum
 
@@ -170,6 +170,27 @@ BUILT_IN_BOT_TYPES: tuple[BotTypeInfo, ...] = (
         ActorType.BOT_NEW, "미학습 유형 봇", "미학습", "탐지 규칙을 만들 때 쓰지 않은 행동 패턴의 봇",
         HTTP_TRAFFIC, "bot-new", BotRole.EVALUATION_ONLY, "lock",
         ("탐지 규칙 학습에 쓰지 않은 행동 조합", "판정 결과만으로 처음 보는 봇 탐지 능력 확인"),
+        "evaluation", None, is_locked=True,
+    ),
+    BotTypeInfo(  # 미학습 2 ~ 4 · 규칙 경계 밖 조합 · 결과 공개만 · 탐지 회귀(detection_regression)에서 실행
+        ActorType.BOT_NEW_SLOW_REGULAR, "미학습 유형 · 느린 정주기 봇", "미학습 2",
+        "사람 속도로 느리게 클릭하지만 클릭 간격이 지나치게 일정한 조합",
+        HTTP_TRAFFIC, "bot-new", BotRole.EVALUATION_ONLY, "lock",
+        ("클릭 속도는 사람 수준 · 간격 편차만 매우 작음", "화면 조회 · 브라우저 흔적 존재"),
+        "evaluation", None, is_locked=True,
+    ),
+    BotTypeInfo(
+        ActorType.BOT_NEW_SPLIT_ACCOUNT, "미학습 유형 · 분산 계정 봇", "미학습 3",
+        "기기 1대에서 예매 창을 2개씩만 열어 기기당 세션 수 기준 아래로 나눠 진입하는 조합",
+        HTTP_TRAFFIC, "bot-new", BotRole.EVALUATION_ONLY, "lock",
+        ("같은 기기 예매 창 2개 · 같은 순간 진입", "화면 조회 없이 예매 요청만 전송"),
+        "evaluation", None, is_locked=True,
+    ),
+    BotTypeInfo(
+        ActorType.BOT_NEW_HUMAN_MIMIC, "미학습 유형 · 사람 모사 봇", "미학습 4",
+        "시작 시각 · 클릭 간격 · 화면 조회는 사람과 같고 매진 뒤 재시도만 과도한 조합",
+        HTTP_TRAFFIC, "bot-new", BotRole.EVALUATION_ONLY, "lock",
+        ("먼저 팔린 좌석 뒤 대기 없이 최대 20회 재시도", "세션마다 다른 브라우저 정보"),
         "evaluation", None, is_locked=True,
     ),
 )

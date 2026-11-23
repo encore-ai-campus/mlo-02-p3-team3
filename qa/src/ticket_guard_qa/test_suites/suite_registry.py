@@ -1,7 +1,9 @@
 """시험 묶음 등록표 · 새 묶음은 여기에 한 줄 추가"""
 from ticket_guard_qa.test_suites.booking_flow import BookingFlowSuite
+from ticket_guard_qa.test_suites.detection_regression import DetectionRegressionSuite
 from ticket_guard_qa.test_suites.event_contract import EventContractSuite
 from ticket_guard_qa.test_suites.event_delivery import EventDeliverySuite
+from ticket_guard_qa.test_suites.failure_detection import FailureDetectionSuite
 from ticket_guard_qa.test_suites.failure_recovery import FailureRecoverySuite
 from ticket_guard_qa.test_suites.load_capacity import LoadCapacitySuite
 from ticket_guard_qa.test_suites.pipeline_latency import PipelineLatencySuite
@@ -18,10 +20,12 @@ REGISTERED_SUITES: tuple[QaSuite, ...] = (
     EventDeliverySuite(),
     RawIngestSuite(),
     VerdictAccuracySuite(),
+    DetectionRegressionSuite(),
     PipelineLatencySuite(),
     SeatConcurrencySuite(),
     LoadCapacitySuite(),
     FailureRecoverySuite(),
+    FailureDetectionSuite(),
 )
 SUITE_BY_NAME: dict[str, QaSuite] = {suite.suite_name: suite for suite in REGISTERED_SUITES}
 

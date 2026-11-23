@@ -42,13 +42,14 @@ qa/
 │  │                      behavior_sampling · browser_profiles · bot_trial_run · rule_hit_preview
 │  ├─ test_suites/        suite_interface · suite_registry · self_check · event_contract · verdict_accuracy
 │  │                      event_delivery · raw_ingest · pipeline_latency · seat_concurrency · load_capacity · failure_recovery
+│  │                      detection_regression · failure_detection
 │  ├─ scoring/            latency_metrics · detection_metrics · confusion_matrix · detection_breakdown
 │  ├─ test_runs/          run_service · run_repository · run_progress_stream
 │  ├─ qa_database/        database (MongoDB 연결 · 컬렉션 이름) · archive_export
 │  ├─ reports/            json_report · html_report
 │  └─ dashboard/          dashboard_app · dependencies · screen_format · routes/ · templates/(layout · screen_parts · screen_*) · static/css/(theme_tokens · screen_layout)
 ├─ traffic_generators/    virtual_user_traffic (VU 동시 실행 · 브라우저 유형 구분 · 캡처 저장) · locust_traffic
-├─ case_data/             exception_codes/ · event_contracts/
+├─ case_data/             exception_codes/ · event_contracts/ · regression_baselines/ (탐지 회귀 기준선 · 숫자만)
 └─ tests/                 unit_tests/ · boundary_tests/
 
 .github/workflows/qa.yml  (qa/ 밖 · AGENTS.md 4장 예외)
@@ -67,7 +68,7 @@ qa/
 | `reports/` | 실행 결과를 JSON · HTML로 | 점수 다시 계산 |
 | `dashboard/` | 화면 · 주소 · 관리자 확인 | 점수 계산 · 시험 로직 (→ `test_runs`를 호출만) |
 | `traffic_generators/` | 사람 · 봇 트래픽 보내기 (Locust · Playwright) | 정답표 저장 (→ `answer_key`) |
-| `case_data/` | 시험에 쓰는 데이터 (E · T 코드 사례 · 계약 시험 JSON) | 정답표 · 봇 설정 |
+| `case_data/` | 시험에 쓰는 데이터 (E · T 코드 사례 · 계약 시험 JSON · 탐지 회귀 기준선) | 정답표 · 봇 설정 |
 | `tests/` | QA 프로그램 자체를 검사하는 pytest | 시스템을 시험하는 코드 (→ `test_suites`) |
 
 ## 3. 실행 한 번의 흐름
@@ -185,6 +186,9 @@ qa/
 | 예매 순서 선택 · 봇 E 보안문자 반복 시도 | `domain/enums.BookingSequence` · `domain/models.BOOKING_SEQUENCE_STEPS` · `live_booking_client.pass_captcha` · `fake_system.build_booked_server_event_types` · `tests/unit_tests/test_booking_sequence.py` | 동작 (행동 값 ⑦ 예매 순서 · 0 = 기본 순서 · 저장 전 버전도 기본 순서 · 봇 E(`BOT_CAPTCHA`) = 보안문자 오답 → 새로 받기 4회 반복 뒤 정답 · 오답은 제한(5회) 직전까지 · 간격 = 좌석 클릭 간격 · 시스템 `captcha_wrong` · `captcha_refresh` 이벤트 · 모의 대상도 같은 이벤트 · 분류 보안문자 우회 · 매크로 탐지율 묶음 · 기본 트래픽 구성 0%) | 브라우저 트래픽 봇은 예매 순서 미적용 · 모의 판정 규칙에 오답 · 새로 받기 규칙 없음(다른 행동 값으로 판정) · 새로 받기 횟수 제한 없음 = 시스템 결함 후보 | 실제 판정 연결 후 오답 · 새로 받기 기록 기반 탐지율 측정 |
 | 봇 F 대기열 재진입 | `live_booking_client.reenter_queue` · `fake_system.FAKE_CANCELLED_ATTEMPT_EVENT_TYPES` · `tests/unit_tests/test_booking_sequence.py` | 동작 (⑦ 예매 순서 4 · 봇 F(`BOT_REENTRY`) = 진입 뒤 heartbeat → 취소 → 재진입 3회 반복 → 마지막 진입으로 예매 · 간격 = 좌석 클릭 간격 · 진입마다 새 예매 시도 번호 · 시스템 `queue_enter` · `queue_register` · `queue_cancel` · 모의 대상도 취소한 시도마다 별도 번호로 같은 이벤트 · 분류 요청 자동화 · 매크로 탐지율 묶음 · 기본 트래픽 구성 0%) | 정답표 = 마지막 예매 시도만 · 취소한 시도는 채점 밖 → 재진입 흔적은 시스템이 계정 기준으로 묶어야 판정에 반영 · 연속 요청 차단은 T2(`load_capacity`) 몫 · 재진입 횟수 제한 없음 = 시스템 결함 후보 | 실제 판정 연결 후 계정 기준 재진입 탐지 확인 |
 | 봇 G 기기 정보 위장 | `domain/enums.BrowserIdentity` · `macro_bots/browser_profiles.py` · `live_booking_client.choose_request_headers` · `fake_system.build_fake_server_request_event` · `tests/unit_tests/test_browser_identity.py` | 동작 (행동 값 ⑧ 기기 정보 · 0 = 고정(⑥ 브라우저 흔적 기준) · 저장 전 버전도 고정 · 1 = 세션마다 PC · 모바일 브라우저 정보 8종 중 하나 · User-Agent · Accept-Language를 그 세션 모든 요청에 전송 · 배정 = 별도 시드(같은 시드 = 같은 배정 · 기존 계획 값 그대로) · 같은 기기 예매 창끼리 같은 정보 · 세션마다 새 기기 쿠키 · 시스템 `server_request` 이벤트에 요청 헤더 · 접속 주소 · 기기 쿠키 기록 · 모의 대상은 기기 정보 변경 세션만 `server_request` 1건(같은 헤더 · 같은 접속 주소) · 봇 G(`BOT_DEVICE_SPOOF`) · 분류 세션 · 기기 위장 · 매크로 탐지율 묶음 · 기본 트래픽 구성 0%) | 접속 주소는 모든 VU가 같은 컨테이너 주소 · 화면 크기는 시스템 미수집 · 브라우저 트래픽 봇 미적용 · 모의 판정 규칙에 기기 정보 규칙 없음(다른 행동 값으로 판정) | 실제 판정 연결 후 같은 접속 주소 · 다른 브라우저 정보 기반 탐지 확인 |
+| 미학습 유형 확대 (확장 G) | `macro_bots/bot_catalog.py` · `bot_profiles.py` · `scoring/detection_metrics.calculate_detection_rate_by_actor` · `calculate_unlearned_metrics` · `tests/unit_tests/test_detection_expansion.py` | 동작 (미학습 2 느린 정주기(`BOT_NEW_SLOW_REGULAR` · 클릭 간격 편차만 작음) · 미학습 3 분산 계정(`BOT_NEW_SPLIT_ACCOUNT` · 기기당 창 2개 = 기기당 세션 기준 바로 아래) · 미학습 4 사람 모사(`BOT_NEW_HUMAN_MIMIC` · 사람 값 + 매진 뒤 즉시 재시도 20회 · 모의 규칙 0개) · 평가 전용 · 파라미터 고정 · 합격 기준 없음 · 결과 공개만(`unlearned_detection_rate_percent`) · 02 트래픽 구성 밖 · 탐지 회귀에서 실행) | 미학습 조합은 모의 규칙(`mock-1`) 기준 · 실제 규칙 R1 ~ R6 확정 뒤 "학습에 안 쓴 조합"인지 다시 확인 | 실제 규칙 확정 뒤 조합 점검 |
+| 탐지 회귀 (확장 H) | `test_suites/detection_regression.py` · `case_data/regression_baselines/fake.json` · `command_line.py` (`save-regression-baseline`) · `.github/workflows/qa.yml` | 동작 (Run 설정 "탐지 회귀 테스트" · 시드 20261120 · VU 200 · 기본 유형 12종 전부(사람 53% · 봇 7종 5% · 미학습 4종 3%) · 봇 = 기본 v1 고정(B2 저장 버전 · 추가한 유형 영향 없음) · Mock = 매번 새 가짜 대상(앞 Suite 영향 없음) → 유형별 탐지율 · 정상 오탐률을 기준선과 비교 · 봇 하락 · 사람 상승 5%p 초과 = FAIL · 미학습은 결과 공개만 · 규칙 버전 바뀌면 표시 · 기준선 조건(시드 · VU · 트래픽) 다르면 비교 안 함 · 정답표 = QA DB `answer_keys`에 `{run_id}/detection_regression`으로 따로(B4 · 05 영향 없음 · Run 삭제 시 함께 삭제) · CI = push마다 Mock 회귀) | 기준선 갱신은 의도한 규칙 변경 뒤에만(`ticket-guard-qa save-regression-baseline --target fake`) · Live 기준선 없음 · 판정 읽기 미연결이면 트래픽 전 건너뜀 | Live 판정 연결 뒤 `--target live`로 첫 기준선 저장 |
+| 장애 중 탐지 (확장 I) | `test_suites/failure_detection.py` · `fake_system.FakeSystemState.apply_judgement` · `pending_judgements` · `tests/unit_tests/test_detection_expansion.py` | Mock 동작 (Run 설정 "장애 중 탐지 테스트" · 정제 · 저장 작업 중지 → Run 트래픽 구성 그대로 예매 → 재시작 → 정답표 세션 전부 판정까지 대기 · 판정 누락 · 판정 완료 시간(60초) · 장애 중 탐지율 · 오탐률(판정 정확도와 같은 기준 · 지표 이름 `failure_detection_*`로 분리 · Run 합격 기준 집계와 섞이지 않음) · Mock = 중지 중 판정 · 집계 보류 → 재시작 때 반영 · 유실 결함 Mock = 판정 누락 FAIL · 정답표 = `{run_id}/failure_detection`) · Live 연결 코드 (Docker 소켓 컨테이너 중지 · 시작 · 판정 읽기) | Live: 컨테이너 이름 · Docker 소켓 · 시스템 판정 읽기 미연결 → 트래픽 전 건너뜀 · 중지는 트래픽 시작 전 · 재시작은 트래픽 끝난 뒤(트래픽 도중 중지는 미구현) · Mock 표본 작음(봇 C 5% = 10세션)이면 탐지율 흔들림 = 판정 정확도와 같음 | Live: 컨테이너 이름 · 소켓 연결 · 판정 읽기 연결 뒤 Run |
 | 테스트 케이스 · Ground Truth 탭 | `dashboard/routes/test_case_routes.py` · `screen_c1_test_cases.html` · `test_suites/exception_cases.py` · `case_data/exception_codes/` | 동작 (E01 ~ E22 · T1 · T2 사례 24건 · 시스템 오류 코드 · 검증 Suite = 각 Suite `related_codes` · 이벤트 계약 사례 목록 · Run별 정답표 조회) | Suite 미연결 예외 코드 16건 | 예외 흐름 Suite |
 | 봇 C 화면 캡처 (B3) | `macro_bots/browser_capture.py` | Mock 동작 (봇 C 행동 값 → 단계별 프레임 · 클릭 위치) · Live 연결 코드 (`captures/{run_id}/frames.json` + 이미지 읽기) | 브라우저 자동화 실행 환경 | 브라우저 봇이 `save_capture_frames` 호출 |
 | db 스키마 대응 (0단계) | `docs/contracts.md` 3 · 5장 · `case_data/event_contracts/` · `domain/models.py` 레코드 · `fake_system.py` | 동작 (Mock이 SESSION_VERDICTS · SESSION_FEATURES · QUARANTINE_EVENTS 모양 반환 · B4 룰별 Hit 수) | db 스키마 확정 · QA 읽기 전용 계정 | `live_mongo_reader.py` 구현 · `expected_storage` 대조 |

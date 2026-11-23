@@ -1,0 +1,33 @@
+{
+  "rule_set_version": "mock-1",
+  "random_seed": 20261120,
+  "virtual_user_count": 200,
+  "traffic_percents": {
+    "HUMAN": 53,
+    "BOT_A": 5,
+    "BOT_B": 5,
+    "BOT_C": 5,
+    "BOT_D": 5,
+    "BOT_CAPTCHA": 5,
+    "BOT_REENTRY": 5,
+    "BOT_DEVICE_SPOOF": 5,
+    "BOT_NEW": 3,
+    "BOT_NEW_SLOW_REGULAR": 3,
+    "BOT_NEW_SPLIT_ACCOUNT": 3,
+    "BOT_NEW_HUMAN_MIMIC": 3
+  },
+  "detection_rate_percent_by_actor": {
+    "BOT_A": 100.0,
+    "BOT_B": 80.0,
+    "BOT_C": 70.0,
+    "BOT_CAPTCHA": 100.0,
+    "BOT_D": 100.0,
+    "BOT_DEVICE_SPOOF": 100.0,
+    "BOT_NEW": 0.0,
+    "BOT_NEW_HUMAN_MIMIC": 0.0,
+    "BOT_NEW_SLOW_REGULAR": 100.0,
+    "BOT_NEW_SPLIT_ACCOUNT": 100.0,
+    "BOT_REENTRY": 100.0,
+    "HUMAN": 0.9433962264150944
+  }
+}

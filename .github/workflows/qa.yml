@@ -25,3 +25,7 @@ jobs:
       - run: ticket-guard-qa run --suite self_check --suite event_contract --target fake
         env:
           TICKET_GUARD_QA_QA_DATABASE_URL: mongomock://ticketguard_qa
+      # 탐지 회귀 · 같은 시드 · 기본 봇 · 기준선(case_data/regression_baselines/fake.json)보다 탐지율 하락 시 실패
+      - run: ticket-guard-qa run --suite detection_regression --target fake
+        env:
+          TICKET_GUARD_QA_QA_DATABASE_URL: mongomock://ticketguard_qa

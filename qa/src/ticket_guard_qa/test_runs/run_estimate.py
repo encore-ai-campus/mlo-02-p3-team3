@@ -11,11 +11,16 @@ from ticket_guard_qa.macro_bots.bot_catalog import BROWSER_TRAFFIC, get_bot_type
 from ticket_guard_qa.macro_bots.bot_profiles import BotProfileRegistry
 from ticket_guard_qa.system_targets.live_django_system import DEFAULT_MAX_CONCURRENT_BROWSERS
 from ticket_guard_qa.test_suites.booking_flow import BOOKING_FLOW_SUITE_NAME
+from ticket_guard_qa.test_suites.detection_regression import DETECTION_REGRESSION_SUITE_NAME
 from ticket_guard_qa.test_suites.event_delivery import EVENT_DELIVERY_SUITE_NAME
+from ticket_guard_qa.test_suites.failure_detection import FAILURE_DETECTION_SUITE_NAME
 from ticket_guard_qa.test_suites.verdict_accuracy import VERDICT_ACCURACY_SUITE_NAME
 from ticket_guard_qa.traffic_generators.virtual_user_traffic import PRE_OPEN_LOGIN_SEC, split_into_waves
 
-TRAFFIC_SUITE_NAMES = (BOOKING_FLOW_SUITE_NAME, EVENT_DELIVERY_SUITE_NAME, VERDICT_ACCURACY_SUITE_NAME)  # VU 전원 트래픽
+VERDICT_READING_SUITE_NAMES = (  # 판정 읽기 미연결이면 트래픽 없이 건너뜀
+    VERDICT_ACCURACY_SUITE_NAME, DETECTION_REGRESSION_SUITE_NAME, FAILURE_DETECTION_SUITE_NAME,
+)
+TRAFFIC_SUITE_NAMES = (BOOKING_FLOW_SUITE_NAME, EVENT_DELIVERY_SUITE_NAME, *VERDICT_READING_SUITE_NAMES)  # VU 전원 트래픽
 DEFAULT_SUITE_SEC = {  # 트래픽 없는 Suite · 실측 전 초기값
     "self_check": 2.0, "event_contract": 15.0, "raw_ingest": 10.0, "pipeline_latency": 10.0,
     "seat_concurrency": 20.0, "load_capacity": 90.0, "failure_recovery": 60.0,

@@ -67,6 +67,25 @@ DEFAULT_BEHAVIOR_BY_ACTOR_TYPE: dict[ActorType, SessionBehavior] = {
         browse_page_count=2, page_dwell_mean_ms=2_500, page_dwell_deviation_ms=800, sessions_per_device=1,
         sold_out_retry_count=2, sold_out_retry_delay_ms=900, browser_trace_level=1,
     ),
+    ActorType.BOT_NEW_SLOW_REGULAR: SessionBehavior(  # 클릭 간격 편차만 작음
+        entry_delay_after_open_ms=1_500, entry_delay_deviation_ms=800,
+        click_interval_mean_ms=900, click_interval_deviation_ms=40,
+        browse_page_count=2, page_dwell_mean_ms=3_000, page_dwell_deviation_ms=100, sessions_per_device=1,
+        sold_out_retry_count=2, sold_out_retry_delay_ms=900, browser_trace_level=1,
+    ),
+    ActorType.BOT_NEW_SPLIT_ACCOUNT: SessionBehavior(  # 기기당 창 2개 · 기기당 세션 기준(> 2) 바로 아래
+        entry_delay_after_open_ms=80, entry_delay_deviation_ms=40,
+        click_interval_mean_ms=350, click_interval_deviation_ms=150,
+        browse_page_count=0, page_dwell_mean_ms=0, page_dwell_deviation_ms=0, sessions_per_device=2,
+        sold_out_retry_count=4, sold_out_retry_delay_ms=300, browser_trace_level=0,
+    ),
+    ActorType.BOT_NEW_HUMAN_MIMIC: SessionBehavior(  # 사람 값 + 매진 뒤 즉시 재시도 20회
+        entry_delay_after_open_ms=2_500, entry_delay_deviation_ms=1_800,
+        click_interval_mean_ms=1_100, click_interval_deviation_ms=500,
+        browse_page_count=3, page_dwell_mean_ms=3_500, page_dwell_deviation_ms=2_000, sessions_per_device=1,
+        sold_out_retry_count=20, sold_out_retry_delay_ms=0, browser_trace_level=1,
+        browser_identity=BrowserIdentity.ROTATING,
+    ),
 }
 
 
