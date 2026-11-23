@@ -64,9 +64,9 @@ def test_bot_list_shows_category_tiles_table_and_detail(dashboard_client):
     page = dashboard_client.get("/bots?bot=bot_a").text
     assert "수법 분류별 탐지 현황" in page and page.index("요청 자동화") < page.index("세션 · 기기 위장")
     assert "예매 오픈과 동시에 예매하기 버튼 클릭" in page  # 선택한 봇 A 상세
-    assert "탐지 시스템이 잡아야 할 흔적" in page and "9종 중 9종" in page
+    assert "탐지 시스템이 잡아야 할 흔적" in page and "12종 중 12종" in page
     filtered = dashboard_client.get("/bots?category=browser_automation").text
-    assert "9종 중 1종" in filtered and "브라우저 자동화 매크로" in filtered
+    assert "12종 중 1종" in filtered and "브라우저 자동화 매크로" in filtered
 
 
 def test_new_bot_steps_create_reviewed_bot_in_traffic_mix(dashboard_client):
@@ -209,10 +209,10 @@ def test_capture_image_route_rejects_other_files(dashboard_client):
 def test_run_setup_starts_without_suites_and_shows_guides(dashboard_client):
     page = dashboard_client.get("/runs/new").text
     suite_inputs = re.findall(r'<input[^>]*name="suite_names"[^>]*>', page)
-    assert len(suite_inputs) == 10 and not any("checked" in tag for tag in suite_inputs)
-    assert page.count('role="tooltip"') == 10
+    assert len(suite_inputs) == 12 and not any("checked" in tag for tag in suite_inputs)
+    assert page.count('role="tooltip"') == 12
     assert "같은 좌석 동시 결제 시 중복 판매 여부" in page
-    assert page.count("<b>검증 대상</b>") == 10 and page.count("<b>검증 방법</b>") == 10
+    assert page.count("<b>검증 대상</b>") == 12 and page.count("<b>검증 방법</b>") == 12
 
 
 def test_run_monitor_shows_suites_in_run_order_with_guides(dashboard_client):

@@ -14,7 +14,7 @@ class VerdictStage(StrEnum):
 
 
 class ActorType(str):
-    """봇 유형 id · 기본 9종 = 아래 상수 · 화면에서 추가한 유형 = QA DB bot_types · 전체 목록은 macro_bots/bot_catalog"""
+    """봇 유형 id · 기본 12종 = 아래 상수 · 화면에서 추가한 유형 = QA DB bot_types · 전체 목록은 macro_bots/bot_catalog"""
     __slots__ = ()
 
     HUMAN: "ActorType"
@@ -26,6 +26,9 @@ class ActorType(str):
     BOT_REENTRY: "ActorType"  # 대기열 재진입 반복
     BOT_DEVICE_SPOOF: "ActorType"  # 세션마다 기기 정보 변경
     BOT_NEW: "ActorType"  # 새 유형 · 목표 없음 · 결과만 공개
+    BOT_NEW_SLOW_REGULAR: "ActorType"  # 미학습 · 느린 정주기
+    BOT_NEW_SPLIT_ACCOUNT: "ActorType"  # 미학습 · 기기당 창 2개로 분산
+    BOT_NEW_HUMAN_MIMIC: "ActorType"  # 미학습 · 사람 모사 + 과도한 재시도
 
     @property
     def value(self) -> str:
@@ -49,9 +52,13 @@ ActorType.BOT_CAPTCHA = ActorType("BOT_CAPTCHA")
 ActorType.BOT_REENTRY = ActorType("BOT_REENTRY")
 ActorType.BOT_DEVICE_SPOOF = ActorType("BOT_DEVICE_SPOOF")
 ActorType.BOT_NEW = ActorType("BOT_NEW")
+ActorType.BOT_NEW_SLOW_REGULAR = ActorType("BOT_NEW_SLOW_REGULAR")
+ActorType.BOT_NEW_SPLIT_ACCOUNT = ActorType("BOT_NEW_SPLIT_ACCOUNT")
+ActorType.BOT_NEW_HUMAN_MIMIC = ActorType("BOT_NEW_HUMAN_MIMIC")
 BUILT_IN_ACTOR_TYPES: tuple[ActorType, ...] = (
     ActorType.HUMAN, ActorType.BOT_A, ActorType.BOT_B, ActorType.BOT_C, ActorType.BOT_D, ActorType.BOT_CAPTCHA,
-    ActorType.BOT_REENTRY, ActorType.BOT_DEVICE_SPOOF, ActorType.BOT_NEW,
+    ActorType.BOT_REENTRY, ActorType.BOT_DEVICE_SPOOF, ActorType.BOT_NEW, ActorType.BOT_NEW_SLOW_REGULAR,
+    ActorType.BOT_NEW_SPLIT_ACCOUNT, ActorType.BOT_NEW_HUMAN_MIMIC,
 )
 
 

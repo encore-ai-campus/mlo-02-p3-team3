@@ -44,6 +44,28 @@ def find_false_positives(answer_key: AnswerKey, system_verdicts: SystemVerdicts)
     ]
 
 
+UNLEARNED_DETECTION_METRIC_NAME = "unlearned_detection_rate_percent"  # 결과 공개만 · 합격 기준 아님
+
+
+def list_evaluation_actor_types() -> tuple[ActorType, ...]:
+    from ticket_guard_qa.macro_bots.bot_catalog import BotRole, list_bot_types  # 순환 import 방지
+
+    return tuple(info.actor_type for info in list_bot_types() if info.role is BotRole.EVALUATION_ONLY)
+
+
+def calculate_detection_rate_by_actor(answer_key: AnswerKey, system_verdicts: SystemVerdicts) -> dict[str, float]:
+    """유형별 탐지율 · 사람 = 오탐률 · 회귀 기준선 · 미학습 결과 공개"""
+    rates = {actor_type.value: calculate_detection_rate_percent(answer_key, system_verdicts, (actor_type,))
+             for actor_type in dict.fromkeys(answer_key.values())}
+    return {actor_id: rate for actor_id, rate in sorted(rates.items()) if rate is not None}
+
+
+def calculate_unlearned_metrics(answer_key: AnswerKey, system_verdicts: SystemVerdicts) -> dict[str, float]:
+    """미학습 유형 합산 탐지율 · 세션 없으면 빈 값"""
+    rate = calculate_detection_rate_percent(answer_key, system_verdicts, list_evaluation_actor_types())
+    return {} if rate is None else {UNLEARNED_DETECTION_METRIC_NAME: rate}
+
+
 def calculate_detection_metrics(answer_key: AnswerKey, system_verdicts: SystemVerdicts) -> dict[str, float]:
     """합격 기준 metric_name 그대로 반환 · 측정 안 된 값은 빠짐 · 묶음은 domain/detection_targets.py"""
     candidates = {

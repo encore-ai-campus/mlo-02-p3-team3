@@ -1,4 +1,4 @@
-"""터미널 명령 · ticket-guard-qa run | list-suites | export-archive | dashboard · 종료 코드 0 통과 / 1 실패 / 2 오류"""
+"""터미널 명령 · ticket-guard-qa run | list-suites | export-archive | save-regression-baseline | dashboard · 종료 코드 0 통과 / 1 실패 / 2 오류"""
 import argparse
 import json
 import sys
@@ -16,6 +16,11 @@ from ticket_guard_qa.qa_database.database import connect_qa_database
 from ticket_guard_qa.settings import load_settings
 from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
 from ticket_guard_qa.test_runs.run_service import RunService
+from ticket_guard_qa.test_suites.detection_regression import (
+    DETECTION_REGRESSION_SUITE_NAME,
+    build_baseline_from_result,
+    save_baseline,
+)
 from ticket_guard_qa.test_suites.suite_registry import list_suites
 
 CONTAINER_HOST = "0.0.0.0"
@@ -52,6 +57,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--collection", dest="collection_names", action="append", choices=list(EXPORT_COLLECTIONS),
         help=f"여러 번 지정 가능 · 기본 {' · '.join(DEFAULT_COLLECTION_NAMES)} · 정답표 · 봇 설정은 직접 지정",
     )
+
+    baseline_command = commands.add_parser(
+        "save-regression-baseline", help="탐지 회귀 기준선 저장 · 의도한 판정 규칙 변경 뒤에만 · case_data/regression_baselines"
+    )
+    baseline_command.add_argument("--target", dest="target_kind", type=TargetKind, choices=list(TargetKind))
 
     commands.add_parser("dashboard", help="QA 대시보드 띄우기 · 팀 compose 컨테이너 안에서만")
     return parser
@@ -99,6 +109,22 @@ def export_archive_files(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def save_regression_baseline(arguments: argparse.Namespace) -> int:
+    """탐지 회귀 Suite 한 번 실행 → 유형별 탐지율을 기준선 파일로 · 숫자만 · 정답표 · 봇 설정 없음"""
+    settings = load_settings()
+    run_service = RunService(settings, connect_qa_database(settings.qa_database_url), RunProgressStream())
+    target_kind = arguments.target_kind or settings.target_kind
+    summary = run_service.run_now(RunConfig(target_kind=target_kind, suite_names=(DETECTION_REGRESSION_SUITE_NAME,),
+                                            random_seed=settings.random_seed))
+    result = summary.find_suite_result(DETECTION_REGRESSION_SUITE_NAME)
+    if result is None or "detection_rate_percent_by_actor" not in result.details:
+        print(f"기준선 저장 실패 · {summary.status.value} · {result.message if result else '결과 없음'}")
+        return EXIT_CODE_BY_STATUS[RunStatus.ERROR]
+    path = save_baseline(settings.case_data_dir, target_kind, build_baseline_from_result(result))
+    print(f"기준선 저장 · {path} · {len(result.details['detection_rate_percent_by_actor'])}개 유형")
+    return 0
+
+
 def print_suites() -> int:
     for suite in list_suites():
         print(f"{suite.suite_name:<20} {suite.title}")
@@ -123,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         return print_suites()
     if arguments.command == "export-archive":
         return export_archive_files(arguments)
+    if arguments.command == "save-regression-baseline":
+        return save_regression_baseline(arguments)
     return start_dashboard()
 
 
