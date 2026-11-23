@@ -65,10 +65,13 @@ def publication(rows, findings, decisions, policy, now, selected='all'):
             durations=[f['observed'] for f in signals if f['rule'] == 'fast']))
     # 차트의 0은 수집 완전성이 확인되지 않아 생성하지 않는다.
     series = []
+    observed_buckets = {rule: {int(by_id[d['eventId']]['time']//60)*60 for d in applicable
+        if d['evaluationStatus'] == 'evaluated' and rule in d['evaluatedRules']} for rule in ('overlap','retry')}
     for at in range(int((now-WINDOW)//60)*60, int(now//60)*60+1, 60):
-        series.append(dict(at=date(at).isoformat(), overlap=sum(f['rule'] == 'overlap' and at <= f['occurredAt'] < at+60 for f in pre),
-                           retry=sum(f['rule'] == 'retry' and at <= f['occurredAt'] < at+60 for f in pre),
-                           observed=any(at <= r['time'] < at+60 for r in rows)))
+        counts_at = {rule: sum(f['rule'] == rule and at <= f['occurredAt'] < at+60 for f in pre)
+                     if at in observed_buckets[rule] else None for rule in ('overlap','retry')}
+        series.append(dict(at=date(at).isoformat(), **counts_at,
+                           observed=any(value is not None for value in counts_at.values())))
     return dict(contractVersion=1, scope=selected, asOf=date(now).isoformat(), windowStart=date(now-WINDOW).isoformat(),
         windowEnd=date(now).isoformat(), ruleVersion=policy.version(), policy=asdict(policy),
         status='observed' if rows else 'unobserved', counts=counts,

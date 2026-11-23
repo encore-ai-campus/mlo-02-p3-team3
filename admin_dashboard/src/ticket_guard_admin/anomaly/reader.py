@@ -29,7 +29,10 @@ def read_anomaly(uri, scope='all', *, now=None):
             stamp = datetime.fromisoformat(document['asOf'])
             if stamp.tzinfo is None or not -30 <= (now-stamp).total_seconds() <= 120:
                 raise AnomalyReadError('오래된 자료 · Spark 갱신 상태 확인 필요')
-            if before.get('ruleVersion') != document.get('ruleVersion') or int(before['asOf'].timestamp()*1000) != int(stamp.timestamp()*1000):
+            health_at = before.get('asOf')
+            if not isinstance(health_at, datetime) or health_at.tzinfo is None:
+                raise AnomalyReadError('이상 관측 저장 계약 불일치')
+            if before.get('ruleVersion') != document.get('ruleVersion') or int(health_at.timestamp()*1000) != int(stamp.timestamp()*1000):
                 raise AnomalyReadError('게시 버전 불일치 · 재조회 필요')
             if not isinstance(document.get('policy'), dict) or not isinstance(document.get('counts'), dict):
                 raise AnomalyReadError('이상 관측 저장 계약 불일치')

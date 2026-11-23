@@ -40,7 +40,7 @@
     ['overlap','retry'].forEach((key,index)=>{
       const enabled=data.policy[key]!=null;
       let segment=[];const flush=()=>{if(segment.length)svg.append(make('polyline',{points:segment.join(' '),stroke:index?'#7faeff':'#1858ff','stroke-dasharray':index?'4 3':'none'}));segment=[];};
-      points.forEach((p,i)=>{if(!p.observed||!enabled){flush();return;}segment.push(`${x(i)},${y(p[key])}`);const circle=make('circle',{cx:x(i),cy:y(p[key]),r:3,fill:index?'#7faeff':'#1858ff'});circle.append(make('title',{},`${p.at}: ${key} ${p[key]}건`));svg.append(circle);});flush();
+      points.forEach((p,i)=>{if(!p.observed||!enabled||!Number.isFinite(p[key])){flush();return;}segment.push(`${x(i)},${y(p[key])}`);const circle=make('circle',{cx:x(i),cy:y(p[key]),r:3,fill:index?'#7faeff':'#1858ff'});circle.append(make('title',{},`${p.at}: ${key} ${p[key]}건`));svg.append(circle);});flush();
     });
     [0,Math.floor(points.length/2),points.length-1].forEach(i=>svg.append(make('text',{x:x(i),y:height-5,'text-anchor':i===0?'start':i===points.length-1?'end':'middle'},new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(points[i].at)))));
     host.replaceChildren(svg);

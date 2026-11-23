@@ -52,3 +52,14 @@ def test_preview_two_modes_auth_and_live_does_not_substitute_sample(admin_settin
     assert '시안용 샘플 데이터' not in live.text
     assert '조회 실패' in live.text and 'TG-B1' not in live.text
     assert live.headers['cache-control'] == 'no-store'
+
+
+def test_malformed_health_is_read_error_instead_of_page_crash(monkeypatch):
+    import ticket_guard_admin.anomaly.reader as reader
+    client = mongomock.MongoClient('mongodb://unused/test', tz_aware=True)
+    monkeypatch.setattr(reader, 'MongoClient', lambda *a, **k: client)
+    now = datetime.now(timezone.utc)
+    client.test.anomaly_public.insert_one(build_preview() | dict(_id='all',scope='all',asOf=now.isoformat(),ruleVersion='version'))
+    client.test.anomaly_health.insert_one(dict(_id='ingest',status='ready',asOf='invalid-date',ruleVersion='version'))
+    with pytest.raises(AnomalyReadError):
+        read_anomaly('mongodb://unused/test', now=now)

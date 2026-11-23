@@ -11,11 +11,13 @@
 </svg>
 {%- endmacro %}
 <header class="top-bar">
-  <a class="brand" href="/qa/">
+  <div class="brand-group">
+  <a class="brand" href="/qa/" aria-label="티켓가드 관리자 콘솔 홈">
     <span class="brand-mark">{% include "brand_mark.svg" %}</span>
     <span class="brand-text"><span class="brand-name">티켓가드</span><span class="brand-english">TICKET GUARD</span></span>
-    <span class="brand-badge">관리자 콘솔</span>
   </a>
+    <span class="brand-badge">관리자 콘솔</span>
+  </div>
   <span class="vertical-line"></span>
   <nav class="main-tabs main-nav" aria-label="주 메뉴">
     <a href="/qa/">{{ nav_icon('home') }}홈</a>
@@ -23,7 +25,8 @@
     <a href="{{ base_path }}/" class="active" aria-current="page">{{ nav_icon('database') }}DB 대시보드</a>
   </nav>
   <div class="top-bar-right account">
-    {% if header_status is defined %}<span class="target-chip sample-status"><i class="status-dot {{ 'is-down' if header_error else 'is-preview' if header_tone != 'normal' else '' }}"></i>{{ header_status }}</span>{% else %}<span class="target-chip sample-status"><i class="status-dot {{ 'is-down' if error is defined and error else 'is-preview' if error is not defined }}"></i>{{ ('DB 연결 실패' if error else 'DB 연결 정상') if error is defined else '샘플 데이터' }}</span>{% endif %}
-    <span class="admin-user">{{ nav_icon('user') }}{{ admin_user }}</span>
+    {% set status_label = header_status if header_status is defined else (('DB 연결 실패' if error else 'DB 연결 정상') if error is defined else '샘플 데이터') %}
+    <span class="target-chip sample-status" title="{{ status_label }}"><i aria-hidden="true" class="status-dot {{ ('is-down' if header_error else 'is-preview' if header_tone != 'normal' else '') if header_status is defined else ('is-down' if error is defined and error else 'is-preview' if error is not defined else '') }}"></i><span class="status-label">{{ status_label }}</span></span>
+    <span class="admin-user">{{ nav_icon('user') }}<span class="admin-user-name" title="{{ admin_user }}">{{ admin_user }}</span></span>
   </div>
 </header>
