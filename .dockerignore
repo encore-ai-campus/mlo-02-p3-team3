@@ -14,3 +14,4 @@ docs
 **/.pytest_cache
 .coverage
 htmlcov
+.ticketguard-state

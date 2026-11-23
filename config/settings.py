@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Dedicated web policy/ledger storage. Never point this at a QA database.
+TICKETING_STATE_PATH = os.environ.get('TICKETING_STATE_PATH') or str(BASE_DIR / '.ticketguard-state' / 'web.sqlite3')
+TEST_RUNNER = 'web.test_runner.IsolatedStateRunner'
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'local-demo-only-change-before-deployment-ticket-guard')
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
