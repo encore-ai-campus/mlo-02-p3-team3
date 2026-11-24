@@ -25,7 +25,8 @@ services:
       TICKET_GUARD_QA_TEST_ACCOUNT_COUNT: ${QA_TEST_ACCOUNT_COUNT:-0}
       TICKET_GUARD_QA_TEST_ACCOUNT_PASSWORD: ${QA_TEST_ACCOUNT_PASSWORD:-}
       TICKET_GUARD_QA_CAPTCHA_FIXED_ANSWER: ${QA_CAPTCHA_FIXED_ANSWER:-}
-      TICKET_GUARD_QA_QA_DATABASE_URL: sqlite:////qa/qa_data/qa.db
+      # MongoDB URI is supplied by qa/compose.qa-db.yml or an explicit environment setting.
+      TICKET_GUARD_QA_QA_DATABASE_URL: ${TICKET_GUARD_QA_QA_DATABASE_URL:-}
       TICKET_GUARD_QA_REPORT_OUTPUT_DIR: /qa/qa_data/reports
     volumes:
       - qa-data:/qa/qa_data

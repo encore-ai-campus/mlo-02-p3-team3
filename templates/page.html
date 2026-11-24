@@ -219,7 +219,7 @@
           <h3>
             <a href="/detail/{{ show.id }}/">{{ show.title }}</a>
           </h3>
-          <p>{{ show.date }} (토) {{ show.time }}</p>
+          <p>{{ show.date }} ({{ show.weekday }}) {{ show.time }}</p>
           <p class="venue">{{ show.venue }}</p>
           <div class="card-bottom">
             <strong>{{ show.price }}<small>원</small></strong>
@@ -261,7 +261,7 @@
         <div>
           <dt>공연 일시</dt>
           <dd>
-            {{ show.date }} (토) {{ show.time }}
+            {{ show.date }} ({{ show.weekday }}) {{ show.time }}
           </dd>
         </div>
         <div>
@@ -301,7 +301,7 @@
     <aside class="booking-panel card">
       <h2>예매하기</h2>
       <label for="date-select">관람 날짜</label><select id="date-select">
-        <option value="{{ show.date }}">{{ show.date }} (토)</option>
+        <option value="{{ show.date }}">{{ show.date }} ({{ show.weekday }})</option>
       </select><label for="time-select">회차 선택</label><select id="time-select">
         <option value="{{ show.time }}">{{ show.time }}</option>
       </select>
@@ -309,7 +309,7 @@
         <span>{{ show.kind_label }}</span><strong>1인 {{ show.price }}원</strong>
       </div>
       <div class="schedule-summary">
-        <small>선택한 일정</small><strong>{{ show.date }} (토)
+        <small>선택한 일정</small><strong>{{ show.date }} ({{ show.weekday }})
           <br />
         {{ show.time }} · {{ show.venue }}</strong>
       </div>
@@ -351,7 +351,7 @@
       <div>
         <span class="category">{{ show.kind_label }}</span>
         <h2>{{ show.title }}</h2>
-        <p>{{ show.date }} (토) {{ show.time }}</p>
+        <p>{{ show.date }} ({{ show.weekday }}) {{ show.time }}</p>
         <p>{{ show.venue }}</p>
         <strong>{{ show.price }}원</strong>
       </div>
@@ -405,7 +405,7 @@
         {% if show.kind == "reserved" %}원하는 좌석을 선택해 주세요{% else %}관람
           인원을 선택해 주세요{% endif %}
       </h1>
-      <p class="muted">{{ show.title }} · {{ show.date }} (토) {{ show.time }}</p>
+      <p class="muted">{{ show.title }} · {{ show.date }} ({{ show.weekday }}) {{ show.time }}</p>
     </div>
     <button class="text-button" id="cancel-booking">예매 진행 취소</button>
   </div>
@@ -474,7 +474,7 @@
     <div>
       <h3>{{ show.title }}</h3>
       <p>
-        {{ show.date }} (토)
+        {{ show.date }} ({{ show.weekday }})
         <br />
         {{ show.time }}
       </p>
@@ -531,7 +531,7 @@
         <div>
           <dt>공연 일시</dt>
           <dd>
-            {{ show.date }} (토) {{ show.time }}
+            {{ show.date }} ({{ show.weekday }}) {{ show.time }}
           </dd>
         </div>
         <div>
@@ -580,7 +580,7 @@
         <span class="status-badge">✓ 예매 확정</span><span class="booking-number">{{ booking.id }}</span>
         <h2>{{ booking.show.title }}</h2>
         <p>
-          {{ booking.show.date }} (토) {{ booking.show.time }} · {{
+          {{ booking.show.date }} ({{ booking.show.weekday }}) {{ booking.show.time }} · {{
             booking.show.venue }}
         </p>
         <p class="muted">

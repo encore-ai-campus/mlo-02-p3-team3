@@ -59,7 +59,7 @@ def page(request, screen, identifier=None):
     if user and screen in {'login', 'signup'}:
         return redirect(ADMIN_HOME_URL if request.session.get('role') == 'admin' else '/')
     context = dict(screen=screen, user=user, scenarios=settings.SHOW_SCENARIOS, capture_enabled=settings.CAPTURE_ENABLED,
-                   demo_user=settings.DEMO_USERNAME, genres=['전체', '콘서트', '뮤지컬', '연극', '페스티벌'])
+                   demo_user=settings.DEMO_USERNAME, genres=['전체', '콘서트', '뮤지컬', '연극', '페스티벌', '클래식', '무용'])
     with repo.lock:
         try:
             if screen == 'shows':

@@ -209,7 +209,7 @@ class WebTests(SimpleTestCase):
         self.assertEqual(result.status_code, 200)
         url = result.json()['redirect']
         self.assertContains(self.client.get(url), '110000')
-        self.assertContains(self.client.get('/history/'), '블루 아워 라이브')
+        self.assertContains(self.client.get('/history/'), '온기')
         self.post('logout')
         self.post('login', username='guest', password='demo-password')
         self.assertEqual(self.client.get(url).status_code, 404)

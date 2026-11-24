@@ -1,0 +1,9893 @@
+=== PAGE 1 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+1
+TicketGuard
+MongoDB 설계서
+및 데이터 사전
+코드로 확인한 컬렉션·필드·참조 관계
+분석 기준
+내용
+작성일
+2026-11-24 (Asia/Seoul)
+브랜치
+db
+기준 커밋
+c9a8f39e41f4a33f467934ee0f7d2566344e4b3e
+대상
+4개 논리 DB / 36개 컬렉션 / 4개 뷰
+검증 방식
+저장·갱신·조회·인덱스·뷰 생성 코드 정적 검토
+운영 DB
+접속·데이터·인덱스·배포 상태 미확인
+데이터 경계
+필드 구조만 수록. 자격 증명·실제 개인정보·QA 정답·설정값 제외
+이 문서는 코드가 생성하는 문서 구조를 설명한다. DB 수준 validator나 운영 데이터의 실제 형태를 확인한 문서가 아니다. 시각 형
+식과 조건부 필드는 컬렉션별로 다를 수 있다.
+
+
+=== PAGE 2 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+2
+목차
+2
+목차
+4
+1. 범위와 읽는 방법
+4
+2. DB 구성 요약
+7
+3. 전체 MongoDB ERD
+8
+3.1 ticketguard_raw - 확대 ERD
+9
+3.2 ticketguard - 확대 ERD
+10
+3.3 ticketguard_flow - 확대 ERD
+11
+3.4 ticketguard_qa - 확대 ERD
+12
+4. 컬렉션별 필드 명세
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 12
+4.01 ticketguard_raw.behavior_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 15
+4.02 ticketguard_raw.booking_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 17
+4.03 ticketguard_raw.auth_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 19
+4.04 ticketguard_raw.http_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 21
+4.05 ticketguard_raw.performance_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 23
+4.06 ticketguard_raw.browser_errors
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 25
+4.07 ticketguard_raw.collector_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 27
+4.08 ticketguard_raw.raw_chunks
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 29
+4.09 ticketguard_raw.unclassified_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 32
+4.10 ticketguard_raw.raw_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 33
+4.11 ticketguard.clean_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 36
+4.12 ticketguard.quarantine_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 37
+4.13 ticketguard.event_metrics
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 39
+4.14 ticketguard.anomaly_observations
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 41
+4.15 ticketguard.anomaly_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 43
+4.16 ticketguard.anomaly_public
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 49
+4.17 ticketguard.anomaly_health
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 50
+4.18 ticketguard.network_versions
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 53
+4.19 ticketguard.network_series
+
+
+=== PAGE 3 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+3
+ .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 55
+4.20 ticketguard.network_public
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 56
+4.21 ticketguard.raw_events
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 57
+4.22 ticketguard_flow.flow_versions
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 62
+4.23 ticketguard_flow.flow_series
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 64
+4.24 ticketguard_flow.flow_public
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 65
+4.25 ticketguard_flow.flow_health
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 67
+4.26 ticketguard_flow.early_observations
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 71
+4.27 ticketguard_flow.early_detections
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 77
+4.28 ticketguard_flow.early_actions
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 79
+4.29 ticketguard_flow.early_versions
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 93
+4.30 ticketguard_flow.early_public
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 94
+4.31 ticketguard_flow.early_health
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 95
+4.32 ticketguard_qa.runs
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 98
+4.33 ticketguard_qa.answer_keys
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 99
+4.34 ticketguard_qa.bot_versions
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 102
+4.35 ticketguard_qa.bot_types
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 105
+4.36 ticketguard_qa.archive_exports
+107
+5. MongoDB 뷰 명세
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 107
+ticketguard.network_read_current
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 108
+ticketguard.network_read_series
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 109
+ticketguard_flow.flow_read_current
+  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 110
+ticketguard_flow.flow_read_series
+111
+6. 인덱스·보존 정책
+113
+7. 관계 명세
+117
+8. 구현 불일치·미확인 사항
+119
+9. 소스 근거 목록
+
+
+=== PAGE 4 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+4
+1. 범위와 읽는 방법
+MongoDB만 분석 대상으로 삼았다. 애플리케이션 구조와 다른 저장소는 이 문서의 범위가 아니다. 현재 작업 폴더의 추적되지 않
+은 테스트 파일은 보존했고, 소스 및 운영 데이터는 변경하지 않았다.
+기준 커밋 이후의 사용자 변경을 보존한다. 이전 ERD 생성 기준과 현재 커밋 사이의 추적 변경은 화면 템플릿·스타일이며, 이 문서
+의 MongoDB 저장 함수에는 변경이 없음을 대조했다.
+표기
+해석
+항상 기록
+해당 저장 경로에서 키가 생성됨. DB가 키 존재를 강제한다는 뜻은 아님.
+조건부
+사건·문서 유형·상태에 따라 키 자체가 없을 수 있음.
+null=예
+키는 있으나 값이 BSON Null일 수 있음. 키 누락과 별개.
+Int32 / Int64
+Python 정수는 값 범위에 따라 인코딩 크기가 달라짐. Int64 명시 변환은 별도 표기.
+Double / 정수
+float/int를 모두 만드는 계산 경로 또는 검증 규칙.
+Date (UTC)
+datetime을 BSON Date로 저장. 시간대 오프셋 자체를 별도 필드로 저장하지 않음.
+String (ISO 8601, UTC)
+시간 문자열. BSON Date와 달리 문자열로 저장됨.
+epoch 초
+숫자형 Unix 시간. 밀리초 필드와 구분.
+{동적 키}
+런타임에 키 이름이 결정되는 객체. 임의의 고정 컬럼을 의미하지 않음.
+근거 Rxx
+부록의 파일·함수·라인 범위와 연결.
+미확인
+정적 코드만으로 확정하지 않은 항목. 추정 자료형을 강제 계약으로 취급하지 않음.
+분석한 생성 스크립트에는 JSON Schema validator 선언을 찾지 못했다. 표의 검증 규칙은 애플리케이션 검사이며 DB 제약과 구분
+된다. 실제 인스턴스에서 별도로 설정한 validator·인덱스 여부는 미확인이다.
+2. DB 구성 요약
+ticketguard_raw
+컬렉션 / 뷰
+역할
+behavior_events
+사용자 행동 원본
+booking_events
+예매 업무 원본
+auth_events
+로그인 원본
+http_events
+HTTP 관측 원본
+performance_events
+성능 관측 원본
+browser_errors
+브라우저 오류 원본
+collector_events
+수집 상태 원본
+raw_chunks
+분할 전송 원본
+unclassified_events
+분류 실패 원본
+raw_events
+초기화용 컬렉션
+
+
+=== PAGE 5 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+5
+ticketguard
+컬렉션 / 뷰
+역할
+clean_events
+정규화된 이벤트
+quarantine_events
+정규화에서 제외한 전송 레코드
+event_metrics
+이벤트 종류별 및 전체 집계
+anomaly_observations
+이상 판정용 최소 관측
+anomaly_events
+규칙별 이상 판정 근거
+anomaly_public
+범위별 이상 관측 집계
+anomaly_health
+이상 처리 상태
+network_versions
+버전별 요청 관측 집계
+network_series
+버전별 요청 시계열
+network_public
+네트워크 현재 공개 포인터
+raw_events
+초기화용 컬렉션
+network_read_current
+VIEW · 별도 저장 없음
+network_read_series
+VIEW · 별도 저장 없음
+ticketguard_flow
+컬렉션 / 뷰
+역할
+flow_versions
+범위별 검증 흐름 집계
+flow_series
+범위별 접속·예매 시계열
+flow_public
+범위별 현재 공개 포인터
+flow_health
+흐름 검증 상태
+early_observations
+서버 업무·정책 최소 관측
+early_detections
+관측 신호 또는 서버 탐지 판정
+early_actions
+서버 조치와 해제 관측
+early_versions
+검증된 사전 관측 공개 결과
+early_public
+사전 모니터링 공개 포인터
+early_health
+사전 모니터링 처리 상태
+flow_read_current
+VIEW · 별도 저장 없음
+flow_read_series
+VIEW · 별도 저장 없음
+
+
+=== PAGE 6 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+6
+ticketguard_qa
+컬렉션 / 뷰
+역할
+runs
+시험 실행과 내장 결과
+answer_keys
+실행 또는 Suite별 정답표 구조
+bot_versions
+종류별 행동 설정 버전 구조
+bot_types
+사용자 정의 유형 구조
+archive_exports
+승인된 내보내기 이력 구조
+ticketguard는 기본 시스템 DB 이름이며 환경 설정으로 달라질 수 있다. network 실행은 실제 대상 DB 이름이 ticketguard인지 검
+사한다. 흐름 지표는 FLOW_TARGET_MONGO_URI의 default database를 사용하고 setup은 FLOW_DATABASE(기본
+ticketguard_flow)를 사용하므로 두 설정의 일치가 필요하다. QA는 전용 인스턴스·계정·네트워크를 사용한다.
+
+
+=== PAGE 7 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+7
+3. 전체 MongoDB ERD
+전체 위치를 확인하는 개요 도식. 다음 페이지에는 동일한 필드·관계를 벡터 확대판으로 수록했다. 점선은 논리적 참조, EMBEDDED는 문서 내부 구조, VIEW는 조회 정의다. 관계선은 외래 키
+제약을 의미하지 않는다.
+
+
+=== PAGE 8 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+8
+3.1 ticketguard_raw - 확대 ERD
+확대하여 읽을 수 있는 벡터 페이지. UQ1은 단일 필드 두 개가 아니라 복합 고유 인덱스 한 개를 뜻한다. 독립 컬렉션은 근거 없는 관계선으로 연결하지 않았다.
+behavior_events
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+booking_events
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+auth_events
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+http_events
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+performance_events
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+browser_errors
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+collector_events
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+raw_chunks
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+unclassified_events
+COLLECTION
+_id 
+[ID]
+source
+topic
+partition
+offset
+key
+value
+headers[]
+    key
+    value
+timestampMs
+timestampType
+ingestedAt
+routing
+    version
+    reason*
+raw_events
+초기화용
+초기화용
+저장 필드 정의 미확인
+
+
+=== PAGE 9 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+9
+3.2 ticketguard - 확대 ERD
+확대하여 읽을 수 있는 벡터 페이지. UQ1은 단일 필드 두 개가 아니라 복합 고유 인덱스 한 개를 뜻한다. 독립 컬렉션은 근거 없는 관계선으로 연결하지 않았다.
+LOOKUP version = _id
+EMBEDDED
+LOOKUP version = _id
+clean_events
+COLLECTION
+_id 
+[ID]
+eventId
+eventType
+userId
+bookingAttemptId
+showId
+scheduleId
+result
+errorCode
+isSimulation
+source
+occurredAt
+receivedAt
+normalizedAt
+isAnomaly
+evaluationStatus
+bookingId*
+quantity*
+totalAmount*
+seatType*
+seats[]*
+evaluatedRules[]*
+ruleVersion*
+quarantine_events
+COLLECTION
+_id 
+[ID]
+reason
+event_metrics
+COLLECTION
+[summary]
+_id 
+[ID]
+metricType
+totalCleanEvents
+totalQuarantineEvents
+refreshedAt
+[event_type]
+_id 
+[ID]
+metricType
+eventType
+total
+success
+failure
+rejected
+lastOccurredAt
+anomaly_observations
+COLLECTION
+_id 
+[ID]
+id
+time
+received
+kind
+user
+attempt
+page
+show
+schedule
+simulation
+result
+booking
+quantity
+request
+start
+duration
+status
+sequence
+error
+fingerprint
+expiresAt
+anomaly_events
+COLLECTION
+_id 
+[ID]
+eventId 
+[REF]
+isAnomaly
+rule
+label
+phase
+occurredAt
+user
+attempt
+show
+schedule
+simulation
+ruleVersion
+threshold
+observed
+evidence[] 
+[REF]
+    eventId
+    at
+    kind
+evaluationStatus*
+anomaly_public
+COLLECTION
+_id 
+[ID]
+contractVersion
+scope
+asOf
+windowStart
+windowEnd
+ruleVersion
+policy → [S1]
+status
+counts → [S1]
+attempts
+subjects
+evaluated
+pending
+unavailable
+detections[] → anomaly_events
+    evaluationStatus 제외
+timelines
+    {eventId}[]
+        at
+        kind
+        eventId
+accounts[] → [S2]
+series[]
+    at
+    overlap
+    retry
+    observed
+truncated
+coverage
+anomaly_health
+COLLECTION
+_id 
+[ID]
+status
+asOf*
+ruleVersion*
+network_versions
+COLLECTION
+_id 
+[ID]
+data → [S3]
+ranges[]
+    topic
+    partition
+    start
+    end
+publishedAt
+expiresAt*
+network_series
+COLLECTION
+_id 
+[ID]
+windowStart
+windowEnd
+buckets[]
+    at
+    observed
+    gateway
+    requests
+    http4xx
+    http5xx
+    measured
+    slow
+publishedAt
+expiresAt*
+network_public
+COLLECTION
+_id 
+[ID]
+version 
+[REF]
+raw_events
+초기화용
+초기화용
+저장 필드 정의 미확인
+network_read_current
+VIEW
+SOURCE: network_public + network_versions
+_id 
+[ID]
+version
+result
+    _id 
+[ID]
+    data → [S3]
+    publishedAt
+network_read_series
+VIEW
+SOURCE: network_public + network_series
+_id 
+[ID]
+version
+result
+    _id 
+[ID]
+    windowStart
+    windowEnd
+    buckets[] → network_series.buckets
+[S1] anomaly_public.policy / counts
+EMBEDDED · 컬렉션 아님
+overlap
+retry
+pages
+fast
+purchases
+limit
+[S2] anomaly_public.accounts[]
+EMBEDDED · 컬렉션 아님
+user
+count
+quantity
+signals[]
+bookings[]
+    id
+    quantity
+    show
+    schedule
+    at
+evidence[]
+    at
+    kind
+    eventId
+durations[]
+[S3] network_versions.data
+EMBEDDED · 컬렉션 아님
+contractVersion
+windowStart
+windowEnd
+bucketSeconds
+latestRequestIngestedAt
+thresholdMs
+summary
+    requests
+    http4xx
+    http5xx
+    measured
+    slow
+features[]
+    id
+    requests
+    http4xx
+    http5xx
+    measured
+    slow
+sources
+    django
+    gateway
+    health
+
+
+=== PAGE 10 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+10
+3.3 ticketguard_flow - 확대 ERD
+확대하여 읽을 수 있는 벡터 페이지. UQ1은 단일 필드 두 개가 아니라 복합 고유 인덱스 한 개를 뜻한다. 독립 컬렉션은 근거 없는 관계선으로 연결하지 않았다.
+EMBEDDED
+LOOKUP version + scope
+LOOKUP version + scope
+flow_versions
+COLLECTION
+_id 
+[ID]
+metrics → [F1]
+ranges[]
+    topic
+    partition
+    start
+    end
+scope
+status
+verifiedAt
+publishedAt
+expiresAt*
+flow_series
+COLLECTION
+_id 
+[ID]
+scope
+version
+at
+publishedAt
+presence[]
+    epoch*
+    at
+    asOf*
+    current
+    observed
+booking[]
+    at
+    numerator
+    denominator
+    ratio
+    ongoing
+    observed
+expiresAt*
+flow_public
+COLLECTION
+_id 
+[ID]
+version 
+[REF]
+asOf
+status
+seriesCutoff
+flow_health
+COLLECTION
+_id 
+[ID]
+status
+checkedAt
+processingSeconds*
+pendingSeconds*
+errorClass*
+reason*
+early_observations
+COLLECTION
+_id 
+[ID]
+id
+time
+kind
+user
+attempt
+show
+schedule
+simulation
+result
+error
+request
+action
+booking
+stage
+sequence
+wrong
+fingerprint
+policy* → [F4]
+origin
+    source
+    topic
+    partition
+    offset
+expiresAt
+early_detections
+COLLECTION
+[관측 기반]
+_id 
+[ID]
+id 
+[REF]
+eventId 
+[REF]
+at
+user
+attempt
+scope
+observed
+threshold
+seconds
+ruleVersion
+mode
+evidence[]
+status
+[서버 판정]
+_id 
+[ID]
+id
+time
+kind
+user
+attempt
+show
+schedule
+simulation
+result
+error
+request
+action
+booking
+stage
+sequence
+wrong
+fingerprint
+policy → [F4]
+status
+early_actions
+COLLECTION
+_id 
+[ID]
+id
+request
+eventId 
+[REF]
+at
+user
+attempt
+scope
+reason
+label
+ruleVersion
+threshold
+observed
+expiresAt
+releaseStatus
+status
+appliedAt*
+restrictionId*
+releasedAt*
+releaseEventId*
+early_versions
+COLLECTION
+_id 
+[ID]
+version
+data
+    contractVersion
+    asOf
+    ruleVersion
+    scopes
+        {scope} → [F5]
+    inputCount
+    ranges[]
+publishedAt
+expiresAt*
+early_public
+COLLECTION
+_id 
+[ID]
+version 
+[REF]
+asOf
+early_health
+COLLECTION
+_id 
+[ID]
+status
+version* 
+[REF]
+asOf*
+flow_read_current
+VIEW
+SOURCE: flow_public + flow_versions
+_id 
+[ID]
+version
+asOf
+status
+seriesCutoff
+result → flow_versions
+flow_read_series
+VIEW
+SOURCE: flow_public + flow_series
+_id 
+[ID]
+version
+asOf
+status
+seriesCutoff
+result → flow_series
+[F1] flow_versions.metrics
+EMBEDDED · 컬렉션 아님
+contractVersion
+calculationVersion
+asOf
+windowStart
+countingUnit
+presenceTimeoutSeconds
+current
+cancelled
+interrupted
+booking
+    numerator
+    denominator
+    ratio
+nodes[] → [F2]
+edges[] → [F3]
+calculatedAt
+latestReceivedAt
+liveCoverageStart
+scope
+verifiedAt
+[F2] metrics.nodes[]
+EMBEDDED · 컬렉션 아님
+id
+label
+order
+current
+dwell
+    meanSeconds
+    medianSeconds
+    samples
+ongoing
+entered
+[F3] metrics.edges[]
+EMBEDDED · 컬렉션 아님
+source
+target
+kind
+moves
+numerator
+denominator
+ratio
+ongoing
+[F4] early_*.policy
+EMBEDDED · 컬렉션 아님
+ruleId*
+ruleVersion*
+policyMode*
+restrictionId*
+restrictionScope*
+observed*
+threshold*
+windowSeconds*
+appliedAt*
+expiresAt*
+releasedAt*
+releaseReason*
+selectionError*
+entryCause*
+predecessorAttemptId*
+purchasedQuantity*
+requestedQuantity*
+excluded*
+loginSucceeded*
+openingState*
+selectionValid*
+evidence[]*
+[F5] data.scopes.{scope}
+EMBEDDED · 컬렉션 아님
+contractVersion
+scope
+asOf
+windowStart
+windowEnd
+evaluationSeconds
+policy
+    enabled
+    seconds
+    count
+    mode
+    rule
+ruleVersion
+status
+stages[] → [F6]
+stageDetections → [F7]
+signalCount
+signalAttempts
+detections[] → [F8]
+contexts
+    {eventId}[]
+        eventId
+        kind
+        result
+        error
+actionCount
+actionAttempts
+actionSubjects
+actionCounts
+    {동적 label}
+actions[] → early_actions 본문
+    _id 제외
+durations[] → [F9]
+series[]
+    at
+    observed
+    detections
+    actions
+truncated
+unlinkedActions
+unknownContext
+unknownQueueStage
+coverage
+fastPolicy
+[F6] scopes.{scope}.stages[]
+EMBEDDED · 컬렉션 아님
+key
+label
+requests
+events
+attempts
+accounts
+outcomes
+    login_success*
+    login_failed*
+    login_locked*
+    queue_enter*
+    booking_not_open*
+    queue_register*
+    queue_admitted*
+    queue_cancel*
+    connection_timeout*
+    captcha_success*
+    captcha_wrong*
+    captcha_limit_reached*
+    captcha_refresh*
+    booking_confirm_request*
+    booking_confirm_success*
+    booking_confirm_fail*
+    booking_confirm_rejected*
+    booking_confirm_replayed*
+    booking_access_rejected*
+[F7] scopes.{scope}.stageDetections
+EMBEDDED · 컬렉션 아님
+{동적 규칙 키}
+    count
+    eventCount
+    actionCount
+    unknownTargets
+    truncated
+    cases[] → [F10]
+    rejectedCount*
+    actionSubjects*
+    pendingEvidence*
+    ruleVersion*
+    threshold*
+    windowSeconds*
+    mode*
+[F8] scopes.{scope}.detections[]
+EMBEDDED · 컬렉션 아님
+id
+eventId
+at
+user
+attempt
+scope
+observed
+threshold
+seconds
+ruleVersion
+mode
+evidence[]
+[F9] scopes.{scope}.durations[]
+EMBEDDED · 컬렉션 아님
+key
+label
+samples
+unavailable
+mean
+median
+p95
+[F10] stageDetections.*.cases[]
+EMBEDDED · 컬렉션 아님
+eventId
+at
+user
+attempt
+reason
+evidence[]
+scope
+ruleVersion*
+observed*
+threshold*
+windowSeconds*
+restrictionId*
+actionStatus*
+appliedAt*
+expiresAt*
+releasedAt*
+releaseReason*
+
+
+=== PAGE 11 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+11
+3.4 ticketguard_qa - 확대 ERD
+확대하여 읽을 수 있는 벡터 페이지. UQ1은 단일 필드 두 개가 아니라 복합 고유 인덱스 한 개를 뜻한다. 독립 컬렉션은 근거 없는 관계선으로 연결하지 않았다.
+EMBEDDED
+EMBEDDED
+Run: _id = run_id / Suite: run_id/suite_name
+custom type only; built-in: code default
+카디널리티 미확정
+EMBEDDED
+EMBEDDED
+run_ids[] = _id (array reference)
+카디널리티 미확정
+{actor_type}:version -> (actor_type,version_number)
+ 카디널리티 미확정
+runs
+COLLECTION
+_id 
+[ID]
+target_kind
+status
+run_config → [Q1]
+suite_results[] → [Q2]
+criterion_results[]
+    criterion_id
+    measured_value
+    is_passed
+started_at
+finished_at
+answer_keys
+COLLECTION
+_id 
+[ID · REF]
+entries[]
+    session_key
+    actor_type
+bot_versions
+COLLECTION
+_id 
+[ID]
+actor_type 
+[UQ1 · REF]
+version_number 
+[UQ1]
+profile
+    behavior → [Q3]
+    change_note
+saved_at
+bot_types
+COLLECTION
+_id 
+[ID]
+actor_type
+short_name 
+[UQ]
+display_name
+purpose
+category_id
+color_hex
+detection_signals[]
+detection_target_id
+status
+base_actor_type
+traffic_channel
+initial_behavior → [Q3]
+created_at
+updated_at
+archive_exports
+COLLECTION
+_id 
+[ID]
+exported_at
+recipient
+reason
+run_ids[] 
+[REF]
+collection_names[]
+bot_version_numbers
+    {actor_type}
+[Q1] runs.run_config
+EMBEDDED · 컬렉션 아님
+target_kind
+suite_names[]
+virtual_user_count
+duration_sec
+traffic_mix
+    percent_by_type
+        {actor_type}
+random_seed
+is_open_burst
+alert_policy
+bot_version_numbers 
+[REF]
+    {actor_type}
+wave_size
+[Q2] runs.suite_results[]
+EMBEDDED · 컬렉션 아님
+suite_name
+outcome
+metrics
+    {동적 metric_name}
+message
+details
+    {Suite별 동적 키}
+duration_sec
+[Q3] behavior / initial_behavior
+EMBEDDED · 컬렉션 아님
+entry_delay_after_open_ms
+entry_delay_deviation_ms
+click_interval_mean_ms
+click_interval_deviation_ms
+browse_page_count
+page_dwell_mean_ms
+page_dwell_deviation_ms
+sessions_per_device
+sold_out_retry_count
+sold_out_retry_delay_ms
+browser_trace_level
+booking_sequence
+browser_identity
+
+
+=== PAGE 12 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+12
+4. 컬렉션별 필드 명세
+각 컬렉션의 최상위 필드를 개별 수록하고, 큰 중첩 구조는 해당 컬렉션 표 안에서 dotted path로 펼쳤다. 예시는 실제 값이 아닌
+축약된 구조 예시이며 입력 검증을 통과하는 완전한 테스트 데이터로 사용하면 안 된다. QA 예시에는 행동 설정·시드·정답 값을 넣
+지 않았다.
+4.01 ticketguard_raw.behavior_events
+역할: 사용자 행동 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 13 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+13
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 14 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+14
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 15 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+15
+4.02 ticketguard_raw.booking_events
+역할: 예매 업무 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 16 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+16
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 17 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+17
+4.03 ticketguard_raw.auth_events
+역할: 로그인 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 18 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+18
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 19 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+19
+4.04 ticketguard_raw.http_events
+역할: HTTP 관측 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 20 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+20
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 21 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+21
+4.05 ticketguard_raw.performance_events
+역할: 성능 관측 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 22 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+22
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 23 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+23
+4.06 ticketguard_raw.browser_errors
+역할: 브라우저 오류 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 24 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+24
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 25 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+25
+4.07 ticketguard_raw.collector_events
+역할: 수집 상태 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 26 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+26
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 27 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+27
+4.08 ticketguard_raw.raw_chunks
+역할: 분할 전송 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 28 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+28
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 29 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+29
+4.09 ticketguard_raw.unclassified_events
+역할: 분류 실패 원본
+원본 위치 SHA-256 키로 $setOnInsert upsert. 재전달은 기존 문서를 덮어쓰지 않음. 코드상 명시적 삭제·TTL 없음. 읽기는
+verified_records()/LiveRawMongoReader에서 원본 위치로 수행.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+문서 식별 키
+source [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+topic [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 토픽 이름
+partition [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+offset [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+key [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 키 또는 항목 키
+value [R01 / R02 / R03 / R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+headers[] [R01 / R02 / R03 / R04]
+Array<Document>
+항상 기록
+아니오
+원본 헤더 목록
+headers[].key [R01 / R02 / R03 / R04]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+headers[].value [R01 / R02 / R03 /
+R04]
+Binary / Null
+항상 기록
+예
+원본 바이트 값
+timestampMs [R01 / R02 / R03 / R04]
+Int64
+항상 기록
+아니오
+원본 타임스탬프(밀리초)
+timestampType [R01 / R02 / R03 / R04]
+Int32 / Int64
+항상 기록
+아니오
+타임스탬프 종류 코드
+ingestedAt [R01 / R02 / R03 / R04]
+Date (UTC)
+항상 기록
+아니오
+원본 적재 시각
+routing [R01 / R02 / R03 / R04]
+Document
+항상 기록
+아니오
+원본 분류 메타데이터
+routing.version [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+routing.reason [R01 / R02 / R03 /
+R04]
+String
+항상 기록
+아니오
+분류·조치 사유
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(JSON [source, topic, partition, offset], separators=(',', ':'))의 hex 문자열. [R01 / R02 / R03 / 
+R04]
+source
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+topic
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+partition
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 30 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+30
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+offset
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+headers[]
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].key
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+headers[].value
+원문 바이트 보존. BSON 내 하위 JSON 필드가 아님. [R01 / R02 / R03 / R04]
+timestampMs
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+timestampType
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+ingestedAt
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing
+원본 레코드의 동명 메타데이터를 보존. Binary/Int64/UTC Date로 명시 변환한 항목은 해당 형식을 사
+용. [R01 / R02 / R03 / R04]
+routing.version
+라우팅 계약 버전 raw-routing-v1. [R01 / R02 / R03 / R04]
+routing.reason
+분류 실패 reason 코드 7종 중 하나. 정상 분류 컬렉션에는 이 키를 쓰지 않음. [R01 / R02 / R03 / R04]
+
+
+=== PAGE 31 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+31
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "source": "<형식: String>",
+  "topic": "<형식: String>",
+  "partition": 1,
+  "offset": 1,
+  "key": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "value": {
+    "$binary": {
+      "base64": "",
+      "subType": "00"
+    }
+  },
+  "headers": [],
+  "timestampMs": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique 아님. TTL 없음. [R04]
+주요 저장·생성 근거: R01 / R02 / R03 / R04 (파일·함수·라인은 9장 참조)
+조회 근거: R34 verified_records(). source·topic·partition·offset으로 분류 컬렉션 전체를 대조한다. 위치 복합 인덱스는 unique가 아
+니므로 2개 이상 조회되면 검증이 차단된다.
+
+
+=== PAGE 32 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+32
+4.10 ticketguard_raw.raw_events
+역할: 초기화용 컬렉션
+초기화 스크립트에서 빈 컬렉션만 생성. 현재 저장 문서·필드·문서 단위는 코드상 미확인.
+항목
+확인 결과
+필드
+저장 문서 생성 코드가 없어 필드 명세 확정 불가. _id 기본 동작을 임의의 업무 스키마로 확장하지 않음.
+문서 예시
+정의된 문서 구조가 없어 예시를 만들지 않음.
+인덱스·보존
+생성 스크립트에서 추가 인덱스·필드 validator 없음. 실제 인덱스는 미조회.
+근거
+R36
+
+
+=== PAGE 33 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+33
+4.11 ticketguard.clean_events
+역할: 정규화된 이벤트
+문서 1개=eventId 1개. 초기 값은 $setOnInsert upsert; 재평가가 기존 문서를 $set. 영구 삭제·TTL 없음.
+AdminMongoReader.read_dashboard() 및 QA 조회에서 읽음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R05 / R06 / R07 / R08]
+String
+항상 기록
+아니오
+문서 식별 키
+eventId [R05 / R06 / R07 / R08]
+String
+항상 기록
+아니오
+이벤트 식별자
+eventType [R05 / R06 / R07 / R08]
+String
+항상 기록
+아니오
+이벤트 종류
+userId [R05 / R06 / R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+사용자 식별자
+bookingAttemptId [R05 / R06 / R07 /
+R08]
+BSON 호환 입력값
+항상 기록
+예
+예매 시도 식별자
+showId [R05 / R06 / R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+공연 식별자
+scheduleId [R05 / R06 / R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+회차 식별자
+result [R05 / R06 / R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+이벤트 결과 또는 뷰 결합 문서
+errorCode [R05 / R06 / R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+업무 오류 코드
+isSimulation [R05 / R06 / R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+시뮬레이션 구분
+source [R05 / R06 / R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+원본 출처 또는 이벤트 발생 주체
+occurredAt [R05 / R06 / R07 / R08]
+Date (UTC)
+항상 기록
+아니오
+이벤트 발생 시각
+receivedAt [R05 / R06 / R07 / R08]
+Date (UTC)
+항상 기록
+아니오
+이벤트 수신 시각
+normalizedAt [R05 / R06 / R07 / R08]
+Date (UTC)
+항상 기록
+아니오
+정규화 시각
+isAnomaly [R05 / R06 / R07 / R08]
+Boolean
+생성 시 기록; 이
+후 갱신
+예
+현재 규칙 평가의 이상 여부
+evaluationStatus [R05 / R06 / R07 /
+R08]
+String
+생성 시 기록; 이
+후 갱신
+아니오
+평가 진행·적용 상태
+bookingId [R05 / R06 / R07 / R08]
+String / Null
+조건부
+예
+예매 식별자
+quantity [R05 / R06 / R07 / R08]
+Int32 / Int64 / Null
+조건부
+예
+티켓 수량
+totalAmount [R05 / R06 / R07 / R08]
+Double / Int32 /
+Int64 / Null
+조건부
+예
+총 금액
+seatType [R05 / R06 / R07 / R08]
+String / Null
+조건부
+예
+좌석 종류
+seats[] [R05 / R06 / R07 / R08]
+Array<String> / Null
+조건부
+예
+좌석 식별자 목록
+evaluatedRules[] [R05 / R06 / R07 /
+R08]
+Array<String>
+재평가 시 추가
+아니오
+실제로 평가한 규칙 목록
+ruleVersion [R05 / R06 / R07 / R08]
+String
+재평가 시 추가
+아니오
+규칙·정책 버전
+생성·검증 규칙 및 참조
+
+
+=== PAGE 34 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+34
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+decode()에서 문자열인지 검사. eventId가 _id로 사용됨. [R05 / R06 / R07 / R08]
+eventId
+decode()에서 문자열인지 검사. eventId가 _id로 사용됨. [R05 / R06 / R07 / R08]
+eventType
+decode()에서 문자열인지 검사. eventId가 _id로 사용됨. [R05 / R06 / R07 / R08]
+userId
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+bookingAttemptId
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+showId
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+scheduleId
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+result
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+errorCode
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+isSimulation
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+source
+event.get() 값을 그대로 저장. 이 정규화 함수에서는 세부 자료형을 강제하지 않음. [R05 / R06 / R07 /
+R08]
+occurredAt
+해당 저장·생성 함수에서 구성. [R05 / R06 / R07 / R08]
+receivedAt
+해당 저장·생성 함수에서 구성. [R05 / R06 / R07 / R08]
+normalizedAt
+해당 저장·생성 함수에서 구성. [R05 / R06 / R07 / R08]
+isAnomaly
+처음 isAnomaly=null. 상태: unsupported/outside_window/context_only/future/pending; 재평가 시
+evaluated/pending/unavailable. [R05 / R06 / R07 / R08]
+evaluationStatus
+처음 isAnomaly=null. 상태: unsupported/outside_window/context_only/future/pending; 재평가 시
+evaluated/pending/unavailable. [R05 / R06 / R07 / R08]
+bookingId
+서버 예매 이벤트 4종에만 추가. null 또는 길이 1..256 문자열. [R05 / R06 / R07 / R08]
+quantity
+서버 예매 이벤트에만 추가. type=int, 0 < 값 < 2^63. [R05 / R06 / R07 / R08]
+totalAmount
+유한한 int/float, 0 <= 값 < 2^63. null 허용. [R05 / R06 / R07 / R08]
+seatType
+서버 예매 이벤트 4종에만 추가. null 또는 길이 1..256 문자열. [R05 / R06 / R07 / R08]
+seats[]
+null 또는 문자열 배열. 각 문자열 길이 1..256. [R05 / R06 / R07 / R08]
+evaluatedRules[]
+evaluate() 결과를 _id=eventId인 기존 문서에 $set. 문서 생성(upsert)은 안 함. [R05 / R06 / R07 / R08]
+ruleVersion
+evaluate() 결과를 _id=eventId인 기존 문서에 $set. 문서 생성(upsert)은 안 함. [R05 / R06 / R07 / R08]
+
+
+=== PAGE 35 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+35
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "eventId": "<형식: String>",
+  "eventType": "<형식: String>",
+  "userId": "<형식: BSON 호환 입력값>",
+  "bookingAttemptId": "<형식: BSON 호환 입력값>",
+  "showId": "<형식: BSON 호환 입력값>",
+  "scheduleId": "<형식: BSON 호환 입력값>",
+  "result": "<형식: BSON 호환 입력값>",
+  "errorCode": "<형식: BSON 호환 입력값>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R05 / R06 / R07 / R08 (파일·함수·라인은 9장 참조)
+조회 근거: R33 AdminMongoReader.read_dashboard(), R32 LiveMongoPipelineReader. 일부 QA 조회 계약 차이는 8장 참조.
+
+
+=== PAGE 36 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+36
+4.12 ticketguard.quarantine_events
+역할: 정규화에서 제외한 전송 레코드
+문서 1개=격리된 전송 위치 1개. $setOnInsert upsert. 원문은 이 문서에 복제하지 않음. 명시적 삭제·TTL 없음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R05 / R06]
+String
+항상 기록
+아니오
+문서 식별 키
+reason [R05 / R06]
+String
+항상 기록
+아니오
+분류·조치 사유
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+전송 레코드의 topic:partition:offset 문자열. 원문·partition·offset은 별도 필드로 저장하지 않음. [R05 /
+R06]
+reason
+capture_chunk: chunk_requires_flow_mode / 파싱·형식 실패: invalid_event. [R05 / R06]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "reason": "<형식: String>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R05 / R06 (파일·함수·라인은 9장 참조)
+조회 근거: R33 AdminMongoReader.read_dashboard(), R32 LiveMongoPipelineReader. 일부 QA 조회 계약 차이는 8장 참조.
+
+
+=== PAGE 37 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+37
+4.13 ticketguard.event_metrics
+역할: 이벤트 종류별 및 전체 집계
+summary 1개와 관측된 이벤트 종류별 1개. 전체 정제·격리 데이터를 다시 집계하여 replace_one(upsert=True). 사라진 종류의 이
+전 문서를 일괄 삭제하는 코드는 없음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R06]
+String
+항상 기록 ·
+summary
+아니오
+문서 식별 키
+metricType [R06]
+String
+항상 기록 ·
+summary
+아니오
+집계 문서 구분
+totalCleanEvents [R06]
+Int32 / Int64
+항상 기록 ·
+summary
+아니오
+정제 문서 총수
+totalQuarantineEvents [R06]
+Int32 / Int64
+항상 기록 ·
+summary
+아니오
+격리 문서 총수
+refreshedAt [R06]
+Date (UTC)
+항상 기록 ·
+summary
+아니오
+집계 갱신 시각
+_id [R06]
+String
+항상 기록 · event
+_type
+아니오
+문서 식별 키
+metricType [R06]
+String
+항상 기록 · event
+_type
+아니오
+집계 문서 구분
+eventType [R06]
+String
+항상 기록 · event
+_type
+아니오
+이벤트 종류
+total [R06]
+Int32 / Int64
+항상 기록 · event
+_type
+아니오
+이벤트 총수
+success [R06]
+Int32 / Int64
+항상 기록 · event
+_type
+아니오
+성공 수
+failure [R06]
+Int32 / Int64
+항상 기록 · event
+_type
+아니오
+실패 수
+rejected [R06]
+Int32 / Int64
+항상 기록 · event
+_type
+아니오
+거부 수
+lastOccurredAt [R06]
+Date / Null
+항상 기록 · event
+_type
+예
+마지막 발생 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id [summary]
+summary 문서는 summary, 종류별 문서는 event_type:{eventType}. [R06]
+metricType [summary]
+summary 또는 event_type. [R06]
+totalCleanEvents [summary]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+totalQuarantineEvents [summary]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+
+
+=== PAGE 38 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+38
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+refreshedAt [summary]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+_id [event_type]
+summary 문서는 summary, 종류별 문서는 event_type:{eventType}. [R06]
+metricType [event_type]
+summary 또는 event_type. [R06]
+eventType [event_type]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+total [event_type]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+success [event_type]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+failure [event_type]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+rejected [event_type]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+lastOccurredAt [event_type]
+clean_events 전체를 eventType·result로 집계; 격리는 전체 count_documents().
+replace_one(upsert=True). [R06]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "metricType": "<형식: String>",
+  "totalCleanEvents": 1,
+  "totalQuarantineEvents": 1,
+  "refreshedAt": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R06 (파일·함수·라인은 9장 참조)
+조회 근거: R33 AdminMongoReader.read_dashboard(), R32 LiveMongoPipelineReader. 일부 QA 조회 계약 차이는 8장 참조.
+
+
+=== PAGE 39 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+39
+4.14 ticketguard.anomaly_observations
+역할: 이상 판정용 최소 관측
+문서 1개=최소 투영 관측 eventId 1개. 동일 ID의 fingerprint가 다르면 거부. 최초 삽입만 허용하며 재처리로 만료 연장 안 함.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R07 / R08]
+String
+항상 기록
+아니오
+문서 식별 키
+id [R07 / R08]
+String
+항상 기록
+아니오
+관측·조치 식별자
+time [R07 / R08]
+Double (epoch 초)
+항상 기록
+아니오
+관측 발생 시각
+received [R07 / R08]
+Double (epoch 초)
+항상 기록
+아니오
+수신 시각
+kind [R07 / R08]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+user [R07 / R08]
+String / Null
+항상 기록
+예
+사용자 식별자
+attempt [R07 / R08]
+String / Null
+항상 기록
+예
+예매 시도 식별자
+page [R07 / R08]
+String / Null
+항상 기록
+예
+페이지 인스턴스 식별자
+show [R07 / R08]
+String / Null
+항상 기록
+예
+공연 식별자
+schedule [R07 / R08]
+String / Null
+항상 기록
+예
+회차 식별자
+simulation [R07 / R08]
+Boolean
+항상 기록
+예
+시뮬레이션 구분
+result [R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+이벤트 결과 또는 뷰 결합 문서
+booking [R07 / R08]
+String / Null
+항상 기록
+예
+예매 식별자 또는 예매 집계
+quantity [R07 / R08]
+Int32 / Int64 / Null
+항상 기록
+예
+티켓 수량
+request [R07 / R08]
+String / Null
+항상 기록
+예
+요청 식별자
+start [R07 / R08]
+Double (epoch 초)
+항상 기록
+예
+처리 시작 시각 또는 구간 시작 위치
+duration [R07 / R08]
+Double / Null
+항상 기록
+예
+관측 소요 시간(초)
+status [R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+문서 유형별 처리·관측 상태
+sequence [R07 / R08]
+BSON 호환 입력값
+항상 기록
+예
+요청 순번
+error [R07 / R08]
+String / Null
+항상 기록
+예
+업무 오류 코드
+fingerprint [R07 / R08]
+String
+항상 기록
+아니오
+동일 관측 내용의 지문
+expiresAt [R07 / R08]
+Date (UTC)
+항상 기록
+아니오
+만료 예정 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R07 / R08]
+id
+해당 저장·생성 함수에서 구성. [R07 / R08]
+
+
+=== PAGE 40 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+40
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+time
+해당 저장·생성 함수에서 구성. [R07 / R08]
+received
+해당 저장·생성 함수에서 구성. [R07 / R08]
+kind
+해당 저장·생성 함수에서 구성. [R07 / R08]
+user
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+attempt
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+page
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+show
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+schedule
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+simulation
+해당 저장·생성 함수에서 구성. [R07 / R08]
+result
+입력의 해당 값을 그대로 투영. 엄격 자료형 검사는 코드상 미확인. [R07 / R08]
+booking
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+quantity
+양의 int만 보존; 그 외 null. [R07 / R08]
+request
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+start
+해당 저장·생성 함수에서 구성. [R07 / R08]
+duration
+유한한 0..86400000ms 관측을 초 단위로 변환. [R07 / R08]
+status
+입력의 해당 값을 그대로 투영. 엄격 자료형 검사는 코드상 미확인. [R07 / R08]
+sequence
+입력의 해당 값을 그대로 투영. 엄격 자료형 검사는 코드상 미확인. [R07 / R08]
+error
+identifier 계열 후처리: 길이 1..256 문자열이 아니면 null. [R07 / R08]
+fingerprint
+해당 저장·생성 함수에서 구성. [R07 / R08]
+expiresAt
+관측 time + 3600 + 300 + 86400초. expiresAt TTL. [R07 / R08]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "id": "<형식: String>",
+  "time": 1,
+  "received": 1,
+  "kind": "<형식: String>",
+  "user": "<형식: String / Null>",
+  "attempt": "<형식: String / Null>",
+  "page": "<형식: String / Null>",
+  "show": "<형식: String / Null>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (time, _id) 오름차순; expiresAt TTL expireAfterSeconds=0. time+90300초 만료. [R08]
+주요 저장·생성 근거: R07 / R08 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 41 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+41
+4.15 ticketguard.anomaly_events
+역할: 규칙별 이상 판정 근거
+문서 1개=규칙 버전·규칙·이벤트 조합. replace_one(upsert=True). 현재 평가 시간창에서 사라진 신호는 isAnomaly=False,
+evaluationStatus=retracted로 정정. 이력 TTL 없음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R07 / R08]
+String
+항상 기록
+아니오
+문서 식별 키
+eventId [R07 / R08]
+String
+항상 기록
+아니오
+이벤트 식별자
+isAnomaly [R07 / R08]
+Boolean
+항상 기록
+아니오
+현재 규칙 평가의 이상 여부
+rule [R07 / R08]
+String
+항상 기록
+아니오
+탐지 규칙 식별자
+label [R07 / R08]
+String
+항상 기록
+아니오
+표시용 규칙·단계 이름
+phase [R07 / R08]
+String
+항상 기록
+아니오
+사전·사후 탐지 구분
+occurredAt [R07 / R08]
+Double (epoch 초)
+항상 기록
+아니오
+이벤트 발생 시각
+user [R07 / R08]
+String
+항상 기록
+아니오
+사용자 식별자
+attempt [R07 / R08]
+String / Null
+항상 기록
+예
+예매 시도 식별자
+show [R07 / R08]
+String
+항상 기록
+아니오
+공연 식별자
+schedule [R07 / R08]
+String
+항상 기록
+아니오
+회차 식별자
+simulation [R07 / R08]
+Boolean / Null
+항상 기록
+예
+시뮬레이션 구분
+ruleVersion [R07 / R08]
+String
+항상 기록
+아니오
+규칙·정책 버전
+threshold [R07 / R08]
+Boolean / Double /
+Int32 / Int64
+항상 기록
+아니오
+규칙 기준값
+observed [R07 / R08]
+Double / Int32 / Int64
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+evidence[] [R07 / R08]
+Array<Document>
+항상 기록
+아니오
+판정 근거 이벤트 목록
+evidence[].eventId [R07 / R08]
+String
+항상 기록
+아니오
+이벤트 식별자
+evidence[].at [R07 / R08]
+Double (epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+evidence[].kind [R07 / R08]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+evaluationStatus [R07 / R08]
+String
+조건부
+아니오
+평가 진행·적용 상태
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+SHA-256(ruleVersion:rule:eventId). 동일 규칙 버전·규칙·이벤트의 결과를 대체 저장. [R07 / R08]
+eventId
+해당 저장·생성 함수에서 구성. [R07 / R08]
+isAnomaly
+해당 저장·생성 함수에서 구성. [R07 / R08]
+
+
+=== PAGE 42 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+42
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+rule
+overlap, retry, pages, fast, purchases, limit. [R07 / R08]
+label
+해당 저장·생성 함수에서 구성. [R07 / R08]
+phase
+overlap/retry/pages는 pre, fast/purchases/limit는 post. [R07 / R08]
+occurredAt
+해당 저장·생성 함수에서 구성. [R07 / R08]
+user
+해당 저장·생성 함수에서 구성. [R07 / R08]
+attempt
+해당 저장·생성 함수에서 구성. [R07 / R08]
+show
+해당 저장·생성 함수에서 구성. [R07 / R08]
+schedule
+해당 저장·생성 함수에서 구성. [R07 / R08]
+simulation
+해당 저장·생성 함수에서 구성. [R07 / R08]
+ruleVersion
+해당 저장·생성 함수에서 구성. [R07 / R08]
+threshold
+해당 저장·생성 함수에서 구성. [R07 / R08]
+observed
+해당 저장·생성 함수에서 구성. [R07 / R08]
+evidence[]
+해당 저장·생성 함수에서 구성. [R07 / R08]
+evidence[].eventId
+해당 저장·생성 함수에서 구성. [R07 / R08]
+evidence[].at
+해당 저장·생성 함수에서 구성. [R07 / R08]
+evidence[].kind
+해당 저장·생성 함수에서 구성. [R07 / R08]
+evaluationStatus
+철회 시에만 retracted를 $set. [R07 / R08]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "eventId": "<형식: String>",
+  "isAnomaly": false,
+  "rule": "<형식: String>",
+  "label": "<형식: String>",
+  "phase": "<형식: String>",
+  "occurredAt": 1,
+  "user": "<형식: String>",
+  "attempt": "<형식: String / Null>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (occurredAt, ruleVersion) 오름차순; TTL 없음. [R08]
+주요 저장·생성 근거: R07 / R08 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 43 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+43
+4.16 ticketguard.anomaly_public
+역할: 범위별 이상 관측 집계
+문서 1개=all 또는 완전 일치 범위. 최근 1시간 표출 집계. replace_one(upsert=True). 공개에서 사라진 범위 문서의 삭제 코드는 확
+인되지 않음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R08 / R07]
+String
+항상 기록
+아니오
+문서 식별 키
+contractVersion [R08 / R07]
+Int32 / Int64
+항상 기록
+아니오
+문서 계약 버전
+scope [R08 / R07]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+asOf [R08 / R07]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+계산 기준 시각
+windowStart [R08 / R07]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+집계 시간창 시작
+windowEnd [R08 / R07]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+집계 시간창 끝
+ruleVersion [R08 / R07]
+String
+항상 기록
+아니오
+규칙·정책 버전
+policy [R08 / R07]
+Document
+항상 기록
+아니오
+계산에 적용한 정책 구조
+policy.overlap [R07 / R08]
+Boolean / Double /
+Int32 / Int64 / Null
+항상 기록
+예
+응답 전 요청 중첩 규칙
+policy.retry [R07 / R08]
+Boolean / Double /
+Int32 / Int64 / Null
+항상 기록
+예
+반복 요청 규칙
+policy.pages [R07 / R08]
+Boolean / Double /
+Int32 / Int64 / Null
+항상 기록
+예
+다중 페이지 규칙
+policy.fast [R07 / R08]
+Boolean / Double /
+Int32 / Int64 / Null
+항상 기록
+예
+빠른 완료 규칙
+policy.purchases [R07 / R08]
+Boolean / Double /
+Int32 / Int64 / Null
+항상 기록
+예
+단시간 복수 구매 규칙
+policy.limit [R07 / R08]
+Boolean / Double /
+Int32 / Int64 / Null
+항상 기록
+예
+구매 한도 규칙
+status [R08 / R07]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+counts [R08 / R07]
+Document
+항상 기록
+아니오
+규칙별 대상 수
+counts.overlap [R07 / R08]
+Int32 / Int64 / Null
+항상 기록
+예
+응답 전 요청 중첩 규칙
+counts.retry [R07 / R08]
+Int32 / Int64 / Null
+항상 기록
+예
+반복 요청 규칙
+counts.pages [R07 / R08]
+Int32 / Int64 / Null
+항상 기록
+예
+다중 페이지 규칙
+counts.fast [R07 / R08]
+Int32 / Int64 / Null
+항상 기록
+예
+빠른 완료 규칙
+counts.purchases [R07 / R08]
+Int32 / Int64 / Null
+항상 기록
+예
+단시간 복수 구매 규칙
+counts.limit [R07 / R08]
+Int32 / Int64 / Null
+항상 기록
+예
+구매 한도 규칙
+
+
+=== PAGE 44 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+44
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+attempts [R08 / R07]
+Int32 / Int64
+항상 기록
+예
+고유 시도 수
+subjects [R08 / R07]
+Int32 / Int64
+항상 기록
+예
+계정 대상 수
+evaluated [R08 / R07]
+Int32 / Int64
+항상 기록
+아니오
+평가 완료 수
+pending [R08 / R07]
+Int32 / Int64
+항상 기록
+아니오
+평가 대기 수
+unavailable [R08 / R07]
+Int32 / Int64
+항상 기록
+아니오
+평가 불가 수
+detections[] [R08 / R07]
+Array<Document>
+항상 기록
+아니오
+탐지 결과 목록
+detections[]._id [R07 / R08]
+String
+항상 기록
+아니오
+문서 식별 키
+detections[].eventId [R07 / R08]
+String
+항상 기록
+아니오
+이벤트 식별자
+detections[].isAnomaly [R07 / R08]
+Boolean
+항상 기록
+아니오
+현재 규칙 평가의 이상 여부
+detections[].rule [R07 / R08]
+String
+항상 기록
+아니오
+탐지 규칙 식별자
+detections[].label [R07 / R08]
+String
+항상 기록
+아니오
+표시용 규칙·단계 이름
+detections[].phase [R07 / R08]
+String
+항상 기록
+아니오
+사전·사후 탐지 구분
+detections[].occurredAt [R07 / R08]
+Date (UTC)
+항상 기록
+아니오
+이벤트 발생 시각
+detections[].user [R07 / R08]
+String
+항상 기록
+아니오
+사용자 식별자
+detections[].attempt [R07 / R08]
+String
+항상 기록
+아니오
+예매 시도 식별자
+detections[].show [R07 / R08]
+String
+항상 기록
+아니오
+공연 식별자
+detections[].schedule [R07 / R08]
+String
+항상 기록
+아니오
+회차 식별자
+detections[].simulation [R07 / R08]
+Boolean
+항상 기록
+아니오
+시뮬레이션 구분
+detections[].ruleVersion [R07 / R08]
+String
+항상 기록
+아니오
+규칙·정책 버전
+detections[].threshold [R07 / R08]
+Int32 / Int64
+항상 기록
+아니오
+규칙 기준값
+detections[].observed [R07 / R08]
+Boolean
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+detections[].evidence[] [R07 / R08]
+Array<Document>
+항상 기록
+아니오
+판정 근거 이벤트 목록
+detections[].evidence[].eventId [R07
+/ R08]
+String
+항상 기록
+아니오
+이벤트 식별자
+detections[].evidence[].at [R07 /
+R08]
+Double (epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+detections[].evidence[].kind [R07 /
+R08]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+timelines [R08 / R07]
+Document
+항상 기록
+아니오
+이벤트별 관측 이력
+timelines.{eventId}[] [R08 / R07]
+Array<Document>
+항상 기록
+아니오
+동적 항목 값
+timelines.{eventId}[].at [R08 / R07]
+Double (epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+timelines.{eventId}[].kind [R08 /
+R07]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+
+
+=== PAGE 45 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+45
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+timelines.{eventId}[].eventId [R08 /
+R07]
+String
+항상 기록
+아니오
+이벤트 식별자
+accounts[] [R08 / R07]
+Array<Document>
+항상 기록
+아니오
+계정별 구매·탐지 집계
+accounts[].user [R08]
+String
+항상 기록
+아니오
+사용자 식별자
+accounts[].count [R08]
+Int32 / Int64
+항상 기록
+아니오
+집계 수
+accounts[].quantity [R08]
+Int32 / Int64
+항상 기록
+아니오
+티켓 수량
+accounts[].signals[] [R08]
+Array<String>
+항상 기록
+아니오
+발견된 신호 이름 목록
+accounts[].bookings[] [R08]
+Array<Document>
+항상 기록
+아니오
+중복 제거된 구매 목록
+accounts[].bookings[].id [R08]
+String
+항상 기록
+아니오
+관측·조치 식별자
+accounts[].bookings[].quantity [R08]
+Int32 / Int64
+항상 기록
+아니오
+티켓 수량
+accounts[].bookings[].show [R08]
+String
+항상 기록
+아니오
+공연 식별자
+accounts[].bookings[].schedule [R08]
+String
+항상 기록
+아니오
+회차 식별자
+accounts[].bookings[].at [R08]
+Double (epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+accounts[].evidence[] [R08]
+Array<Document>
+항상 기록
+아니오
+판정 근거 이벤트 목록
+accounts[].evidence[].at [R08]
+Double (epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+accounts[].evidence[].kind [R08]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+accounts[].evidence[].eventId [R08]
+String
+항상 기록
+아니오
+이벤트 식별자
+accounts[].durations[] [R08]
+Array<Double / 정수
+>
+항상 기록
+아니오
+시간 표본 또는 기간 통계
+series[] [R08 / R07]
+Array<Document>
+항상 기록
+아니오
+시간 구간별 집계
+series[].at [R08 / R07]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+관측·집계 기준 시각
+series[].overlap [R08 / R07]
+Int32 / Int64 / Null
+항상 기록
+예
+응답 전 요청 중첩 규칙
+series[].retry [R08 / R07]
+Int32 / Int64 / Null
+항상 기록
+예
+반복 요청 규칙
+series[].observed [R08 / R07]
+Boolean
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+truncated [R08 / R07]
+Boolean
+항상 기록
+아니오
+목록 상한에 따른 잘림 여부
+coverage [R08 / R07]
+String
+항상 기록
+아니오
+수집·집계 적용 범위 설명
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+all 또는 JSON [simulation, show, schedule] 문자열. [R08 / R07]
+contractVersion
+해당 저장·생성 함수에서 구성. [R08 / R07]
+scope
+all 또는 JSON [simulation, show, schedule] 문자열. [R08 / R07]
+
+
+=== PAGE 46 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+46
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+asOf
+해당 저장·생성 함수에서 구성. [R08 / R07]
+windowStart
+해당 저장·생성 함수에서 구성. [R08 / R07]
+windowEnd
+해당 저장·생성 함수에서 구성. [R08 / R07]
+ruleVersion
+해당 저장·생성 함수에서 구성. [R08 / R07]
+policy
+해당 저장·생성 함수에서 구성. [R08 / R07]
+policy.overlap
+미설정 정책은 null. overlap 활성만 True; 시간 기준은 양의 유한값, limit은 정수. [R07 / R08]
+policy.retry
+미설정 정책은 null. overlap 활성만 True; 시간 기준은 양의 유한값, limit은 정수. [R07 / R08]
+policy.pages
+미설정 정책은 null. overlap 활성만 True; 시간 기준은 양의 유한값, limit은 정수. [R07 / R08]
+policy.fast
+미설정 정책은 null. overlap 활성만 True; 시간 기준은 양의 유한값, limit은 정수. [R07 / R08]
+policy.purchases
+미설정 정책은 null. overlap 활성만 True; 시간 기준은 양의 유한값, limit은 정수. [R07 / R08]
+policy.limit
+미설정 정책은 null. overlap 활성만 True; 시간 기준은 양의 유한값, limit은 정수. [R07 / R08]
+status
+해당 저장·생성 함수에서 구성. [R08 / R07]
+counts
+해당 저장·생성 함수에서 구성. [R08 / R07]
+counts.overlap
+해당 규칙이 평가된 경우 고유 시도 또는 계정 수. 미관측은 null. [R07 / R08]
+counts.retry
+해당 규칙이 평가된 경우 고유 시도 또는 계정 수. 미관측은 null. [R07 / R08]
+counts.pages
+해당 규칙이 평가된 경우 고유 시도 또는 계정 수. 미관측은 null. [R07 / R08]
+counts.fast
+해당 규칙이 평가된 경우 고유 시도 또는 계정 수. 미관측은 null. [R07 / R08]
+counts.purchases
+해당 규칙이 평가된 경우 고유 시도 또는 계정 수. 미관측은 null. [R07 / R08]
+counts.limit
+해당 규칙이 평가된 경우 고유 시도 또는 계정 수. 미관측은 null. [R07 / R08]
+attempts
+해당 저장·생성 함수에서 구성. [R08 / R07]
+subjects
+해당 저장·생성 함수에서 구성. [R08 / R07]
+evaluated
+해당 저장·생성 함수에서 구성. [R08 / R07]
+pending
+해당 저장·생성 함수에서 구성. [R08 / R07]
+unavailable
+해당 저장·생성 함수에서 구성. [R08 / R07]
+detections[]
+해당 저장·생성 함수에서 구성. [R08 / R07]
+detections[]._id
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].eventId
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].isAnomaly
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].rule
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].label
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].phase
+해당 저장·생성 함수에서 구성. [R07 / R08]
+
+
+=== PAGE 47 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+47
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+detections[].occurredAt
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].user
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].attempt
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].show
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].schedule
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].simulation
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].ruleVersion
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].threshold
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].observed
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].evidence[]
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].evidence[].eventId
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].evidence[].at
+해당 저장·생성 함수에서 구성. [R07 / R08]
+detections[].evidence[].kind
+해당 저장·생성 함수에서 구성. [R07 / R08]
+timelines
+해당 저장·생성 함수에서 구성. [R08 / R07]
+timelines.{eventId}[]
+해당 저장·생성 함수에서 구성. [R08 / R07]
+timelines.{eventId}[].at
+해당 저장·생성 함수에서 구성. [R08 / R07]
+timelines.{eventId}[].kind
+해당 저장·생성 함수에서 구성. [R08 / R07]
+timelines.{eventId}[].eventId
+해당 저장·생성 함수에서 구성. [R08 / R07]
+accounts[]
+해당 저장·생성 함수에서 구성. [R08 / R07]
+accounts[].user
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].count
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].quantity
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].signals[]
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].bookings[]
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].bookings[].id
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].bookings[].quantity
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].bookings[].show
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].bookings[].schedule
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].bookings[].at
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].evidence[]
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].evidence[].at
+해당 저장·생성 함수에서 구성. [R08]
+
+
+=== PAGE 48 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+48
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+accounts[].evidence[].kind
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].evidence[].eventId
+해당 저장·생성 함수에서 구성. [R08]
+accounts[].durations[]
+해당 저장·생성 함수에서 구성. [R08]
+series[]
+해당 저장·생성 함수에서 구성. [R08 / R07]
+series[].at
+해당 저장·생성 함수에서 구성. [R08 / R07]
+series[].overlap
+해당 저장·생성 함수에서 구성. [R08 / R07]
+series[].retry
+해당 저장·생성 함수에서 구성. [R08 / R07]
+series[].observed
+해당 저장·생성 함수에서 구성. [R08 / R07]
+truncated
+사전 신호 또는 계정 목록이 200개를 넘으면 True. [R08 / R07]
+coverage
+해당 저장·생성 함수에서 구성. [R08 / R07]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "contractVersion": 1,
+  "scope": "<형식: String>",
+  "asOf": "<형식: String (ISO 8601, UTC)>",
+  "windowStart": "<형식: String (ISO 8601, UTC)>",
+  "windowEnd": "<형식: String (ISO 8601, UTC)>",
+  "ruleVersion": "<형식: String>",
+  "policy": {},
+  "status": "<형식: String>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R08 / R07 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 49 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+49
+4.17 ticketguard.anomaly_health
+역할: 이상 처리 상태
+_id=ingest 한 문서. 정상 갱신은 replace_one, 적재 실패 일부 경로는 status만 $set upsert. 상태에 따라 asOf·ruleVersion 존재가
+다름.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R08 / R06]
+String
+항상 기록
+아니오
+문서 식별 키
+status [R08 / R06]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+asOf [R08 / R06]
+Date (UTC)
+상태·실패 경로에
+따라
+아니오
+계산 기준 시각
+ruleVersion [R08 / R06]
+String
+상태·실패 경로에
+따라
+아니오
+규칙·정책 버전
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R08 / R06]
+status
+processing / ready / blocked [R08 / R06]
+asOf
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R08 / R06]
+ruleVersion
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R08 / R06]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "status": "<형식: String>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R08 / R06 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 50 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+50
+4.18 ticketguard.network_versions
+역할: 버전별 요청 관측 집계
+문서 1개=계산 결과와 검증 범위의 SHA-256 버전. 최초 본문은 $setOnInsert. 재사용 버전의 expiresAt 해제. 공개 포인터 교체 후
+이전 문서는 조건부 TTL 예약.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R13 / R14]
+String
+항상 기록
+아니오
+문서 식별 키
+data [R13 / R14]
+Document
+항상 기록
+아니오
+불변 공개 집계 본문
+data.contractVersion [R14]
+Int32 / Int64
+항상 기록
+아니오
+문서 계약 버전
+data.windowStart [R14]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+집계 시간창 시작
+data.windowEnd [R14]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+집계 시간창 끝
+data.bucketSeconds [R14]
+Int32 / Int64
+항상 기록
+아니오
+버킷 간격(초)
+data.latestRequestIngestedAt [R14]
+String (ISO 8601,
+UTC)
+항상 기록
+예
+마지막 요청 원본 적재 시각
+data.thresholdMs [R14]
+Double / Null
+항상 기록
+예
+지연 판정 기준(밀리초)
+data.summary [R14]
+Document
+항상 기록
+아니오
+집계 합계
+data.summary.requests [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+요청 수
+data.summary.http4xx [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+HTTP 4xx 수
+data.summary.http5xx [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+HTTP 5xx 수
+data.summary.measured [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+지연 측정 가능 요청 수
+data.summary.slow [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+기준을 초과한 요청 수
+data.features[] [R14]
+Array<Document>
+항상 기록
+아니오
+기능별 요청 집계
+data.features[].id [R14]
+String
+항상 기록
+아니오
+관측·조치 식별자
+data.features[].requests [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+요청 수
+data.features[].http4xx [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+HTTP 4xx 수
+data.features[].http5xx [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+HTTP 5xx 수
+data.features[].measured [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+지연 측정 가능 요청 수
+data.features[].slow [R14]
+Int32 / Int64 / Null
+항상 기록
+예
+기준을 초과한 요청 수
+data.sources [R14]
+Document
+항상 기록
+아니오
+관측원별 상태
+data.sources.django [R14]
+String
+항상 기록
+아니오
+업무 관측원 상태
+data.sources.gateway [R14]
+String
+항상 기록
+아니오
+해당 관측원의 미관측 값
+data.sources.health [R14]
+String
+항상 기록
+아니오
+상태 관측원 상태
+
+
+=== PAGE 51 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+51
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+ranges[] [R13 / R14]
+Array<Document>
+항상 기록
+아니오
+원본 위치 검증 범위
+ranges[].topic [R13 / R14]
+String
+항상 기록
+아니오
+원본 토픽 이름
+ranges[].partition [R13 / R14]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+ranges[].start [R13 / R14]
+Int32 / Int64
+항상 기록
+아니오
+처리 시작 시각 또는 구간 시작 위치
+ranges[].end [R13 / R14]
+Int32 / Int64
+항상 기록
+아니오
+구간 끝 위치(제외)
+publishedAt [R13 / R14]
+Date (UTC)
+항상 기록
+아니오
+최초 공개 저장 시각
+expiresAt [R13 / R14]
+Date (UTC)
+조건부
+아니오
+만료 예정 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R13 / R14]
+data
+해당 저장·생성 함수에서 구성. [R13 / R14]
+data.contractVersion
+고정 1. [R14]
+data.windowStart
+해당 저장·생성 함수에서 구성. [R14]
+data.windowEnd
+해당 저장·생성 함수에서 구성. [R14]
+data.bucketSeconds
+고정 300. [R14]
+data.latestRequestIngestedAt
+해당 저장·생성 함수에서 구성. [R14]
+data.thresholdMs
+NETWORK_HEADERS_THRESHOLD_MS가 있으면 양의 유한값; 없으면 null. [R14]
+data.summary
+해당 저장·생성 함수에서 구성. [R14]
+data.summary.requests
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.summary.http4xx
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.summary.http5xx
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.summary.measured
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.summary.slow
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.features[]
+해당 저장·생성 함수에서 구성. [R14]
+data.features[].id
+해당 저장·생성 함수에서 구성. [R14]
+data.features[].requests
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.features[].http4xx
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.features[].http5xx
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.features[].measured
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.features[].slow
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R14]
+data.sources
+해당 저장·생성 함수에서 구성. [R14]
+
+
+=== PAGE 52 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+52
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+data.sources.django
+해당 저장·생성 함수에서 구성. [R14]
+data.sources.gateway
+현 구현은 독립 게이트웨이 관측 미확인. [R14]
+data.sources.health
+해당 저장·생성 함수에서 구성. [R14]
+ranges[]
+해당 저장·생성 함수에서 구성. [R13 / R14]
+ranges[].topic
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R13 / R14]
+ranges[].partition
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R13 / R14]
+ranges[].start
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R13 / R14]
+ranges[].end
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R13 / R14]
+publishedAt
+해당 저장·생성 함수에서 구성. [R13 / R14]
+expiresAt
+현재 공개 버전 제외. 공개 후 5분이 지난 이전 버전에 now+5분 만료 예약. [R13 / R14]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "data": {},
+  "ranges": [],
+  "publishedAt": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. publishedAt 오름차순; expiresAt TTL=0. 이전 버전만 만료 예약. [R13]
+주요 저장·생성 근거: R13 / R14 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 53 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+53
+4.19 ticketguard.network_series
+역할: 버전별 요청 시계열
+network_versions와 같은 버전당 1개. 5분 버킷 12개(1시간). 최초 삽입·이전 버전 TTL 정책은 network_versions와 동일.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R13 / R14]
+String
+항상 기록
+아니오
+문서 식별 키
+windowStart [R13 / R14]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+집계 시간창 시작
+windowEnd [R13 / R14]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+집계 시간창 끝
+buckets[] [R13 / R14]
+Array<Document>
+항상 기록
+아니오
+시간 버킷 목록
+buckets[].at [R13 / R14]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+관측·집계 기준 시각
+buckets[].observed [R13 / R14]
+Boolean
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+buckets[].gateway [R13 / R14]
+Null
+항상 기록
+예
+해당 관측원의 미관측 값
+buckets[].requests [R13 / R14]
+Int32 / Int64 / Null
+항상 기록
+예
+요청 수
+buckets[].http4xx [R13 / R14]
+Int32 / Int64 / Null
+항상 기록
+예
+HTTP 4xx 수
+buckets[].http5xx [R13 / R14]
+Int32 / Int64 / Null
+항상 기록
+예
+HTTP 5xx 수
+buckets[].measured [R13 / R14]
+Int32 / Int64 / Null
+항상 기록
+예
+지연 측정 가능 요청 수
+buckets[].slow [R13 / R14]
+Int32 / Int64 / Null
+항상 기록
+예
+기준을 초과한 요청 수
+publishedAt [R13 / R14]
+Date (UTC)
+항상 기록
+아니오
+최초 공개 저장 시각
+expiresAt [R13 / R14]
+Date (UTC)
+조건부
+아니오
+만료 예정 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R13 / R14]
+windowStart
+해당 저장·생성 함수에서 구성. [R13 / R14]
+windowEnd
+해당 저장·생성 함수에서 구성. [R13 / R14]
+buckets[]
+해당 저장·생성 함수에서 구성. [R13 / R14]
+buckets[].at
+해당 저장·생성 함수에서 구성. [R13 / R14]
+buckets[].observed
+해당 저장·생성 함수에서 구성. [R13 / R14]
+buckets[].gateway
+현 구현은 독립 게이트웨이 관측 미확인. [R13 / R14]
+buckets[].requests
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R13 / R14]
+buckets[].http4xx
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R13 / R14]
+
+
+=== PAGE 54 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+54
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+buckets[].http5xx
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R13 / R14]
+buckets[].measured
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R13 / R14]
+buckets[].slow
+수신 관측이 있는 5분 버킷의 합. 미관측 구간은 null; slow는 기준 미설정 시 null. [R13 / R14]
+publishedAt
+해당 저장·생성 함수에서 구성. [R13 / R14]
+expiresAt
+현재 공개 버전 제외. 공개 후 5분이 지난 이전 버전에 now+5분 만료 예약. [R13 / R14]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "windowStart": "<형식: String (ISO 8601, UTC)>",
+  "windowEnd": "<형식: String (ISO 8601, UTC)>",
+  "buckets": [],
+  "publishedAt": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. publishedAt 오름차순; expiresAt TTL=0. 이전 버전만 만료 예약. [R13]
+주요 저장·생성 근거: R13 / R14 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 55 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+55
+4.20 ticketguard.network_public
+역할: 네트워크 현재 공개 포인터
+_id=all 한 문서. 버전과 시계열 준비 후 replace_one(upsert=True). 현재 공개 버전 참조만 보관.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R13]
+String
+항상 기록
+아니오
+문서 식별 키
+version [R13]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R13]
+version
+해당 저장·생성 함수에서 구성. [R13]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "version": "<형식: String>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R13 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 56 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+56
+4.21 ticketguard.raw_events
+역할: 초기화용 컬렉션
+초기화 스크립트에서 빈 컬렉션만 생성. 현재 저장 문서·필드·문서 단위는 코드상 미확인.
+항목
+확인 결과
+필드
+저장 문서 생성 코드가 없어 필드 명세 확정 불가. _id 기본 동작을 임의의 업무 스키마로 확장하지 않음.
+문서 예시
+정의된 문서 구조가 없어 예시를 만들지 않음.
+인덱스·보존
+생성 스크립트에서 추가 인덱스·필드 validator 없음. 실제 인덱스는 미조회.
+근거
+R35
+
+
+=== PAGE 57 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+57
+4.22 ticketguard_flow.flow_versions
+역할: 범위별 검증 흐름 집계
+문서 1개=metrics·ranges·scope 내용의 SHA-256 버전. 최초 삽입 후 불변. 현재 공개 문서의 expiresAt은 해제, 이전 버전에 만료
+예약.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R09 / R10 / R11]
+String
+항상 기록
+아니오
+문서 식별 키
+metrics [R09 / R10 / R11]
+Document
+항상 기록
+아니오
+검증된 계산 결과 또는 시험 지표
+metrics.contractVersion [R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+문서 계약 버전
+metrics.calculationVersion [R10 /
+R11]
+Int32 / Int64
+항상 기록
+아니오
+계산 형식 버전
+metrics.asOf [R10 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+계산 기준 시각
+metrics.windowStart [R10 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+집계 시간창 시작
+metrics.countingUnit [R10 / R11]
+String
+항상 기록
+아니오
+인원 집계 단위
+metrics.presenceTimeoutSeconds [R10
+/ R11]
+Int32 / Int64
+항상 기록
+아니오
+활동 유지 판단 시간(초)
+metrics.current [R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+현재 활동 브라우저 수
+metrics.cancelled [R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+취소 대상 수
+metrics.interrupted [R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+중단 대상 수
+metrics.booking [R10 / R11]
+Document
+항상 기록
+아니오
+예매 식별자 또는 예매 집계
+metrics.booking.numerator [R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+예매 성공 분자
+metrics.booking.denominator [R10 /
+R11]
+Int32 / Int64
+항상 기록
+아니오
+예매 시작 분모
+metrics.booking.ratio [R10 / R11]
+Double / Null
+항상 기록
+예
+분자/분모 비율
+metrics.nodes[] [R10 / R11]
+Array<Document>
+항상 기록
+아니오
+단계 노드 목록
+metrics.nodes[].id [R10]
+String
+항상 기록
+아니오
+관측·조치 식별자
+metrics.nodes[].label [R10]
+String
+항상 기록
+아니오
+표시용 규칙·단계 이름
+metrics.nodes[].order [R10]
+Int32 / Int64
+항상 기록
+아니오
+단계 정렬 순서
+metrics.nodes[].current [R10]
+Int32 / Int64
+항상 기록
+아니오
+현재 활동 브라우저 수
+metrics.nodes[].dwell [R10]
+Document
+항상 기록
+아니오
+체류 시간 통계
+metrics.nodes[].dwell.meanSeconds
+[R10]
+Double / Null
+항상 기록
+예
+평균 체류 초
+metrics.nodes[].dwell.medianSeconds
+[R10]
+Double / Null
+항상 기록
+예
+중앙 체류 초
+
+
+=== PAGE 58 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+58
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+metrics.nodes[].dwell.samples [R10]
+Int32 / Int64
+항상 기록
+아니오
+통계 표본 수
+metrics.nodes[].ongoing [R10]
+Int32 / Int64
+항상 기록
+아니오
+진행 중 시도 수
+metrics.nodes[].entered [R10]
+Int32 / Int64
+항상 기록
+아니오
+단계 진입 대상 수
+metrics.edges[] [R10 / R11]
+Array<Document>
+항상 기록
+아니오
+단계 간 이동 목록
+metrics.edges[].source [R10]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+metrics.edges[].target [R10]
+String
+항상 기록
+아니오
+이동 도착 단계
+metrics.edges[].kind [R10]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+metrics.edges[].moves [R10]
+Int32 / Int64
+항상 기록
+아니오
+이동 대상 수
+metrics.edges[].numerator [R10]
+Int32 / Int64
+항상 기록
+아니오
+예매 성공 분자
+metrics.edges[].denominator [R10]
+Int32 / Int64
+항상 기록
+아니오
+예매 시작 분모
+metrics.edges[].ratio [R10]
+Double / Null
+항상 기록
+예
+분자/분모 비율
+metrics.edges[].ongoing [R10]
+Int32 / Int64
+항상 기록
+아니오
+진행 중 시도 수
+metrics.calculatedAt [R10 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+계산 수행 시각
+metrics.latestReceivedAt [R10 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+예
+마지막 수신 시각
+metrics.liveCoverageStart [R10 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+실시간 관측 시작 시각
+metrics.scope [R10 / R11]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+metrics.verifiedAt [R10 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+검증 시각
+ranges[] [R09 / R10 / R11]
+Array<Document>
+항상 기록
+아니오
+원본 위치 검증 범위
+ranges[].topic [R09 / R10 / R11]
+String
+항상 기록
+아니오
+원본 토픽 이름
+ranges[].partition [R09 / R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+ranges[].start [R09 / R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+처리 시작 시각 또는 구간 시작 위치
+ranges[].end [R09 / R10 / R11]
+Int32 / Int64
+항상 기록
+아니오
+구간 끝 위치(제외)
+scope [R09 / R10 / R11]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+status [R09 / R10 / R11]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+verifiedAt [R09 / R10 / R11]
+Date (UTC)
+항상 기록
+아니오
+검증 시각
+publishedAt [R09 / R10 / R11]
+Date (UTC)
+항상 기록
+아니오
+최초 공개 저장 시각
+expiresAt [R09 / R10 / R11]
+Date (UTC)
+조건부
+아니오
+만료 예정 시각
+생성·검증 규칙 및 참조
+
+
+=== PAGE 59 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+59
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R09 / R10 / R11]
+metrics
+해당 저장·생성 함수에서 구성. [R09 / R10 / R11]
+metrics.contractVersion
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.calculationVersion
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.asOf
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.windowStart
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.countingUnit
+고정 browser_session. [R10 / R11]
+metrics.presenceTimeoutSeconds
+기본 30초. 설정 범위는 FlowConfig.load() 검증 참조. [R10 / R11]
+metrics.current
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.cancelled
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.interrupted
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.booking
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.booking.numerator
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.booking.denominator
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.booking.ratio
+분모 없음 또는 표본 없음이면 null. 비율은 분자/분모; 평균 비율 아님. [R10 / R11]
+metrics.nodes[]
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.nodes[].id
+해당 저장·생성 함수에서 구성. [R10]
+metrics.nodes[].label
+해당 저장·생성 함수에서 구성. [R10]
+metrics.nodes[].order
+해당 저장·생성 함수에서 구성. [R10]
+metrics.nodes[].current
+활동 신호가 유효한 브라우저 중 해당 단계의 수. [R10]
+metrics.nodes[].dwell
+해당 저장·생성 함수에서 구성. [R10]
+metrics.nodes[].dwell.meanSeconds
+분모 없음 또는 표본 없음이면 null. 비율은 분자/분모; 평균 비율 아님. [R10]
+metrics.nodes[].dwell.medianSeconds
+분모 없음 또는 표본 없음이면 null. 비율은 분자/분모; 평균 비율 아님. [R10]
+metrics.nodes[].dwell.samples
+해당 저장·생성 함수에서 구성. [R10]
+metrics.nodes[].ongoing
+해당 저장·생성 함수에서 구성. [R10]
+metrics.nodes[].entered
+해당 저장·생성 함수에서 구성. [R10]
+metrics.edges[]
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.edges[].source
+해당 저장·생성 함수에서 구성. [R10]
+metrics.edges[].target
+해당 저장·생성 함수에서 구성. [R10]
+metrics.edges[].kind
+forward / backward / retry / cancel. [R10]
+metrics.edges[].moves
+해당 저장·생성 함수에서 구성. [R10]
+
+
+=== PAGE 60 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+60
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+metrics.edges[].numerator
+해당 저장·생성 함수에서 구성. [R10]
+metrics.edges[].denominator
+해당 저장·생성 함수에서 구성. [R10]
+metrics.edges[].ratio
+분모 없음 또는 표본 없음이면 null. 비율은 분자/분모; 평균 비율 아님. [R10]
+metrics.edges[].ongoing
+해당 저장·생성 함수에서 구성. [R10]
+metrics.calculatedAt
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.latestReceivedAt
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.liveCoverageStart
+해당 저장·생성 함수에서 구성. [R10 / R11]
+metrics.scope
+all 또는 공백 없는 JSON [simulation, show, schedule]. 관측 조합만 생성. [R10 / R11]
+metrics.verifiedAt
+해당 저장·생성 함수에서 구성. [R10 / R11]
+ranges[]
+해당 저장·생성 함수에서 구성. [R09 / R10 / R11]
+ranges[].topic
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R09 / R10 / R11]
+ranges[].partition
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R09 / R10 / R11]
+ranges[].start
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R09 / R10 / R11]
+ranges[].end
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R09 / R10 / R11]
+scope
+all 또는 공백 없는 JSON [simulation, show, schedule]. 관측 조합만 생성. [R09 / R10 / R11]
+status
+해당 저장·생성 함수에서 구성. [R09 / R10 / R11]
+verifiedAt
+해당 저장·생성 함수에서 구성. [R09 / R10 / R11]
+publishedAt
+해당 저장·생성 함수에서 구성. [R09 / R10 / R11]
+expiresAt
+현재 공개 버전에는 없음. 이전 버전 교체·미공개 정리 시 now+30초 만료 예약. [R09 / R10 / R11]
+
+
+=== PAGE 61 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+61
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "metrics": {},
+  "ranges": [],
+  "scope": "<형식: String>",
+  "status": "<형식: String>",
+  "verifiedAt": {
+    "$date": "2026-11-24T00:00:00Z"
+  },
+  "publishedAt": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (scope ASC, publishedAt DESC); expiresAt TTL=0. 교체 후 30초 유예. [R09]
+주요 저장·생성 근거: R09 / R10 / R11 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 62 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+62
+4.23 ticketguard_flow.flow_series
+역할: 범위별 접속·예매 시계열
+문서 1개=scope:version. 최신 버전에 최근 1시간의 5초 시계열을 내장. 최초 삽입 후 불변. 현재 공개 버전 유지·이전 버전 TTL.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R09 / R11]
+String
+항상 기록
+아니오
+문서 식별 키
+scope [R09 / R11]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+version [R09 / R11]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+at [R09 / R11]
+Date (UTC)
+항상 기록
+아니오
+관측·집계 기준 시각
+publishedAt [R09 / R11]
+Date (UTC)
+항상 기록
+아니오
+최초 공개 저장 시각
+presence[] [R09 / R11]
+Array<Document>
+항상 기록
+아니오
+접속 추정 시계열
+presence[].epoch [R09 / R11]
+Int32 / Int64 (epoch
+초)
+조건부
+아니오
+시계열 기준 epoch 초
+presence[].at [R09 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+관측·집계 기준 시각
+presence[].asOf [R09 / R11]
+String (ISO 8601,
+UTC)
+조건부
+아니오
+계산 기준 시각
+presence[].current [R09 / R11]
+Int32 / Int64
+항상 기록
+예
+현재 활동 브라우저 수
+presence[].observed [R09 / R11]
+Boolean
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+booking[] [R09 / R11]
+Array<Document>
+항상 기록
+아니오
+예매 식별자 또는 예매 집계
+booking[].at [R09 / R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+관측·집계 기준 시각
+booking[].numerator [R09 / R11]
+Int32 / Int64
+항상 기록
+예
+예매 성공 분자
+booking[].denominator [R09 / R11]
+Int32 / Int64
+항상 기록
+예
+예매 시작 분모
+booking[].ratio [R09 / R11]
+Double / Null
+항상 기록
+예
+분자/분모 비율
+booking[].ongoing [R09 / R11]
+Int32 / Int64
+항상 기록
+예
+진행 중 시도 수
+booking[].observed [R09 / R11]
+Boolean
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+expiresAt [R09 / R11]
+Date (UTC)
+조건부
+아니오
+만료 예정 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R09 / R11]
+scope
+all 또는 공백 없는 JSON [simulation, show, schedule]. 관측 조합만 생성. [R09 / R11]
+version
+해당 저장·생성 함수에서 구성. [R09 / R11]
+at
+해당 저장·생성 함수에서 구성. [R09 / R11]
+
+
+=== PAGE 63 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+63
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+publishedAt
+해당 저장·생성 함수에서 구성. [R09 / R11]
+presence[]
+해당 저장·생성 함수에서 구성. [R09 / R11]
+presence[].epoch
+5초 격자 기준 epoch 정수. [R09 / R11]
+presence[].at
+해당 저장·생성 함수에서 구성. [R09 / R11]
+presence[].asOf
+해당 저장·생성 함수에서 구성. [R09 / R11]
+presence[].current
+미관측 격자에서는 null. 관측된 격자의 0과 구분. [R09 / R11]
+presence[].observed
+해당 저장·생성 함수에서 구성. [R09 / R11]
+booking[]
+해당 저장·생성 함수에서 구성. [R09 / R11]
+booking[].at
+해당 저장·생성 함수에서 구성. [R09 / R11]
+booking[].numerator
+미관측 격자에서는 null. 관측된 격자의 0과 구분. [R09 / R11]
+booking[].denominator
+미관측 격자에서는 null. 관측된 격자의 0과 구분. [R09 / R11]
+booking[].ratio
+분모 없음 또는 표본 없음이면 null. 비율은 분자/분모; 평균 비율 아님. [R09 / R11]
+booking[].ongoing
+미관측 격자에서는 null. 관측된 격자의 0과 구분. [R09 / R11]
+booking[].observed
+해당 저장·생성 함수에서 구성. [R09 / R11]
+expiresAt
+현재 공개 버전에는 없음. 이전 버전 교체·미공개 정리 시 now+30초 만료 예약. [R09 / R11]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "scope": "<형식: String>",
+  "version": "<형식: String>",
+  "at": {
+    "$date": "2026-11-24T00:00:00Z"
+  },
+  "publishedAt": {
+    "$date": "2026-11-24T00:00:00Z"
+  },
+  "presence": [],
+  "booking": []
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (scope, at, publishedAt) ASC; expiresAt TTL=0. 교체 후 30초 유예. [R09]
+주요 저장·생성 근거: R09 / R11 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 64 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+64
+4.24 ticketguard_flow.flow_public
+역할: 범위별 현재 공개 포인터
+문서 1개=scope 1개. 버전 본문과 시계열 저장 완료 후 replace_one. 범위별로 원자적이며 모든 범위의 동시 교체는 아님.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R09]
+String
+항상 기록
+아니오
+문서 식별 키
+version [R09]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+asOf [R09]
+Date (UTC)
+항상 기록
+아니오
+계산 기준 시각
+status [R09]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+seriesCutoff [R09]
+Date (UTC)
+항상 기록
+아니오
+시계열 조회 시작 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R09]
+version
+해당 저장·생성 함수에서 구성. flow_versions는 (version=_id, _id=scope), flow_series는
+(version=version, _id=scope)로 결합. [R09]
+asOf
+utc(now)로 생성한 datetime. metrics.asOf(ISO 문자열)와 다른 BSON Date. [R09]
+status
+해당 저장·생성 함수에서 구성. [R09]
+seriesCutoff
+해당 저장·생성 함수에서 구성. [R09]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "version": "<형식: String>",
+  "asOf": {
+    "$date": "2026-11-24T00:00:00Z"
+  },
+  "status": "<형식: String>",
+  "seriesCutoff": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R09 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 65 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+65
+4.25 ticketguard_flow.flow_health
+역할: 흐름 검증 상태
+_id=pipeline 한 문서. verified / waiting_chunks / blocked에 맞춰 replace_one. 실패하면 이전 공개 포인터를 새 정상값으로 바꾸
+지 않음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R11]
+String
+항상 기록
+아니오
+문서 식별 키
+status [R11]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+checkedAt [R11]
+String (ISO 8601,
+UTC)
+항상 기록
+아니오
+처리 상태 확인 시각
+processingSeconds [R11]
+Double 또는 정수
+상태·실패 경로에
+따라
+아니오
+계산·저장 소요 초
+pendingSeconds [R11]
+Double 또는 정수
+상태·실패 경로에
+따라
+아니오
+미완성 청크 대기 초
+errorClass [R11]
+String
+상태·실패 경로에
+따라
+아니오
+실패 예외 종류
+reason [R11]
+String
+상태·실패 경로에
+따라
+아니오
+분류·조치 사유
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R11]
+status
+verified / waiting_chunks / blocked [R11]
+checkedAt
+해당 저장·생성 함수에서 구성. [R11]
+processingSeconds
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R11]
+pendingSeconds
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R11]
+errorClass
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R11]
+reason
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R11]
+
+
+=== PAGE 66 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+66
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "status": "<형식: String>",
+  "checkedAt": "<형식: String (ISO 8601, UTC)>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R11 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 67 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+67
+4.26 ticketguard_flow.early_observations
+역할: 서버 업무·정책 최소 관측
+문서 1개=서버 관측 eventId 1개. 최초 투영만 upsert. fingerprint 충돌은 거부. 검증된 원본 위치(origin)와 만료 시각 추가.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R16 / R17 / R20]
+String
+항상 기록
+아니오
+문서 식별 키
+id [R16 / R17 / R20]
+String
+항상 기록
+아니오
+관측·조치 식별자
+time [R16 / R17 / R20]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+관측 발생 시각
+kind [R16 / R17 / R20]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+user [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+사용자 식별자
+attempt [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+예매 시도 식별자
+show [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+공연 식별자
+schedule [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+회차 식별자
+simulation [R16 / R17 / R20]
+Boolean / Null
+항상 기록
+예
+시뮬레이션 구분
+result [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+이벤트 결과 또는 뷰 결합 문서
+error [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+업무 오류 코드
+request [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+요청 식별자
+action [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+업무 동작 종류
+booking [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+예매 식별자 또는 예매 집계
+stage [R16 / R17 / R20]
+String / Null
+항상 기록
+예
+관측 단계
+sequence [R16 / R17 / R20]
+Int32 / Int64 / Null
+항상 기록
+예
+요청 순번
+wrong [R16 / R17 / R20]
+Int32 / Int64 / Null
+항상 기록
+예
+보안문자 실패 수
+fingerprint [R16 / R17 / R20]
+String
+항상 기록
+아니오
+동일 관측 내용의 지문
+policy [R16 / R17 / R20]
+Document
+조건부
+아니오
+계산에 적용한 정책 구조
+policy.ruleId [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+서버 정책 규칙 ID
+policy.ruleVersion [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+규칙·정책 버전
+policy.policyMode [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+서버 정책 작동 방식
+policy.restrictionId [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+일시 제한 식별자
+policy.restrictionScope [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+제한 대상 범위
+
+
+=== PAGE 68 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+68
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+policy.observed [R16 / R20]
+Int32 / Int64 / Null
+정책 종류·사건에
+따라 존재
+예
+관측값 또는 구간 관측 여부
+policy.threshold [R16 / R20]
+Int32 / Int64
+정책 이벤트에 존
+재
+아니오
+규칙 기준값
+policy.windowSeconds [R16 / R20]
+Int32 / Int64 / Null
+정책 이벤트에 존
+재
+예
+정책 판정 시간창(초)
+policy.appliedAt [R16 / R20]
+Double / 정수
+(epoch 초)
+정책 종류·사건에
+따라 존재
+아니오
+제한 적용 시각
+policy.expiresAt [R16 / R20]
+Double / 정수
+(epoch 초)
+정책 종류·사건에
+따라 존재
+아니오
+만료 예정 시각
+policy.releasedAt [R16 / R20]
+Double / 정수
+(epoch 초)
+정책 종류·사건에
+따라 존재
+예
+제한 해제 시각
+policy.releaseReason [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+제한 해제 사유
+policy.selectionError [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+좌석·수량 검증 오류
+policy.entryCause [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+진입 계기
+policy.predecessorAttemptId [R16 /
+R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+이전 예매 시도 ID
+policy.purchasedQuantity [R16 / R20]
+Int32 / Int64
+정책 종류·사건에
+따라 존재
+아니오
+이미 구매한 수량
+policy.requestedQuantity [R16 / R20]
+Int32 / Int64
+정책 종류·사건에
+따라 존재
+아니오
+이번 요청 수량
+policy.excluded [R16 / R20]
+Boolean
+정책 종류·사건에
+따라 존재
+아니오
+규칙 평가 제외 여부
+policy.loginSucceeded [R16 / R20]
+Boolean
+정책 종류·사건에
+따라 존재
+아니오
+로그인 성공 여부
+policy.openingState [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+오픈 상태
+policy.selectionValid [R16 / R20]
+Boolean
+정책 종류·사건에
+따라 존재
+아니오
+선택 유효 여부
+policy.evidence[] [R16 / R20]
+Array (입력 구조)
+정책 종류·사건에
+따라 존재
+코드상
+미확인
+판정 근거 이벤트 목록
+origin [R16 / R17 / R20]
+Document
+항상 기록
+아니오
+원본 위치 출처
+origin.source [R16 / R17 / R20]
+String
+항상 기록
+아니오
+원본 출처 또는 이벤트 발생 주체
+origin.topic [R16 / R17 / R20]
+String
+항상 기록
+아니오
+원본 토픽 이름
+origin.partition [R16 / R17 / R20]
+Int32 / Int64
+항상 기록
+아니오
+원본 파티션 번호
+origin.offset [R16 / R17 / R20]
+Int32 / Int64
+항상 기록
+아니오
+원본 레코드 위치
+expiresAt [R16 / R17 / R20]
+Date (UTC)
+항상 기록
+아니오
+만료 예정 시각
+
+
+=== PAGE 69 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+69
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R16 / R17 / R20]
+id
+해당 저장·생성 함수에서 구성. [R16 / R17 / R20]
+time
+해당 저장·생성 함수에서 구성. [R16 / R17 / R20]
+kind
+해당 저장·생성 함수에서 구성. [R16 / R17 / R20]
+user
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+attempt
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+show
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+schedule
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+simulation
+bool만 보존. 문맥 미확인·식별자 누락이면 null. [R16 / R17 / R20]
+result
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+error
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+request
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+action
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+booking
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+stage
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R16 / R17 / R20]
+sequence
+type=int만 보존. 그 외 null. [R16 / R17 / R20]
+wrong
+type=int만 보존. 그 외 null. [R16 / R17 / R20]
+fingerprint
+해당 저장·생성 함수에서 구성. [R16 / R17 / R20]
+policy
+해당 저장·생성 함수에서 구성. [R16 / R17 / R20]
+policy.ruleId
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.ruleVersion
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.policyMode
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.restrictionId
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.restrictionScope
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.observed
+평가 제외 사건만 null 가능. 탐지·적용은 규칙 기준 충족 정수. [R16 / R20]
+policy.threshold
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.windowSeconds
+규칙별 시간창 또는 null. validate_policy()의 RULES와 일치해야 함. [R16 / R20]
+policy.appliedAt
+적용·거절·해제 시 appliedAt/expiresAt 필수; 기간 300초. 해제에는 releasedAt 추가. [R16 / R20]
+policy.expiresAt
+적용·거절·해제 시 appliedAt/expiresAt 필수; 기간 300초. 해제에는 releasedAt 추가. [R16 / R20]
+policy.releasedAt
+적용·거절·해제 시 appliedAt/expiresAt 필수; 기간 300초. 해제에는 releasedAt 추가. [R16 / R20]
+
+
+=== PAGE 70 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+70
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+policy.releaseReason
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.selectionError
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.entryCause
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.predecessorAttemptId
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.purchasedQuantity
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.requestedQuantity
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.excluded
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.loginSucceeded
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.openingState
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.selectionValid
+해당 저장·생성 함수에서 구성. [R16 / R20]
+policy.evidence[]
+허용 정책 메타데이터에서 복사. 모든 요소 자료형을 검사하는 validator는 미확인. [R16 / R20]
+origin
+해당 저장·생성 함수에서 구성. [R16 / R17 / R20]
+origin.source
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R16 / R17 / R20]
+origin.topic
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R16 / R17 / R20]
+origin.partition
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R16 / R17 / R20]
+origin.offset
+원본 위치 추적 메타데이터. ranges의 start 포함·end 제외; origin은 개별 offset. [R16 / R17 / R20]
+expiresAt
+time + 7200 + 300 + 86400초. TTL 인덱스 존재. [R16 / R17 / R20]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "id": "<형식: String>",
+  "time": 1,
+  "kind": "<형식: String>",
+  "user": "<형식: String / Null>",
+  "attempt": "<형식: String / Null>",
+  "show": "<형식: String / Null>",
+  "schedule": "<형식: String / Null>",
+  "simulation": false
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (time, _id) ASC; expiresAt TTL=0. time+93900초 만료. [R17]
+주요 저장·생성 근거: R16 / R17 / R20 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 71 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+71
+4.27 ticketguard_flow.early_detections
+역할: 관측 신호 또는 서버 탐지 판정
+관측 기반은 SHA-256(ruleVersion:eventId), 서버 탐지는 server:restrictionId. 두 문서 형태를 같은 컬렉션에 replace 저장. 관측 신
+호 철회는 status=retracted. 자체 TTL 없음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+문서 식별 키
+id [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+관측·조치 식별자
+eventId [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+이벤트 식별자
+at [R18 / R17 / R16 / R20]
+Double / 정수
+(epoch 초)
+항상 기록 · 관측
+기반
+아니오
+관측·집계 기준 시각
+user [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+사용자 식별자
+attempt [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+예매 시도 식별자
+scope [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+집계 대상 범위 키
+observed [R18 / R17 / R16 / R20]
+Int32 / Int64 / Null
+항상 기록 · 관측
+기반
+아니오
+관측값 또는 구간 관측 여부
+threshold [R18 / R17 / R16 / R20]
+Int32 / Int64
+항상 기록 · 관측
+기반
+아니오
+규칙 기준값
+seconds [R18 / R17 / R16 / R20]
+Double 또는 정수
+항상 기록 · 관측
+기반
+아니오
+반복 관측 시간창(초)
+ruleVersion [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+규칙·정책 버전
+mode [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+관찰 또는 제한 방식
+evidence[] [R18 / R17 / R16 / R20]
+Array<String>
+항상 기록 · 관측
+기반
+아니오
+판정 근거 이벤트 목록
+status [R18 / R17 / R16 / R20]
+String
+항상 기록 · 관측
+기반
+아니오
+문서 유형별 처리·관측 상태
+_id [R18 / R17 / R16 / R20]
+String
+항상 기록 · 서버
+판정
+아니오
+문서 식별 키
+id [R18 / R17 / R16 / R20]
+String
+항상 기록 · 서버
+판정
+아니오
+관측·조치 식별자
+time [R18 / R17 / R16 / R20]
+Double / 정수
+(epoch 초)
+항상 기록 · 서버
+판정
+아니오
+관측 발생 시각
+kind [R18 / R17 / R16 / R20]
+String
+항상 기록 · 서버
+판정
+아니오
+관측 종류 또는 연결 종류
+
+
+=== PAGE 72 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+72
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+user [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+사용자 식별자
+attempt [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+예매 시도 식별자
+show [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+공연 식별자
+schedule [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+회차 식별자
+simulation [R18 / R17 / R16 / R20]
+Boolean / Null
+항상 기록 · 서버
+판정
+예
+시뮬레이션 구분
+result [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+이벤트 결과 또는 뷰 결합 문서
+error [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+업무 오류 코드
+request [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+요청 식별자
+action [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+업무 동작 종류
+booking [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+예매 식별자 또는 예매 집계
+stage [R18 / R17 / R16 / R20]
+String / Null
+항상 기록 · 서버
+판정
+예
+관측 단계
+sequence [R18 / R17 / R16 / R20]
+Int32 / Int64 / Null
+항상 기록 · 서버
+판정
+예
+요청 순번
+wrong [R18 / R17 / R16 / R20]
+Int32 / Int64 / Null
+항상 기록 · 서버
+판정
+예
+보안문자 실패 수
+fingerprint [R18 / R17 / R16 / R20]
+String
+항상 기록 · 서버
+판정
+아니오
+동일 관측 내용의 지문
+policy [R18 / R17 / R16 / R20]
+Document
+항상 기록 · 서버
+판정
+아니오
+계산에 적용한 정책 구조
+policy.ruleId [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+서버 정책 규칙 ID
+policy.ruleVersion [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+규칙·정책 버전
+policy.policyMode [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+서버 정책 작동 방식
+policy.restrictionId [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+일시 제한 식별자
+policy.restrictionScope [R16 / R20]
+String
+정책 이벤트에 존
+재
+아니오
+제한 대상 범위
+policy.observed [R16 / R20]
+Int32 / Int64 / Null
+정책 종류·사건에
+따라 존재
+예
+관측값 또는 구간 관측 여부
+
+
+=== PAGE 73 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+73
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+policy.threshold [R16 / R20]
+Int32 / Int64
+정책 이벤트에 존
+재
+아니오
+규칙 기준값
+policy.windowSeconds [R16 / R20]
+Int32 / Int64 / Null
+정책 이벤트에 존
+재
+예
+정책 판정 시간창(초)
+policy.appliedAt [R16 / R20]
+Double / 정수
+(epoch 초)
+정책 종류·사건에
+따라 존재
+아니오
+제한 적용 시각
+policy.expiresAt [R16 / R20]
+Double / 정수
+(epoch 초)
+정책 종류·사건에
+따라 존재
+아니오
+만료 예정 시각
+policy.releasedAt [R16 / R20]
+Double / 정수
+(epoch 초)
+정책 종류·사건에
+따라 존재
+예
+제한 해제 시각
+policy.releaseReason [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+제한 해제 사유
+policy.selectionError [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+좌석·수량 검증 오류
+policy.entryCause [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+진입 계기
+policy.predecessorAttemptId [R16 /
+R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+이전 예매 시도 ID
+policy.purchasedQuantity [R16 / R20]
+Int32 / Int64
+정책 종류·사건에
+따라 존재
+아니오
+이미 구매한 수량
+policy.requestedQuantity [R16 / R20]
+Int32 / Int64
+정책 종류·사건에
+따라 존재
+아니오
+이번 요청 수량
+policy.excluded [R16 / R20]
+Boolean
+정책 종류·사건에
+따라 존재
+아니오
+규칙 평가 제외 여부
+policy.loginSucceeded [R16 / R20]
+Boolean
+정책 종류·사건에
+따라 존재
+아니오
+로그인 성공 여부
+policy.openingState [R16 / R20]
+String
+정책 종류·사건에
+따라 존재
+아니오
+오픈 상태
+policy.selectionValid [R16 / R20]
+Boolean
+정책 종류·사건에
+따라 존재
+아니오
+선택 유효 여부
+policy.evidence[] [R16 / R20]
+Array (입력 구조)
+정책 종류·사건에
+따라 존재
+코드상
+미확인
+판정 근거 이벤트 목록
+status [R18 / R17 / R16 / R20]
+String
+항상 기록 · 서버
+판정
+아니오
+문서 유형별 처리·관측 상태
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id [관측 기반]
+관측 기반: SHA-256(ruleVersion:eventId). 서버 판정: server:{restrictionId}. [R18 / R17 / R16 / R20]
+id [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+eventId [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+at [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+
+
+=== PAGE 74 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+74
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+user [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+attempt [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+scope [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+observed [관측 기반]
+반복 수신 수 또는 서버가 관측한 규칙 판정값. series의 observed(bool)와 구분. [R18 / R17 / R16 /
+R20]
+threshold [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+seconds [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+ruleVersion [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+mode [관측 기반]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+evidence[] [관측 기반]
+근거 관측의 eventId 또는 정책 사건 ID 목록. [R18 / R17 / R16 / R20]
+status [관측 기반]
+관측 기반: active/retracted. 서버 판정: server_decision. [R18 / R17 / R16 / R20]
+_id [서버 판정]
+관측 기반: SHA-256(ruleVersion:eventId). 서버 판정: server:{restrictionId}. [R18 / R17 / R16 / R20]
+id [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+time [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+kind [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+user [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+attempt [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+show [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+schedule [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+simulation [서버 판정]
+bool만 보존. 문맥 미확인·식별자 누락이면 null. [R18 / R17 / R16 / R20]
+result [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+error [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+request [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+action [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+booking [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+stage [서버 판정]
+길이 1..256 문자열만 보존. 문맥 미확인이면 일부 식별자 null. [R18 / R17 / R16 / R20]
+sequence [서버 판정]
+type=int만 보존. 그 외 null. [R18 / R17 / R16 / R20]
+wrong [서버 판정]
+type=int만 보존. 그 외 null. [R18 / R17 / R16 / R20]
+fingerprint [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+policy [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R18 / R17 / R16 / R20]
+policy.ruleId [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.ruleVersion [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+
+
+=== PAGE 75 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+75
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+policy.policyMode [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.restrictionId [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.restrictionScope [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.observed [서버 판정]
+반복 수신 수 또는 서버가 관측한 규칙 판정값. series의 observed(bool)와 구분. [R16 / R20]
+policy.threshold [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.windowSeconds [서버 판정]
+규칙별 시간창 또는 null. validate_policy()의 RULES와 일치해야 함. [R16 / R20]
+policy.appliedAt [서버 판정]
+적용·거절·해제 시 appliedAt/expiresAt 필수; 기간 300초. 해제에는 releasedAt 추가. [R16 / R20]
+policy.expiresAt [서버 판정]
+적용·거절·해제 시 appliedAt/expiresAt 필수; 기간 300초. 해제에는 releasedAt 추가. [R16 / R20]
+policy.releasedAt [서버 판정]
+적용·거절·해제 시 appliedAt/expiresAt 필수; 기간 300초. 해제에는 releasedAt 추가. [R16 / R20]
+policy.releaseReason [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.selectionError [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.entryCause [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.predecessorAttemptId [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.purchasedQuantity [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.requestedQuantity [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.excluded [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.loginSucceeded [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.openingState [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.selectionValid [서버 판정]
+해당 저장·생성 함수에서 구성. 상위 문서 형태에 한정. [R16 / R20]
+policy.evidence[] [서버 판정]
+허용 정책 메타데이터에서 복사. 모든 요소 자료형을 검사하는 validator는 미확인. [R16 / R20]
+status [서버 판정]
+관측 기반: active/retracted. 서버 판정: server_decision. [R18 / R17 / R16 / R20]
+
+
+=== PAGE 76 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+76
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "id": "<형식: String>",
+  "eventId": "<형식: String>",
+  "at": 1,
+  "user": "<형식: String>",
+  "attempt": "<형식: String>",
+  "scope": "<형식: String>",
+  "observed": 1,
+  "threshold": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R18 / R17 / R16 / R20 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 77 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+77
+4.28 ticketguard_flow.early_actions
+역할: 서버 조치와 해제 관측
+문서 1개=요청·사유 조합 또는 restriction:restrictionId. 조치·해제 결과를 replace_one으로 재계산. 자체 TTL 없음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R18 / R17]
+String
+항상 기록
+아니오
+문서 식별 키
+id [R18 / R17]
+String
+항상 기록
+아니오
+관측·조치 식별자
+request [R18 / R17]
+String
+항상 기록
+아니오
+요청 식별자
+eventId [R18 / R17]
+String
+항상 기록
+아니오
+이벤트 식별자
+at [R18 / R17]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+user [R18 / R17]
+String / Null
+항상 기록
+예
+사용자 식별자
+attempt [R18 / R17]
+String / Null
+항상 기록
+예
+예매 시도 식별자
+scope [R18 / R17]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+reason [R18 / R17]
+String
+항상 기록
+아니오
+분류·조치 사유
+label [R18 / R17]
+String
+항상 기록
+아니오
+표시용 규칙·단계 이름
+ruleVersion [R18 / R17]
+String
+항상 기록
+아니오
+규칙·정책 버전
+threshold [R18 / R17]
+Int32 / Int64
+항상 기록
+아니오
+규칙 기준값
+observed [R18 / R17]
+Int32 / Int64 / Null
+항상 기록
+예
+관측값 또는 구간 관측 여부
+expiresAt [R18 / R17]
+Double / 정수
+(epoch 초)
+항상 기록
+예
+만료 예정 시각
+releaseStatus [R18 / R17]
+String
+항상 기록
+아니오
+해제 상태
+status [R18 / R17]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+appliedAt [R18 / R17]
+Double / 정수
+(epoch 초)
+조건부
+아니오
+제한 적용 시각
+restrictionId [R18 / R17]
+String
+조건부
+아니오
+일시 제한 식별자
+releasedAt [R18 / R17]
+Double / 정수
+(epoch 초)
+조건부
+예
+제한 해제 시각
+releaseEventId [R18 / R17]
+String
+조건부
+예
+해제 근거 이벤트 ID
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R18 / R17]
+id
+해당 저장·생성 함수에서 구성. [R18 / R17]
+request
+해당 저장·생성 함수에서 구성. [R18 / R17]
+
+
+=== PAGE 78 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+78
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+eventId
+해당 저장·생성 함수에서 구성. [R18 / R17]
+at
+해당 저장·생성 함수에서 구성. [R18 / R17]
+user
+해당 저장·생성 함수에서 구성. [R18 / R17]
+attempt
+해당 저장·생성 함수에서 구성. [R18 / R17]
+scope
+해당 저장·생성 함수에서 구성. [R18 / R17]
+reason
+해당 저장·생성 함수에서 구성. [R18 / R17]
+label
+해당 저장·생성 함수에서 구성. [R18 / R17]
+ruleVersion
+해당 저장·생성 함수에서 구성. [R18 / R17]
+threshold
+해당 저장·생성 함수에서 구성. [R18 / R17]
+observed
+반복 수신 수 또는 서버가 관측한 규칙 판정값. series의 observed(bool)와 구분. [R18 / R17]
+expiresAt
+expiresAt 기반 TTL은 인덱스가 선언된 컬렉션에만 적용. [R18 / R17]
+releaseStatus
+해당 저장·생성 함수에서 구성. [R18 / R17]
+status
+observed_applied 또는 observed_released. [R18 / R17]
+appliedAt
+해당 저장·생성 함수에서 구성. [R18 / R17]
+restrictionId
+해당 저장·생성 함수에서 구성. [R18 / R17]
+releasedAt
+해당 저장·생성 함수에서 구성. [R18 / R17]
+releaseEventId
+해당 저장·생성 함수에서 구성. [R18 / R17]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "id": "<형식: String>",
+  "request": "<형식: String>",
+  "eventId": "<형식: String>",
+  "at": 1,
+  "user": "<형식: String / Null>",
+  "attempt": "<형식: String / Null>",
+  "scope": "<형식: String>",
+  "reason": "<형식: String>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R18 / R17 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 79 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+79
+4.29 ticketguard_flow.early_versions
+역할: 검증된 사전 관측 공개 결과
+문서 1개=전체 검증 payload의 SHA-256. 최초 본문 삽입 후 early_public 교체. 현재 버전은 유지, 나머지는 now+300초 TTL 예약.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R17 / R18 / R19 / R20]
+String
+항상 기록
+아니오
+문서 식별 키
+version [R17 / R18 / R19 / R20]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+data [R17 / R18 / R19 / R20]
+Document
+항상 기록
+아니오
+불변 공개 집계 본문
+data.contractVersion [R17 / R18 /
+R19 / R20]
+Int32 / Int64
+항상 기록
+아니오
+문서 계약 버전
+data.asOf [R17 / R18 / R19 / R20]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+계산 기준 시각
+data.ruleVersion [R17 / R18 / R19 /
+R20]
+String
+항상 기록
+아니오
+규칙·정책 버전
+data.scopes [R17 / R18 / R19 / R20]
+Document
+항상 기록
+아니오
+범위별 집계 객체
+data.scopes.{scope} [R17 / R18 / R19
+/ R20]
+Document
+항상 기록
+아니오
+동적 항목 값
+data.scopes.{scope}.contractVersion
+[R18]
+Int32 / Int64
+항상 기록
+아니오
+문서 계약 버전
+data.scopes.{scope}.scope [R18]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+data.scopes.{scope}.asOf [R18]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+계산 기준 시각
+data.scopes.{scope}.windowStart [R18]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+집계 시간창 시작
+data.scopes.{scope}.windowEnd [R18]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+집계 시간창 끝
+data.scopes.{scope}.evaluationSeconds
+ [R18]
+Int32 / Int64
+항상 기록
+아니오
+규칙 평가 시간창(초)
+data.scopes.{scope}.policy [R18]
+Document
+항상 기록
+아니오
+계산에 적용한 정책 구조
+data.scopes.{scope}.policy.enabled
+[R18]
+Boolean
+상위 scope 결과
+마다 항상 기록
+아니오
+관측 규칙 활성 여부
+data.scopes.{scope}.policy.seconds
+[R18]
+Double 또는 정수
+상위 scope 결과
+마다 항상 기록
+아니오
+반복 관측 시간창(초)
+data.scopes.{scope}.policy.count
+[R18]
+Int32 / Int64
+상위 scope 결과
+마다 항상 기록
+아니오
+집계 수
+data.scopes.{scope}.policy.mode [R18]
+String
+상위 scope 결과
+마다 항상 기록
+아니오
+관찰 또는 제한 방식
+data.scopes.{scope}.policy.rule [R18]
+String
+상위 scope 결과
+마다 항상 기록
+아니오
+탐지 규칙 식별자
+data.scopes.{scope}.ruleVersion [R18]
+String
+항상 기록
+아니오
+규칙·정책 버전
+
+
+=== PAGE 80 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+80
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+data.scopes.{scope}.status [R18]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+data.scopes.{scope}.stages[] [R18]
+Array<Document>
+항상 기록
+아니오
+단계별 업무 집계
+data.scopes.{scope}.stages[].key
+[R18]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+data.scopes.{scope}.stages[].label
+[R18]
+String
+항상 기록
+아니오
+표시용 규칙·단계 이름
+data.scopes.{scope}.stages[].requests
+ [R18]
+Int32 / Int64 / Null
+항상 기록
+예
+요청 수
+data.scopes.{scope}.stages[].events
+[R18]
+Int32 / Int64 / Null
+항상 기록
+예
+업무 이벤트 수
+data.scopes.{scope}.stages[].attempts
+ [R18]
+Int32 / Int64 / Null
+항상 기록
+예
+고유 시도 수
+data.scopes.{scope}.stages[].accounts
+ [R18]
+Int32 / Int64 / Null
+항상 기록
+예
+계정별 구매·탐지 집계
+data.scopes.{scope}.stages[].outcomes
+ [R18]
+Document
+항상 기록
+아니오
+단계별 업무 결과 수
+data.scopes.{scope}.stages[].outcomes.
+login_success [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+login_failed [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+login_locked [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+queue_enter [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+booking_not_open [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+queue_register [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+queue_admitted [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+queue_cancel [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+connection_timeout [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+captcha_success [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+captcha_wrong [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+captcha_limit_reached [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+captcha_refresh [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+
+
+=== PAGE 81 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+81
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_request [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_success [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_fail [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_rejected [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_replayed [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stages[].outcomes.
+booking_access_rejected [R18]
+Int32 / Int64 / Null
+조건부
+예
+단계별 이벤트 수
+data.scopes.{scope}.stageDetections
+[R18]
+Document
+항상 기록
+아니오
+규칙별 탐지·조치 집계
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키} [R19 / R20]
+Document
+항상 기록
+아니오
+동적 항목 값
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.count [R19 / R20]
+Int32 / Int64
+항상 기록
+예
+집계 수
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.eventCount [R19 / R20]
+Int32 / Int64
+항상 기록
+예
+탐지 관련 이벤트 수
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.actionCount [R19 / R20]
+Int32 / Int64
+항상 기록
+예
+연결된 조치 수
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.unknownTargets [R19 / R20]
+Int32 / Int64
+항상 기록
+아니오
+대상 미확인 수
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.truncated [R19 / R20]
+Boolean
+항상 기록
+아니오
+목록 상한에 따른 잘림 여부
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[] [R19 / R20]
+Array<Document>
+항상 기록
+아니오
+탐지 사례 목록
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].eventId [R19 / R20]
+String
+항상 기록
+아니오
+이벤트 식별자
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].at [R19 / R20]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].user [R19 / R20]
+String / Null
+항상 기록
+예
+사용자 식별자
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].attempt [R19 / R20]
+String / Null
+항상 기록
+예
+예매 시도 식별자
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].reason [R19 / R20]
+String
+항상 기록
+아니오
+분류·조치 사유
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].evidence[] [R19 / R20]
+Array<String>
+항상 기록
+아니오
+판정 근거 이벤트 목록
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].scope [R19 / R20]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+
+
+=== PAGE 82 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+82
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].ruleVersion [R19 / R20]
+String
+조건부
+아니오
+규칙·정책 버전
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].observed [R19 / R20]
+Int32 / Int64 / Null
+조건부
+아니오
+관측값 또는 구간 관측 여부
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].threshold [R19 / R20]
+Int32 / Int64
+조건부
+아니오
+규칙 기준값
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].windowSeconds [R19 / R20]
+Int32 / Int64
+조건부
+아니오
+정책 판정 시간창(초)
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].restrictionId [R19 / R20]
+String
+조건부
+아니오
+일시 제한 식별자
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].actionStatus [R19 / R20]
+String
+조건부
+아니오
+제한 적용·해제 확인 상태
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].appliedAt [R19 / R20]
+Double / 정수 / Null
+(epoch 초)
+조건부
+예
+제한 적용 시각
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].expiresAt [R19 / R20]
+Double / 정수 / Null
+(epoch 초)
+조건부
+예
+만료 예정 시각
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].releasedAt [R19 / R20]
+Double / 정수 / Null
+(epoch 초)
+조건부
+예
+제한 해제 시각
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].releaseReason [R19 / R20]
+String / Null
+조건부
+예
+제한 해제 사유
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.rejectedCount [R19 / R20]
+Int32 / Int64
+조건부
+예
+제한 중 거절 수
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.actionSubjects [R19 / R20]
+Int32 / Int64
+조건부
+예
+조치 대상 계정 수
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.pendingEvidence [R19 / R20]
+Boolean
+조건부
+아니오
+판정·조치 근거 미완성 여부
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.ruleVersion [R19 / R20]
+String
+조건부
+아니오
+규칙·정책 버전
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.threshold [R19 / R20]
+Int32 / Int64
+조건부
+아니오
+규칙 기준값
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.windowSeconds [R19 / R20]
+Int32 / Int64
+조건부
+아니오
+정책 판정 시간창(초)
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.mode [R19 / R20]
+String
+조건부
+아니오
+관찰 또는 제한 방식
+data.scopes.{scope}.signalCount [R18]
+Int32 / Int64
+항상 기록
+예
+관측 신호 수
+data.scopes.{scope}.signalAttempts
+[R18]
+Int32 / Int64
+항상 기록
+예
+관측 신호의 고유 시도 수
+data.scopes.{scope}.detections[]
+[R18]
+Array<Document>
+항상 기록
+아니오
+탐지 결과 목록
+data.scopes.{scope}.detections[].id
+[R18]
+String
+항상 기록
+아니오
+관측·조치 식별자
+
+
+=== PAGE 83 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+83
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+data.scopes.{scope}.detections[].even
+tId [R18]
+String
+항상 기록
+아니오
+이벤트 식별자
+data.scopes.{scope}.detections[].at
+[R18]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+data.scopes.{scope}.detections[].user
+ [R18]
+String
+항상 기록
+아니오
+사용자 식별자
+data.scopes.{scope}.detections[].atte
+mpt [R18]
+String
+항상 기록
+아니오
+예매 시도 식별자
+data.scopes.{scope}.detections[].scop
+e [R18]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+data.scopes.{scope}.detections[].obse
+rved [R18]
+Int32 / Int64 / Null
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+data.scopes.{scope}.detections[].thre
+shold [R18]
+Int32 / Int64
+항상 기록
+아니오
+규칙 기준값
+data.scopes.{scope}.detections[].seco
+nds [R18]
+Double 또는 정수
+항상 기록
+아니오
+반복 관측 시간창(초)
+data.scopes.{scope}.detections[].rule
+Version [R18]
+String
+항상 기록
+아니오
+규칙·정책 버전
+data.scopes.{scope}.detections[].mode
+ [R18]
+String
+항상 기록
+아니오
+관찰 또는 제한 방식
+data.scopes.{scope}.detections[].evid
+ence[] [R18]
+Array<String>
+항상 기록
+아니오
+판정 근거 이벤트 목록
+data.scopes.{scope}.contexts [R18]
+Document
+항상 기록
+아니오
+이벤트별 관련 업무 사건
+data.scopes.{scope}.contexts.{eventId
+}[] [R18]
+Array<Document>
+항상 기록
+아니오
+동적 항목 값
+data.scopes.{scope}.contexts.{eventId
+}[].eventId [R18]
+String
+항상 기록
+아니오
+이벤트 식별자
+data.scopes.{scope}.contexts.{eventId
+}[].kind [R18]
+String
+항상 기록
+아니오
+관측 종류 또는 연결 종류
+data.scopes.{scope}.contexts.{eventId
+}[].result [R18]
+String / Null
+항상 기록
+예
+이벤트 결과 또는 뷰 결합 문서
+data.scopes.{scope}.contexts.{eventId
+}[].error [R18]
+String / Null
+항상 기록
+예
+업무 오류 코드
+data.scopes.{scope}.actionCount [R18]
+Int32 / Int64
+항상 기록
+예
+연결된 조치 수
+data.scopes.{scope}.actionAttempts
+[R18]
+Int32 / Int64
+항상 기록
+예
+조치 대상 고유 시도 수
+data.scopes.{scope}.actionSubjects
+[R18]
+Int32 / Int64
+항상 기록
+예
+조치 대상 계정 수
+data.scopes.{scope}.actionCounts
+[R18]
+Document
+항상 기록
+아니오
+조치 표시명별 수
+data.scopes.{scope}.actionCounts.{동적
+label} [R18]
+Int32 / Int64
+항상 기록
+아니오
+동적 항목 값
+
+
+=== PAGE 84 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+84
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+data.scopes.{scope}.actions[] [R18]
+Array<Document>
+항상 기록
+아니오
+조치 상세 목록
+data.scopes.{scope}.actions[].id
+[R18 / R17]
+String
+항상 기록
+아니오
+관측·조치 식별자
+data.scopes.{scope}.actions[].request
+ [R18 / R17]
+String
+항상 기록
+아니오
+요청 식별자
+data.scopes.{scope}.actions[].eventId
+ [R18 / R17]
+String
+항상 기록
+아니오
+이벤트 식별자
+data.scopes.{scope}.actions[].at
+[R18 / R17]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+data.scopes.{scope}.actions[].user
+[R18 / R17]
+String / Null
+항상 기록
+예
+사용자 식별자
+data.scopes.{scope}.actions[].attempt
+ [R18 / R17]
+String / Null
+항상 기록
+예
+예매 시도 식별자
+data.scopes.{scope}.actions[].scope
+[R18 / R17]
+String
+항상 기록
+아니오
+집계 대상 범위 키
+data.scopes.{scope}.actions[].reason
+[R18 / R17]
+String
+항상 기록
+아니오
+분류·조치 사유
+data.scopes.{scope}.actions[].label
+[R18 / R17]
+String
+항상 기록
+아니오
+표시용 규칙·단계 이름
+data.scopes.{scope}.actions[].ruleVer
+sion [R18 / R17]
+String
+항상 기록
+아니오
+규칙·정책 버전
+data.scopes.{scope}.actions[].thresho
+ld [R18 / R17]
+Int32 / Int64
+항상 기록
+아니오
+규칙 기준값
+data.scopes.{scope}.actions[].observe
+d [R18 / R17]
+Int32 / Int64 / Null
+항상 기록
+예
+관측값 또는 구간 관측 여부
+data.scopes.{scope}.actions[].expires
+At [R18 / R17]
+Double / 정수
+(epoch 초)
+항상 기록
+예
+만료 예정 시각
+data.scopes.{scope}.actions[].release
+Status [R18 / R17]
+String
+항상 기록
+아니오
+해제 상태
+data.scopes.{scope}.actions[].status
+[R18 / R17]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+data.scopes.{scope}.actions[].applied
+At [R18 / R17]
+Double / 정수
+(epoch 초)
+조건부
+아니오
+제한 적용 시각
+data.scopes.{scope}.actions[].restric
+tionId [R18 / R17]
+String
+조건부
+아니오
+일시 제한 식별자
+data.scopes.{scope}.actions[].release
+dAt [R18 / R17]
+Double / 정수
+(epoch 초)
+조건부
+예
+제한 해제 시각
+data.scopes.{scope}.actions[].release
+EventId [R18 / R17]
+String
+조건부
+예
+해제 근거 이벤트 ID
+data.scopes.{scope}.durations[] [R18]
+Array<Document>
+항상 기록
+아니오
+시간 표본 또는 기간 통계
+data.scopes.{scope}.durations[].key
+[R18]
+String
+항상 기록
+아니오
+원본 키 또는 항목 키
+
+
+=== PAGE 85 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+85
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+data.scopes.{scope}.durations[].label
+ [R18]
+String
+항상 기록
+아니오
+표시용 규칙·단계 이름
+data.scopes.{scope}.durations[].sampl
+es [R18]
+Int32 / Int64
+항상 기록
+아니오
+통계 표본 수
+data.scopes.{scope}.durations[].unava
+ilable [R18]
+Int32 / Int64
+항상 기록
+아니오
+평가 불가 수
+data.scopes.{scope}.durations[].mean
+[R18]
+Double / 정수 / Null
+항상 기록
+예
+평균 초
+data.scopes.{scope}.durations[].media
+n [R18]
+Double / 정수 / Null
+항상 기록
+예
+중앙 초
+data.scopes.{scope}.durations[].p95
+[R18]
+Double / 정수 / Null
+항상 기록
+예
+95백분위 초
+data.scopes.{scope}.series[] [R18]
+Array<Document>
+항상 기록
+아니오
+시간 구간별 집계
+data.scopes.{scope}.series[].at [R18]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+관측·집계 기준 시각
+data.scopes.{scope}.series[].observed
+ [R18]
+Boolean
+항상 기록
+아니오
+관측값 또는 구간 관측 여부
+data.scopes.{scope}.series[].detectio
+ns [R18]
+Int32 / Int64 / Null
+항상 기록
+예
+탐지 결과 목록
+data.scopes.{scope}.series[].actions
+[R18]
+Int32 / Int64 / Null
+항상 기록
+예
+조치 상세 목록
+data.scopes.{scope}.truncated [R18]
+Boolean
+항상 기록
+아니오
+목록 상한에 따른 잘림 여부
+data.scopes.{scope}.unlinkedActions
+[R18]
+Int32 / Int64
+항상 기록
+아니오
+요청과 연결할 수 없는 조치 수
+data.scopes.{scope}.unknownContext
+[R18]
+Int32 / Int64
+항상 기록
+아니오
+계정·시도·범위가 불명확한 관측 수
+data.scopes.{scope}.unknownQueueStage
+ [R18]
+Int32 / Int64
+항상 기록
+아니오
+대기열 단계 미확인 수
+data.scopes.{scope}.coverage [R18]
+String
+항상 기록
+아니오
+수집·집계 적용 범위 설명
+data.scopes.{scope}.fastPolicy [R18]
+String
+항상 기록
+아니오
+빠른 진행 정책 추가 여부
+data.inputCount [R17 / R18 / R19 /
+R20]
+Int32 / Int64
+항상 기록
+아니오
+검증된 입력 관측 수
+data.ranges[] [R17 / R18 / R19 / R20]
+Array<String>
+항상 기록
+아니오
+원본 위치 검증 범위
+publishedAt [R17 / R18 / R19 / R20]
+Date (UTC)
+항상 기록
+아니오
+최초 공개 저장 시각
+expiresAt [R17 / R18 / R19 / R20]
+Date (UTC)
+조건부
+아니오
+만료 예정 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+
+
+=== PAGE 86 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+86
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+version
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data.contractVersion
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data.asOf
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data.ruleVersion
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data.scopes
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data.scopes.{scope}
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data.scopes.{scope}.contractVersion
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.scope
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.asOf
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.windowStart
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.windowEnd
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.evaluationSeconds
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.policy
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.policy.enabled
+관찰 정책 dataclass의 고정 구조. enabled bool; seconds는 0<값<=3600; count는 2..25000; 
+mode=observe; rule=confirm-receipt-count-v1. [R18]
+data.scopes.{scope}.policy.seconds
+관찰 정책 dataclass의 고정 구조. enabled bool; seconds는 0<값<=3600; count는 2..25000; 
+mode=observe; rule=confirm-receipt-count-v1. [R18]
+data.scopes.{scope}.policy.count
+관찰 정책 dataclass의 고정 구조. enabled bool; seconds는 0<값<=3600; count는 2..25000; 
+mode=observe; rule=confirm-receipt-count-v1. [R18]
+data.scopes.{scope}.policy.mode
+관찰 정책 dataclass의 고정 구조. enabled bool; seconds는 0<값<=3600; count는 2..25000; 
+mode=observe; rule=confirm-receipt-count-v1. [R18]
+data.scopes.{scope}.policy.rule
+관찰 정책 dataclass의 고정 구조. enabled bool; seconds는 0<값<=3600; count는 2..25000; 
+mode=observe; rule=confirm-receipt-count-v1. [R18]
+data.scopes.{scope}.ruleVersion
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.status
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[]
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].key
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].label
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].requests
+해당 단계의 유효 관측이 없으면 null, 있으면 요청·이벤트·고유 대상 수. [R18]
+data.scopes.{scope}.stages[].events
+해당 단계의 유효 관측이 없으면 null, 있으면 요청·이벤트·고유 대상 수. [R18]
+data.scopes.{scope}.stages[].attempts
+해당 단계의 유효 관측이 없으면 null, 있으면 요청·이벤트·고유 대상 수. [R18]
+data.scopes.{scope}.stages[].accounts
+해당 단계의 유효 관측이 없으면 null, 있으면 요청·이벤트·고유 대상 수. [R18]
+data.scopes.{scope}.stages[].outcomes
+해당 저장·생성 함수에서 구성. [R18]
+
+
+=== PAGE 87 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+87
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+data.scopes.{scope}.stages[].outcomes.
+login_success
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+login_failed
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+login_locked
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+queue_enter
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+booking_not_open
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+queue_register
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+queue_admitted
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+queue_cancel
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+connection_timeout
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+captcha_success
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+captcha_wrong
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+captcha_limit_reached
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+captcha_refresh
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_request
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_success
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_fail
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_rejected
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+booking_confirm_replayed
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stages[].outcomes.
+booking_access_rejected
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stageDetections
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}
+해당 저장·생성 함수에서 구성. [R19 / R20]
+
+
+=== PAGE 88 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+88
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.count
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.eventCount
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.actionCount
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.unknownTargets
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.truncated
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[]
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].eventId
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].at
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].user
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].attempt
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].reason
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].evidence[]
+근거 관측의 eventId 또는 정책 사건 ID 목록. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].scope
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].ruleVersion
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].observed
+반복 수신 수 또는 서버가 관측한 규칙 판정값. series의 observed(bool)와 구분. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].threshold
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].windowSeconds
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].restrictionId
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].actionStatus
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].appliedAt
+적용·해제 근거가 없으면 null. TTL 인덱스용 BSON Date가 아님. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].expiresAt
+적용·해제 근거가 없으면 null. TTL 인덱스용 BSON Date가 아님. [R19 / R20]
+
+
+=== PAGE 89 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+89
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].releasedAt
+적용·해제 근거가 없으면 null. TTL 인덱스용 BSON Date가 아님. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.cases[].releaseReason
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.rejectedCount
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.actionSubjects
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.pendingEvidence
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.ruleVersion
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.threshold
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.windowSeconds
+해당 저장·생성 함수에서 구성. [R19 / R20]
+data.scopes.{scope}.stageDetections.{동적 규
+칙 키}.mode
+서버 규칙의 경우 temporary_restriction. [R19 / R20]
+data.scopes.{scope}.signalCount
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.signalAttempts
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[]
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].id
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].even
+tId
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].at
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].user
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].atte
+mpt
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].scop
+e
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].obse
+rved
+반복 수신 수 또는 서버가 관측한 규칙 판정값. series의 observed(bool)와 구분. [R18]
+data.scopes.{scope}.detections[].thre
+shold
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].seco
+nds
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].rule
+Version
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.detections[].mode
+해당 저장·생성 함수에서 구성. [R18]
+
+
+=== PAGE 90 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+90
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+data.scopes.{scope}.detections[].evid
+ence[]
+근거 관측의 eventId 또는 정책 사건 ID 목록. [R18]
+data.scopes.{scope}.contexts
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.contexts.{eventId
+}[]
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.contexts.{eventId
+}[].eventId
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.contexts.{eventId
+}[].kind
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.contexts.{eventId
+}[].result
+identifier()로 정제한 동명 관측 필드의 값 복사. [R18]
+data.scopes.{scope}.contexts.{eventId
+}[].error
+identifier()로 정제한 동명 관측 필드의 값 복사. [R18]
+data.scopes.{scope}.actionCount
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.actionAttempts
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.actionSubjects
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.actionCounts
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.actionCounts.{동적 label}
+각 조치 표시명(label)의 적용 건수. [R18]
+data.scopes.{scope}.actions[]
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.actions[].id
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].request
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].eventId
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].at
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].user
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].attempt
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].scope
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].reason
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].label
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].ruleVer
+sion
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].thresho
+ld
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].observe
+d
+반복 수신 수 또는 서버가 관측한 규칙 판정값. series의 observed(bool)와 구분. [R18 / R17]
+data.scopes.{scope}.actions[].expires
+At
+expiresAt 기반 TTL은 인덱스가 선언된 컬렉션에만 적용. [R18 / R17]
+
+
+=== PAGE 91 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+91
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+data.scopes.{scope}.actions[].release
+Status
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].status
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].applied
+At
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].restric
+tionId
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].release
+dAt
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.actions[].release
+EventId
+해당 저장·생성 함수에서 구성. [R18 / R17]
+data.scopes.{scope}.durations[]
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.durations[].key
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.durations[].label
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.durations[].sampl
+es
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.durations[].unava
+ilable
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.durations[].mean
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.durations[].media
+n
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.durations[].p95
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.series[]
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.series[].at
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.series[].observed
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.series[].detectio
+ns
+버킷 관측 여부 및 규칙·조치 가용성에 따라 null. [R18]
+data.scopes.{scope}.series[].actions
+버킷 관측 여부 및 규칙·조치 가용성에 따라 null. [R18]
+data.scopes.{scope}.truncated
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.unlinkedActions
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.unknownContext
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.unknownQueueStage
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.coverage
+해당 저장·생성 함수에서 구성. [R18]
+data.scopes.{scope}.fastPolicy
+고정 not_added. [R18]
+data.inputCount
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+data.ranges[]
+origin 객체들을 json.dumps(sort_keys=True)한 문자열을 중복 제거·정렬하여 저장. BSON Document
+배열이 아님. [R17 / R18 / R19 / R20]
+
+
+=== PAGE 92 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+92
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+publishedAt
+해당 저장·생성 함수에서 구성. [R17 / R18 / R19 / R20]
+expiresAt
+현재 버전을 제외한 이전 문서에 now+300초 만료 예약. [R17 / R18 / R19 / R20]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "version": "<형식: String>",
+  "data": {},
+  "publishedAt": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. expiresAt TTL=0. 이전 버전은 now+300초 만료 예약. [R17]
+주요 저장·생성 근거: R17 / R18 / R19 / R20 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 93 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+93
+4.30 ticketguard_flow.early_public
+역할: 사전 모니터링 공개 포인터
+_id=pipeline 한 문서. 모든 범위 결과가 검증·저장된 뒤 version을 replace.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R17]
+String
+항상 기록
+아니오
+문서 식별 키
+version [R17]
+String
+항상 기록
+아니오
+내용 지문 또는 버전 참조
+asOf [R17]
+Double / 정수
+(epoch 초)
+항상 기록
+아니오
+계산 기준 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R17]
+version
+해당 저장·생성 함수에서 구성. [R17]
+asOf
+해당 저장·생성 함수에서 구성. [R17]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "version": "<형식: String>",
+  "asOf": 1
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R17 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 94 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+94
+4.31 ticketguard_flow.early_health
+역할: 사전 모니터링 처리 상태
+_id=pipeline 한 문서. 처리 중·차단은 status $set upsert; ready는 version·asOf와 함께 replace. 차단 시 이전 버전 정보가 남을 수
+있음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R17]
+String
+항상 기록
+아니오
+문서 식별 키
+status [R17]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+version [R17]
+String
+상태·실패 경로에
+따라
+아니오
+내용 지문 또는 버전 참조
+asOf [R17]
+Double / 정수
+(epoch 초)
+상태·실패 경로에
+따라
+아니오
+계산 기준 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+해당 저장·생성 함수에서 구성. [R17]
+status
+processing / ready / blocked [R17]
+version
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R17]
+asOf
+replace_one은 이전 필드를 제거할 수 있음. 일부 $set 경로는 이전 값 유지. [R17]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "status": "<형식: String>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R17 (파일·함수·라인은 9장 참조)
+조회는 공개 포인터·버전의 일치를 확인한다. 내부 read_public()과 공개 뷰 정의는 R09, R31 참조. early_*는
+early_public·early_health·early_versions를 직접 읽는 관리자 전용 reader를 사용한다.
+
+
+=== PAGE 95 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+95
+4.32 ticketguard_qa.runs
+역할: 시험 실행과 내장 결과
+문서 1개=Run 1개. 생성은 insert_one, 종료는 결과·상태 $set. 진행 중이 아닌 Run만 명시 삭제 가능. 삭제 서비스는 관련 정답표
+도 삭제. TTL 없음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R21 / R22 / R23]
+String
+항상 기록
+아니오
+문서 식별 키
+target_kind [R21 / R22 / R23]
+String
+항상 기록
+아니오
+시험 대상 종류
+status [R21 / R22 / R23]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+run_config [R21 / R22 / R23]
+Document
+항상 기록
+아니오
+실행 설정 구조
+run_config.target_kind [R22]
+String
+항상 기록
+아니오
+시험 대상 종류
+run_config.suite_names[] [R22]
+Array<String>
+항상 기록
+아니오
+실행할 시험 묶음 목록
+run_config.virtual_user_count [R22]
+Int32 / Int64
+항상 기록
+아니오
+가상 사용자 수
+run_config.duration_sec [R22]
+Int32 / Int64
+항상 기록
+아니오
+최대 실행 시간 또는 실제 소요 초
+run_config.traffic_mix [R22]
+Document
+항상 기록
+아니오
+트래픽 구성 구조
+run_config.traffic_mix.percent_by_typ
+e [R22]
+Document
+항상 기록
+아니오
+유형별 비율(퍼센트)
+run_config.traffic_mix.percent_by_typ
+e.{actor_type} [R22]
+Int32 / Int64
+항상 기록
+아니오
+동적 항목 값
+run_config.random_seed [R22]
+Int32 / Int64
+항상 기록
+아니오
+재현용 시드(값 비공개)
+run_config.is_open_burst [R22]
+Boolean
+항상 기록
+아니오
+동시 진입 구분
+run_config.alert_policy [R22]
+String
+항상 기록
+아니오
+알림 정책
+run_config.bot_version_numbers [R22]
+Document
+항상 기록
+아니오
+유형별 참조·공개 버전
+run_config.bot_version_numbers.{actor
+_type} [R22]
+Int32 / Int64
+항상 기록
+아니오
+동적 항목 값
+run_config.wave_size [R22]
+Int32 / Int64
+항상 기록
+아니오
+회차별 진입 수
+suite_results[] [R21 / R22 / R23]
+Array<Document>
+항상 기록
+아니오
+시험 묶음 결과 목록
+suite_results[].suite_name [R21]
+String
+항상 기록
+아니오
+시험 묶음 이름
+suite_results[].outcome [R21]
+String
+항상 기록
+아니오
+시험 묶음 판정
+suite_results[].metrics [R21]
+Document
+항상 기록
+아니오
+검증된 계산 결과 또는 시험 지표
+suite_results[].metrics.{동적 metric_name}
+[R21]
+Double / 정수 (의도);
+값 타입 강제 미확인
+항상 기록
+코드상
+미확인
+동적 항목 값
+suite_results[].message [R21]
+String
+항상 기록
+아니오
+결과 메시지
+suite_results[].details [R21]
+Document
+항상 기록
+아니오
+시험 묶음별 확장 결과
+
+
+=== PAGE 96 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+96
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+suite_results[].details.{Suite별 동적 키} [R21]
+BSON 호환 값
+항상 기록
+코드상
+미확인
+동적 항목 값
+suite_results[].duration_sec [R21]
+Int32 / Int64
+항상 기록
+예
+최대 실행 시간 또는 실제 소요 초
+criterion_results[] [R21 / R22 / R23]
+Array<Document>
+항상 기록
+아니오
+합격 기준 결과 목록
+criterion_results[].criterion_id
+[R21 / R22 / R23]
+String
+항상 기록
+아니오
+합격 기준 ID
+criterion_results[].measured_value
+[R21 / R22 / R23]
+Double 또는 정수
+항상 기록
+예
+측정값
+criterion_results[].is_passed [R21 /
+R22 / R23]
+Boolean
+항상 기록
+예
+합격 여부
+started_at [R21 / R22 / R23]
+Date (UTC)
+항상 기록
+아니오
+실행 시작 시각
+finished_at [R21 / R22 / R23]
+Date (UTC)
+항상 기록
+예
+실행 종료 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+create_run_id(): run-YYYYMMDD-HHMMSS- + secrets.token_hex(2). 서비스는 UTC 시작 시각 사용.
+[R21 / R22 / R23]
+target_kind
+fake / live. [R21 / R22 / R23]
+status
+RUNNING / PASSED / FAILED / ERROR / CANCELLED. [R21 / R22 / R23]
+run_config
+해당 저장·생성 함수에서 구성. [R21 / R22 / R23]
+run_config.target_kind
+fake / live. [R22]
+run_config.suite_names[]
+해당 저장·생성 함수에서 구성. [R22]
+run_config.virtual_user_count
+해당 저장·생성 함수에서 구성. [R22]
+run_config.duration_sec
+해당 저장·생성 함수에서 구성. [R22]
+run_config.traffic_mix
+해당 저장·생성 함수에서 구성. [R22]
+run_config.traffic_mix.percent_by_typ
+e
+해당 저장·생성 함수에서 구성. [R22]
+run_config.traffic_mix.percent_by_typ
+e.{actor_type}
+종류별 버전 또는 비율 매핑. 문맥의 상위 객체 참조. [R22]
+run_config.random_seed
+해당 저장·생성 함수에서 구성. [R22]
+run_config.is_open_burst
+해당 저장·생성 함수에서 구성. [R22]
+run_config.alert_policy
+never / on_failure / always. [R22]
+run_config.bot_version_numbers
+해당 저장·생성 함수에서 구성. [R22]
+run_config.bot_version_numbers.{actor
+_type}
+종류별 버전 또는 비율 매핑. 문맥의 상위 객체 참조. [R22]
+run_config.wave_size
+해당 저장·생성 함수에서 구성. [R22]
+
+
+=== PAGE 97 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+97
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+suite_results[]
+해당 저장·생성 함수에서 구성. [R21 / R22 / R23]
+suite_results[].suite_name
+해당 저장·생성 함수에서 구성. [R21]
+suite_results[].outcome
+PASSED / FAILED / SKIPPED / ERROR. [R21]
+suite_results[].metrics
+해당 저장·생성 함수에서 구성. [R21]
+suite_results[].metrics.{동적 metric_name}
+SuiteResult.metrics를 그대로 저장. metric_name별 의미는 해당 Suite 구현에 따름. [R21]
+suite_results[].message
+해당 저장·생성 함수에서 구성. [R21]
+suite_results[].details
+해당 저장·생성 함수에서 구성. [R21]
+suite_results[].details.{Suite별 동적 키}
+각 Suite가 만든 details를 그대로 저장. 고정 스키마 아님. [R21]
+suite_results[].duration_sec
+해당 저장·생성 함수에서 구성. [R21]
+criterion_results[]
+해당 저장·생성 함수에서 구성. [R21 / R22 / R23]
+criterion_results[].criterion_id
+해당 저장·생성 함수에서 구성. [R21 / R22 / R23]
+criterion_results[].measured_value
+해당 저장·생성 함수에서 구성. [R21 / R22 / R23]
+criterion_results[].is_passed
+해당 저장·생성 함수에서 구성. [R21 / R22 / R23]
+started_at
+해당 저장·생성 함수에서 구성. [R21 / R22 / R23]
+finished_at
+생성 시 null, 종료 시 UTC datetime으로 갱신. [R21 / R22 / R23]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "target_kind": "<형식: String>",
+  "status": "<형식: String>",
+  "run_config": "<구조는 필드 명세 참조; 값 미수록>",
+  "suite_results": [],
+  "criterion_results": [],
+  "started_at": {
+    "$date": "2026-11-24T00:00:00Z"
+  },
+  "finished_at": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. started_at DESC; suite_results.suite_name ASC. TTL 없음. [R29]
+주요 저장·생성 근거: R21 / R22 / R23 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 98 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+98
+4.33 ticketguard_qa.answer_keys
+역할: 실행 또는 Suite별 정답표 구조
+문서 1개=Run 또는 Run/Suite 정답표. replace_one(upsert=True). Run 삭제 시 정규식으로 기본·Suite 정답표를 함께 삭제. TTL 없
+음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R24]
+String
+항상 기록
+아니오
+문서 식별 키
+entries[] [R24]
+Array<Document>
+항상 기록
+아니오
+세션 정답 항목 목록
+entries[].session_key [R24]
+String
+항상 기록
+아니오
+시험 세션 식별자
+entries[].actor_type [R24]
+String
+항상 기록
+아니오
+행동 유형 ID
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+기본 Run은 run_id. Suite별 정답표는 run_id/suite_name. [R24]
+entries[]
+해당 저장·생성 함수에서 구성. [R24]
+entries[].session_key
+해당 저장·생성 함수에서 구성. [R24]
+entries[].actor_type
+해당 저장·생성 함수에서 구성. [R24]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "entries": "<구조는 필드 명세 참조; 값 미수록>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R24 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 99 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+99
+4.34 ticketguard_qa.bot_versions
+역할: 종류별 행동 설정 버전 구조
+문서 1개=actor_type와 version_number 조합. insert_one만 사용. 종류별 최신 버전+1 생성; 동시 충돌은 unique 인덱스로 거절.
+기본 v1은 코드에서 제공되어 저장 문서가 없을 수 있음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R25 / R22 / R27]
+String
+항상 기록
+아니오
+문서 식별 키
+actor_type [R25 / R22 / R27]
+String
+항상 기록
+아니오
+행동 유형 ID
+version_number [R25 / R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+유형별 버전 번호
+profile [R25 / R22 / R27]
+Document
+항상 기록
+아니오
+버전별 프로필 구조
+profile.behavior [R25 / R22 / R27]
+Document
+항상 기록
+아니오
+행동 설정 구조(값 비공개)
+profile.behavior.entry_delay_after_op
+en_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+오픈 이후 진입 지연 평균(ms)
+profile.behavior.entry_delay_deviatio
+n_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+진입 지연 편차(ms)
+profile.behavior.click_interval_mean_
+ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+클릭 간격 평균(ms)
+profile.behavior.click_interval_devia
+tion_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+클릭 간격 편차(ms)
+profile.behavior.browse_page_count
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+예매 전 조회 페이지 수
+profile.behavior.page_dwell_mean_ms
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+화면 체류 평균(ms)
+profile.behavior.page_dwell_deviation
+_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+화면 체류 편차(ms)
+profile.behavior.sessions_per_device
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+기기당 동시 세션 수
+profile.behavior.sold_out_retry_count
+ [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+매진 후 재시도 수
+profile.behavior.sold_out_retry_delay
+_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+매진 후 재시도 간격(ms)
+profile.behavior.browser_trace_level
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+브라우저 관측 수준
+profile.behavior.booking_sequence
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+예매 순서 코드
+profile.behavior.browser_identity
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+브라우저 식별 방식 코드
+profile.change_note [R25 / R22 / R27]
+String
+항상 기록
+아니오
+변경 메모
+saved_at [R25 / R22 / R27]
+Date (UTC)
+항상 기록
+아니오
+버전 저장 시각
+
+
+=== PAGE 100 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+100
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+actor_type:v{version_number}. (actor_type, version_number) 복합 unique. [R25 / R22 / R27]
+actor_type
+해당 저장·생성 함수에서 구성. [R25 / R22 / R27]
+version_number
+해당 저장·생성 함수에서 구성. [R25 / R22 / R27]
+profile
+해당 저장·생성 함수에서 구성. [R25 / R22 / R27]
+profile.behavior
+해당 저장·생성 함수에서 구성. [R25 / R22 / R27]
+profile.behavior.entry_delay_after_op
+en_ms
+입력 폼: 0..600000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+profile.behavior.entry_delay_deviatio
+n_ms
+입력 폼: 0..600000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+profile.behavior.click_interval_mean_
+ms
+입력 폼: 10..60000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+profile.behavior.click_interval_devia
+tion_ms
+입력 폼: 0..60000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공
+개. [R22 / R27]
+profile.behavior.browse_page_count
+입력 폼: 0..10. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+profile.behavior.page_dwell_mean_ms
+입력 폼: 0..120000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+profile.behavior.page_dwell_deviation
+_ms
+입력 폼: 0..120000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+profile.behavior.sessions_per_device
+입력 폼: 1..50. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+profile.behavior.sold_out_retry_count
+입력 폼: 0..20. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+profile.behavior.sold_out_retry_delay
+_ms
+입력 폼: 0..60000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공
+개. [R22 / R27]
+profile.behavior.browser_trace_level
+입력 폼: 0..1. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+profile.behavior.booking_sequence
+입력 폼: 0..4. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+profile.behavior.browser_identity
+입력 폼: 0..1. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+profile.change_note
+해당 저장·생성 함수에서 구성. [R25 / R22 / R27]
+saved_at
+해당 저장·생성 함수에서 구성. [R25 / R22 / R27]
+
+
+=== PAGE 101 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+101
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "actor_type": "<형식: String>",
+  "version_number": 1,
+  "profile": "<구조는 필드 명세 참조; 값 미수록>",
+  "saved_at": {
+    "$date": "2026-11-24T00:00:00Z"
+  }
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. (actor_type, version_number) 복합 unique. 각 단일 필드가 개별 unique인 것은 아님. [R29]
+주요 저장·생성 근거: R25 / R22 / R27 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 102 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+102
+4.35 ticketguard_qa.bot_types
+역할: 사용자 정의 유형 구조
+문서 1개=사용자 정의 유형 1개. 초안 insert 후 허용 필드를 $set. 작성 상태와 입력 검증이 별도 존재. 기본 제공 유형 문서가 반
+드시 존재하는 구조가 아님.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R26 / R22 / R27]
+String
+항상 기록
+아니오
+문서 식별 키
+actor_type [R26 / R22 / R27]
+String
+항상 기록
+아니오
+행동 유형 ID
+short_name [R26 / R22 / R27]
+String
+항상 기록
+아니오
+사용자 정의 유형 약호
+display_name [R26 / R22 / R27]
+String
+항상 기록
+아니오
+유형 표시 이름
+purpose [R26 / R22 / R27]
+String
+항상 기록
+아니오
+유형 목적
+category_id [R26 / R22 / R27]
+String
+항상 기록
+아니오
+행동 분류 ID
+color_hex [R26 / R22 / R27]
+String
+항상 기록
+아니오
+유형 색상 코드
+detection_signals[] [R26 / R22 / R27]
+Array<String>
+항상 기록
+아니오
+표시용 탐지 흔적
+detection_target_id [R26 / R22 / R27]
+String
+항상 기록
+예
+연결된 평가 목표 ID
+status [R26 / R22 / R27]
+String
+항상 기록
+아니오
+문서 유형별 처리·관측 상태
+base_actor_type [R26 / R22 / R27]
+String
+항상 기록
+아니오
+초기 복사한 행동 유형
+traffic_channel [R26 / R22 / R27]
+String
+항상 기록
+아니오
+시험 접근 방식
+initial_behavior [R26 / R22 / R27]
+Document
+항상 기록
+아니오
+초기 행동 설정 구조(값 비공개)
+initial_behavior.entry_delay_after_op
+en_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+오픈 이후 진입 지연 평균(ms)
+initial_behavior.entry_delay_deviatio
+n_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+진입 지연 편차(ms)
+initial_behavior.click_interval_mean_
+ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+클릭 간격 평균(ms)
+initial_behavior.click_interval_devia
+tion_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+클릭 간격 편차(ms)
+initial_behavior.browse_page_count
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+예매 전 조회 페이지 수
+initial_behavior.page_dwell_mean_ms
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+화면 체류 평균(ms)
+initial_behavior.page_dwell_deviation
+_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+화면 체류 편차(ms)
+initial_behavior.sessions_per_device
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+기기당 동시 세션 수
+initial_behavior.sold_out_retry_count
+ [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+매진 후 재시도 수
+
+
+=== PAGE 103 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+103
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+initial_behavior.sold_out_retry_delay
+_ms [R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+매진 후 재시도 간격(ms)
+initial_behavior.browser_trace_level
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+브라우저 관측 수준
+initial_behavior.booking_sequence
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+예매 순서 코드
+initial_behavior.browser_identity
+[R22 / R27]
+Int32 / Int64
+항상 기록
+아니오
+브라우저 식별 방식 코드
+created_at [R26 / R22 / R27]
+Date (UTC)
+항상 기록
+아니오
+생성 시각
+updated_at [R26 / R22 / R27]
+Date (UTC)
+항상 기록
+아니오
+수정 시각
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+BOT_{short_name}; actor_type에도 같은 문자열 저장. [R26 / R22 / R27]
+actor_type
+해당 저장·생성 함수에서 구성. [R26 / R22 / R27]
+short_name
+기본 유형 및 기존 유형과 중복되지 않는 약호; unique 인덱스. [R26 / R22 / R27]
+display_name
+업데이트 입력 시 trim 후 1..30자. [R26 / R22 / R27]
+purpose
+초기 초안은 빈 문자열. 업데이트 입력 시 trim 후 1..80자. [R26 / R22 / R27]
+category_id
+해당 저장·생성 함수에서 구성. [R26 / R22 / R27]
+color_hex
+해당 저장·생성 함수에서 구성. [R26 / R22 / R27]
+detection_signals[]
+수정 시 비어 있지 않은 항목 1..3개, 각 60자 이하. [R26 / R22 / R27]
+detection_target_id
+null 또는 허용된 평가 목표 ID. [R26 / R22 / R27]
+status
+draft / review / active. 초안은 draft; 목적·탐지 흔적을 갖춰야 검증·사용 상태로 변경. [R26 / R22 /
+R27]
+base_actor_type
+해당 저장·생성 함수에서 구성. [R26 / R22 / R27]
+traffic_channel
+HTTP 트래픽 또는 브라우저 트래픽. update_identity()에서 허용 목록 확인. [R26 / R22 / R27]
+initial_behavior
+해당 저장·생성 함수에서 구성. [R26 / R22 / R27]
+initial_behavior.entry_delay_after_op
+en_ms
+입력 폼: 0..600000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+initial_behavior.entry_delay_deviatio
+n_ms
+입력 폼: 0..600000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+initial_behavior.click_interval_mean_
+ms
+입력 폼: 10..60000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+initial_behavior.click_interval_devia
+tion_ms
+입력 폼: 0..60000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공
+개. [R22 / R27]
+initial_behavior.browse_page_count
+입력 폼: 0..10. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+
+
+=== PAGE 104 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+104
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+initial_behavior.page_dwell_mean_ms
+입력 폼: 0..120000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+initial_behavior.page_dwell_deviation
+_ms
+입력 폼: 0..120000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비
+공개. [R22 / R27]
+initial_behavior.sessions_per_device
+입력 폼: 1..50. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+initial_behavior.sold_out_retry_count
+입력 폼: 0..20. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+initial_behavior.sold_out_retry_delay
+_ms
+입력 폼: 0..60000. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공
+개. [R22 / R27]
+initial_behavior.browser_trace_level
+입력 폼: 0..1. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+initial_behavior.booking_sequence
+입력 폼: 0..4. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+initial_behavior.browser_identity
+입력 폼: 0..1. behavior_to_dict는 해당 값을 그대로 직렬화. DB validator는 없음. 실제 설정값 비공개.
+[R22 / R27]
+created_at
+해당 저장·생성 함수에서 구성. [R26 / R22 / R27]
+updated_at
+해당 저장·생성 함수에서 구성. [R26 / R22 / R27]
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "actor_type": "<형식: String>",
+  "short_name": "<형식: String>",
+  "display_name": "<형식: String>",
+  "purpose": "<형식: String>",
+  "category_id": "<형식: String>",
+  "color_hex": "<형식: String>",
+  "detection_signals": [],
+  "detection_target_id": "<형식: String>"
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. short_name unique. actor_type 별도 unique 인덱스는 없음. [R29]
+주요 저장·생성 근거: R26 / R22 / R27 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 105 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+105
+4.36 ticketguard_qa.archive_exports
+역할: 승인된 내보내기 이력 구조
+문서 1개=내보내기 1회. 파일 작성 후 insert_one 기록. 끝난 Run만 내보내기 대상으로 승인. 실제 정답·행동 설정은 이 명세에 포
+함하지 않음.
+필드 구조 · 존재 조건
+필드 경로 / 근거
+BSON 형식
+키 존재 조건
+null
+의미
+_id [R28]
+String
+항상 기록
+아니오
+문서 식별 키
+exported_at [R28]
+Date (UTC)
+항상 기록
+아니오
+내보내기 기록 시각
+recipient [R28]
+String
+항상 기록
+아니오
+내보내기 수신 대상
+reason [R28]
+String
+항상 기록
+아니오
+분류·조치 사유
+run_ids[] [R28]
+Array<String>
+항상 기록
+아니오
+내보낸 실행 ID 목록
+collection_names[] [R28]
+Array<String>
+항상 기록
+아니오
+내보낸 묶음 이름 목록
+bot_version_numbers [R28]
+Document
+항상 기록
+아니오
+유형별 참조·공개 버전
+bot_version_numbers.{actor_type}
+[R28]
+Int32 / Int64
+항상 기록
+아니오
+동적 항목 값
+생성·검증 규칙 및 참조
+필드 경로
+생성 원천·허용값·검증 / 참조·비고
+_id
+create_archive_id(): UTC 시각 archive-YYYYMMDD-HHMMSS. 초 단위 생성이므로 같은 초 중복 insert
+는 _id unique로 거절 가능. [R28]
+exported_at
+해당 저장·생성 함수에서 구성. [R28]
+recipient
+build_archive_bundle에서 trim 후 빈 문자열 거부. 실제 수신자·사유 값은 미수록. [R28]
+reason
+build_archive_bundle에서 trim 후 빈 문자열 거부. 실제 수신자·사유 값은 미수록. [R28]
+run_ids[]
+해당 저장·생성 함수에서 구성. [R28]
+collection_names[]
+해당 저장·생성 함수에서 구성. [R28]
+bot_version_numbers
+해당 내보내기로 공개된 봇 버전 매핑만 기록. 실제 값 비공개. [R28]
+bot_version_numbers.{actor_type}
+종류별 버전 또는 비율 매핑. 문맥의 상위 객체 참조. [R28]
+
+
+=== PAGE 106 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+106
+구조 설명용 예시 · 실데이터 아님
+{
+  "_id": "example-document",
+  "exported_at": {
+    "$date": "2026-11-24T00:00:00Z"
+  },
+  "recipient": "<형식: String>",
+  "reason": "<형식: String>",
+  "run_ids": [],
+  "collection_names": [],
+  "bot_version_numbers": {}
+}
+예시는 최상위 일부만 표시했다. 생략된 필드·중첩 구조·조건부 문서 형태는 위 명세표가 기준이다.
+인덱스·보존 정책
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+주요 저장·생성 근거: R28 (파일·함수·라인은 9장 참조)
+
+
+=== PAGE 107 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+107
+5. MongoDB 뷰 명세
+뷰는 문서를 별도 복제·저장하지 않는다. 반환 스키마의 자료형·null은 아래 원본 필드와 같다. source 문서의 _id는 projection에서
+명시적으로 제외하지 않으면 반환된다.
+ticketguard.network_read_current
+항목
+내용
+viewOn
+network_public
+결합 대상
+network_versions
+결합 조건
+localField=version, foreignField=_id로 lookup 후 unwind. match 필터는 없음.
+반환 구조
+_id, version, result._id, result.data, result.publishedAt
+결합 없음
+unwind에서 보존 옵션을 주지 않았으므로 결합 문서가 없으면 해당 결과 행이 반환되지 않음.
+자료형
+pointer 필드는 원본 pointer 컬렉션, result 하위는 network_versions의 4장 명세와 동일.
+생성 근거
+R30 pipeline/database/network_views.js
+실제 반환 필드
+설명
+_id
+문서 식별 키 / 원본 필드와 동일
+version
+내용 지문 또는 버전 참조 / 원본 필드와 동일
+result
+이벤트 결과 또는 뷰 결합 문서 / 원본 필드와 동일
+result._id
+문서 식별 키 / 원본 필드와 동일
+result.data
+불변 공개 집계 본문 / 원본 필드와 동일
+result.data.contractVersion
+문서 계약 버전 / 원본 필드와 동일
+result.data.windowStart
+집계 시간창 시작 / 원본 필드와 동일
+result.data.windowEnd
+집계 시간창 끝 / 원본 필드와 동일
+result.data.bucketSeconds
+버킷 간격(초) / 원본 필드와 동일
+result.data.latestRequestIngestedAt
+마지막 요청 원본 적재 시각 / 원본 필드와 동일
+result.data.thresholdMs
+지연 판정 기준(밀리초) / 원본 필드와 동일
+result.data.summary
+집계 합계 / 원본 필드와 동일
+result.data.summary.requests
+요청 수 / 원본 필드와 동일
+result.data.summary.http4xx
+HTTP 4xx 수 / 원본 필드와 동일
+result.data.summary.http5xx
+HTTP 5xx 수 / 원본 필드와 동일
+result.data.summary.measured
+지연 측정 가능 요청 수 / 원본 필드와 동일
+result.data.summary.slow
+기준을 초과한 요청 수 / 원본 필드와 동일
+result.data.features[]
+기능별 요청 집계 / 원본 필드와 동일
+
+
+=== PAGE 108 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+108
+실제 반환 필드
+설명
+result.data.features[].id
+관측·조치 식별자 / 원본 필드와 동일
+result.data.features[].requests
+요청 수 / 원본 필드와 동일
+result.data.features[].http4xx
+HTTP 4xx 수 / 원본 필드와 동일
+result.data.features[].http5xx
+HTTP 5xx 수 / 원본 필드와 동일
+result.data.features[].measured
+지연 측정 가능 요청 수 / 원본 필드와 동일
+result.data.features[].slow
+기준을 초과한 요청 수 / 원본 필드와 동일
+result.data.sources
+관측원별 상태 / 원본 필드와 동일
+result.data.sources.django
+업무 관측원 상태 / 원본 필드와 동일
+result.data.sources.gateway
+해당 관측원의 미관측 값 / 원본 필드와 동일
+result.data.sources.health
+상태 관측원 상태 / 원본 필드와 동일
+result.publishedAt
+최초 공개 저장 시각 / 원본 필드와 동일
+ticketguard.network_read_series
+항목
+내용
+viewOn
+network_public
+결합 대상
+network_series
+결합 조건
+localField=version, foreignField=_id로 lookup 후 unwind. match 필터는 없음.
+반환 구조
+_id, version, result._id, result.windowStart, result.windowEnd, result.buckets[]
+결합 없음
+unwind에서 보존 옵션을 주지 않았으므로 결합 문서가 없으면 해당 결과 행이 반환되지 않음.
+자료형
+pointer 필드는 원본 pointer 컬렉션, result 하위는 network_series의 4장 명세와 동일.
+생성 근거
+R30 pipeline/database/network_views.js
+실제 반환 필드
+설명
+_id
+문서 식별 키 / 원본 필드와 동일
+version
+내용 지문 또는 버전 참조 / 원본 필드와 동일
+result
+이벤트 결과 또는 뷰 결합 문서 / 원본 필드와 동일
+result._id
+문서 식별 키 / 원본 필드와 동일
+result.windowStart
+집계 시간창 시작 / 원본 필드와 동일
+result.windowEnd
+집계 시간창 끝 / 원본 필드와 동일
+result.buckets[]
+시간 버킷 목록 / 원본 필드와 동일
+result.buckets[].at
+관측·집계 기준 시각 / 원본 필드와 동일
+result.buckets[].observed
+관측값 또는 구간 관측 여부 / 원본 필드와 동일
+
+
+=== PAGE 109 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+109
+실제 반환 필드
+설명
+result.buckets[].gateway
+해당 관측원의 미관측 값 / 원본 필드와 동일
+result.buckets[].requests
+요청 수 / 원본 필드와 동일
+result.buckets[].http4xx
+HTTP 4xx 수 / 원본 필드와 동일
+result.buckets[].http5xx
+HTTP 5xx 수 / 원본 필드와 동일
+result.buckets[].measured
+지연 측정 가능 요청 수 / 원본 필드와 동일
+result.buckets[].slow
+기준을 초과한 요청 수 / 원본 필드와 동일
+ticketguard_flow.flow_read_current
+항목
+내용
+viewOn
+flow_public
+결합 대상
+flow_versions
+결합 조건
+status=verified로 match. let version=$version, scope=$_id. target의 _id=version 및 target.scope=scope를 모두 만족하는
+ 문서를 lookup 후 unwind.
+반환 구조
+원본 flow_public의 _id, version, asOf, status, seriesCutoff와 result 문서 전체. result는 flow_versions의 모든 필드(조건부
+expiresAt 포함).
+결합 없음
+unwind에서 보존 옵션을 주지 않았으므로 결합 문서가 없으면 해당 결과 행이 반환되지 않음.
+자료형
+pointer 필드는 원본 pointer 컬렉션, result 하위는 flow_versions의 4장 명세와 동일.
+생성 근거
+R31 pipeline/database/flow_permissions.js
+실제 반환 필드
+설명
+_id
+문서 식별 키 / 원본 필드와 동일
+version
+내용 지문 또는 버전 참조 / 원본 필드와 동일
+asOf
+계산 기준 시각 / 원본 필드와 동일
+status
+문서 유형별 처리·관측 상태 / 원본 필드와 동일
+seriesCutoff
+시계열 조회 시작 시각 / 원본 필드와 동일
+result
+이벤트 결과 또는 뷰 결합 문서 / 하위 필드는 대응 원본 컬렉션 명세 전체와 동일
+
+
+=== PAGE 110 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+110
+ticketguard_flow.flow_read_series
+항목
+내용
+viewOn
+flow_public
+결합 대상
+flow_series
+결합 조건
+status=verified로 match. let version=$version, scope=$_id. target의 version=version 및 target.scope=scope를 모두 만족
+하는 문서를 lookup 후 unwind.
+반환 구조
+원본 flow_public의 _id, version, asOf, status, seriesCutoff와 result 문서 전체. result는 flow_series의 모든 필드(조건부
+expiresAt 포함).
+결합 없음
+unwind에서 보존 옵션을 주지 않았으므로 결합 문서가 없으면 해당 결과 행이 반환되지 않음.
+자료형
+pointer 필드는 원본 pointer 컬렉션, result 하위는 flow_series의 4장 명세와 동일.
+생성 근거
+R31 pipeline/database/flow_permissions.js
+실제 반환 필드
+설명
+_id
+문서 식별 키 / 원본 필드와 동일
+version
+내용 지문 또는 버전 참조 / 원본 필드와 동일
+asOf
+계산 기준 시각 / 원본 필드와 동일
+status
+문서 유형별 처리·관측 상태 / 원본 필드와 동일
+seriesCutoff
+시계열 조회 시작 시각 / 원본 필드와 동일
+result
+이벤트 결과 또는 뷰 결합 문서 / 하위 필드는 대응 원본 컬렉션 명세 전체와 동일
+
+
+=== PAGE 111 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+111
+6. 인덱스·보존 정책
+아래는 코드의 생성 선언이다. 실행 중인 인스턴스에 실제 적용되었는지는 확인하지 않았다. TTL 삭제는 즉시 실행을 보장하지 않
+으며, expiresAt 필드가 없는 현재 버전은 해당 TTL 대상으로 잡히지 않는다.
+컬렉션 / 범위
+인덱스·보존
+ticketguard_raw.behavior_events
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.booking_events
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.auth_events
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.http_events
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.performance_events
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.browser_errors
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.collector_events
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.raw_chunks
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.unclassified_events
+_id 기본 unique 인덱스. (source, topic, partition, offset) 오름차순, raw_kafka_position_v1. unique
+아님. TTL 없음. [R04]
+ticketguard_raw.raw_events
+생성 스크립트에서 추가 인덱스·필드 validator 없음. 실제 인덱스는 미조회.
+ticketguard.clean_events
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard.quarantine_events
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard.event_metrics
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard.anomaly_observations
+_id 기본 unique 인덱스. (time, _id) 오름차순; expiresAt TTL expireAfterSeconds=0. time+90300초
+만료. [R08]
+ticketguard.anomaly_events
+_id 기본 unique 인덱스. (occurredAt, ruleVersion) 오름차순; TTL 없음. [R08]
+ticketguard.anomaly_public
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard.anomaly_health
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard.network_versions
+_id 기본 unique 인덱스. publishedAt 오름차순; expiresAt TTL=0. 이전 버전만 만료 예약. [R13]
+ticketguard.network_series
+_id 기본 unique 인덱스. publishedAt 오름차순; expiresAt TTL=0. 이전 버전만 만료 예약. [R13]
+ticketguard.network_public
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard.raw_events
+생성 스크립트에서 추가 인덱스·필드 validator 없음. 실제 인덱스는 미조회.
+ticketguard_qa.runs
+_id 기본 unique 인덱스. started_at DESC; suite_results.suite_name ASC. TTL 없음. [R29]
+ticketguard_qa.answer_keys
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+
+
+=== PAGE 112 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+112
+컬렉션 / 범위
+인덱스·보존
+ticketguard_qa.bot_versions
+_id 기본 unique 인덱스. (actor_type, version_number) 복합 unique. 각 단일 필드가 개별 unique인
+것은 아님. [R29]
+ticketguard_qa.bot_types
+_id 기본 unique 인덱스. short_name unique. actor_type 별도 unique 인덱스는 없음. [R29]
+ticketguard_qa.archive_exports
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard_flow.flow_versions
+_id 기본 unique 인덱스. (scope ASC, publishedAt DESC); expiresAt TTL=0. 교체 후 30초 유예. [R09]
+ticketguard_flow.flow_series
+_id 기본 unique 인덱스. (scope, at, publishedAt) ASC; expiresAt TTL=0. 교체 후 30초 유예. [R09]
+ticketguard_flow.flow_public
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard_flow.flow_health
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard_flow.early_observations
+_id 기본 unique 인덱스. (time, _id) ASC; expiresAt TTL=0. time+93900초 만료. [R17]
+ticketguard_flow.early_detections
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard_flow.early_actions
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard_flow.early_versions
+_id 기본 unique 인덱스. expiresAt TTL=0. 이전 버전은 now+300초 만료 예약. [R17]
+ticketguard_flow.early_public
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+ticketguard_flow.early_health
+_id 기본 unique 인덱스. 추가 인덱스·TTL 선언은 확인하지 못함. 실제 인스턴스 인덱스는 미조회.
+
+
+=== PAGE 113 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+113
+7. 관계 명세
+참조 무결성은 DB 외래 키로 강제되지 않는다. _id 및 선언된 unique 인덱스는 대상 키의 중복을 제한할 뿐, 참조 대상의 존재를
+보장하지 않는다. 복사한 중첩 결과는 독립 참조와 구분한다.
+anomaly_events.eventId
+항목
+내용
+대상
+clean_events._id
+형태
+단일
+의미·카디널리티·선택성
+여러 규칙 판정 → 한 이벤트. 논리적 N:0..1; 대상은 _id unique. 판정 후 clean_events를 update_one.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R07 pipeline/anomaly/rules.py / R08 pipeline/anomaly/store.py
+anomaly_events.evidence[].eventId
+항목
+내용
+대상
+anomaly_observations._id
+형태
+배열
+의미·카디널리티·선택성
+관측 근거의 ID를 복사. 저장 중 evaluator가 같은 관측 집합에서 구성. 삭제·TTL 후 대상은 없을 수 있음. 전체 역방향 카디
+널리티 미확정.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R07 pipeline/anomaly/rules.py / R08 pipeline/anomaly/store.py
+network_public.version
+항목
+내용
+대상
+network_versions._id / network_series._id
+형태
+단일
+의미·카디널리티·선택성
+현재 pointer는 _id=all. 각 대상은 _id unique이며 0..1 조회. 과거 버전에는 현재 참조가 없을 수 있음.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R13 pipeline/network_metrics/store.py / R30 pipeline/database/network_views.js
+flow_public.(version, _id)
+항목
+내용
+대상
+flow_versions.(_id, scope)
+형태
+복합
+의미·카디널리티·선택성
+scope까지 같아야 하는 한 관계. _id unique로 대상 최대 1개. 읽기 중 삭제·교체 가능성 때문에 대상 존재를 별도 확인.
+
+
+=== PAGE 114 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+114
+항목
+내용
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R09 pipeline/user_flow/store.py / R31 pipeline/database/flow_permissions.js
+flow_public.(version, _id)
+항목
+내용
+대상
+flow_series.(version, scope)
+형태
+복합
+의미·카디널리티·선택성
+writer가 _id=scope:version으로 결정하고 뷰는 version+scope로 결합. version+scope 별도 unique 인덱스는 없음; writer
+계약과 DB 강제 제약을 구분.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R09 pipeline/user_flow/store.py / R31 pipeline/database/flow_permissions.js
+early_public.version / early_health.version
+항목
+내용
+대상
+early_versions._id
+형태
+단일·health는 조건부
+의미·카디널리티·선택성
+해당 version 본문 최대 1개. health의 version은 ready 때 기록하며 blocked 경로에서 이전 값이 남을 수 있음.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R17 pipeline/early_monitor/store.py
+early_detections.eventId
+항목
+내용
+대상
+early_observations._id
+형태
+관측 형태
+의미·카디널리티·선택성
+관측 기반 신호의 근거 ID. 서버 판정 형태는 id가 원 관측 ID이며 eventId 필드와 혼동하지 않음.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R18 pipeline/early_monitor/metrics.py / R17 pipeline/early_monitor/store.py / R16 pipeline/early_monitor/events.py
+early_detections.id [서버 판정]
+항목
+내용
+대상
+early_observations._id
+형태
+형태 조건부
+
+
+=== PAGE 115 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+115
+항목
+내용
+의미·카디널리티·선택성
+서버 decision의 row를 복사. 서버 판정 문서의 _id는 server:restrictionId이므로 원 관측 ID와 다름. 역방향 카디널리티 미확
+정.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R17 pipeline/early_monitor/store.py / R20 pipeline/early_monitor/server_policies.py
+early_actions.eventId
+항목
+내용
+대상
+early_observations._id
+형태
+단일
+의미·카디널리티·선택성
+행동 또는 정책 조치의 근거 관측. 정책 조치는 같은 restrictionId로 해제 근거를 추가 연결.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R18 pipeline/early_monitor/metrics.py / R17 pipeline/early_monitor/store.py
+early_observations.origin.(source,topic,partition,offset)
+항목
+내용
+대상
+ticketguard_raw의 분류 컬렉션 중 해당 위치
+형태
+복합·출처 검증
+의미·카디널리티·선택성
+verified_records()는 9개 분류 컬렉션에서 위치로 찾아 원문 일치를 대조한다. 0개는 대기, 중복은 차단. unique 인덱스로
+강제된 참조는 아니며 컬렉션명은 origin에 저장하지 않음. ERD에는 선 9개를 임의 FK처럼 추가하지 않았다.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R11 pipeline/user_flow/runtime.py / R34 pipeline/user_flow/verification.py
+answer_keys._id
+항목
+내용
+대상
+runs._id
+형태
+문자열 ID 규칙
+의미·카디널리티·선택성
+기본 Run은 같은 _id로 0..1, Suite는 run_id/suite_name으로 여러 문서. Run 삭제 시 prefix 정규식으로 함께 삭제. 단순 _id
+equality 하나로 Suite까지 표현하면 안 됨.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R24 qa/src/ticket_guard_qa/answer_key/answer_key_repository.py / R23 qa/src/ticket_guard_qa/test_runs/run_service.py
+runs.run_config.bot_version_numbers.{actor_type}
+항목
+내용
+대상
+bot_versions.(actor_type,version_number)
+
+
+=== PAGE 116 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+116
+항목
+내용
+형태
+동적 객체·복합
+의미·카디널리티·선택성
+키는 종류, 값은 버전. 복합 unique로 저장 버전 대상 최대 1개. 기본 버전은 코드 제공이므로 저장 문서가 없을 수 있음.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R25 qa/src/ticket_guard_qa/macro_bots/bot_profile_store.py / R22 qa/src/ticket_guard_qa/domain/models.py
+bot_versions.actor_type
+항목
+내용
+대상
+bot_types.actor_type
+형태
+사용자 정의 유형만
+의미·카디널리티·선택성
+사용자 정의 유형의 연결. 기본 제공 유형은 코드 카탈로그. actor_type 단일 unique 인덱스는 없으므로 DB 강제 카디널리
+티를 확정하지 않음.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R25 qa/src/ticket_guard_qa/macro_bots/bot_profile_store.py / R26
+qa/src/ticket_guard_qa/macro_bots/bot_type_store.py / R29 qa/src/ticket_guard_qa/qa_database/database.py
+archive_exports.run_ids[]
+항목
+내용
+대상
+runs._id
+형태
+배열
+의미·카디널리티·선택성
+여러 export가 여러 Run을 포함할 수 있는 논리적 다대다 참조. Run 삭제 후 이력 대상이 남는지 DB에서 강제하지 않음.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R28 qa/src/ticket_guard_qa/qa_database/archive_export.py
+anomaly_public.detections[] / early_versions.data.scopes.*
+항목
+내용
+대상
+계산된 결과의 중첩 복사
+형태
+EMBEDDED
+의미·카디널리티·선택성
+값 복사와 집계이며 외부 컬렉션의 FK가 아님. 이전 원문이나 판정이 변경되어도 해당 버전 문서가 자동 갱신되는 관계가
+아님.
+무결성
+외래 키 제약 없음. 문서 생성·검증 코드에 따른 논리적 관계.
+근거
+R08 pipeline/anomaly/store.py / R17 pipeline/early_monitor/store.py
+
+
+=== PAGE 117 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+117
+8. 구현 불일치·미확인 사항
+정제·격리 조회 계약 차이
+근거: 정제 _id는 eventId, 격리 _id는 topic:partition:offset. QA read_stored_outcomes()는 둘 다 전송 위치 _id와 partition/offset
+필드를 기대한다. 실제 두 writer 문서에는 partition/offset이 없다.
+영향·확인 필요: QA 위치 대조 조회의 누락·키 오류 가능성. 해당 계약을 수정하지 않고 현 상태를 기록했다.
+소스: R05 / R32
+격리 문서 eventId 부재
+근거: find_processed_event_ids()는 clean_events와 quarantine_events의 eventId를 조회하지만 현재 격리 문서는 _id와 reason만
+기록한다.
+영향·확인 필요: 격리를 eventId로 확인할 수 있다는 보장이 없다.
+소스: R05 / R32
+기본 정규화의 엄격성 범위
+근거: decode()는 schemaVersion, eventId/eventType 문자열, 시간대 있는 시각, details 객체를 검사한다. 정제의 사용자·공연·결과
+ 필드는 get()으로 전달하며 완전한 업무 검증을 재수행하지 않는다.
+영향·확인 필요: 명세의 기대 의미를 DB 강제 타입으로 오해하지 않아야 한다.
+소스: R12 / R05
+raw_events 초기화만 확인
+근거: 시스템·원본 두 DB의 raw_events는 초기화 스크립트에 존재하지만 현재 분류·정제 writer의 저장 대상이 아니다.
+영향·확인 필요: 빈 컬렉션 여부 및 과거 데이터의 실제 형태는 운영 DB 미조회로 미확인.
+소스: R35 / R36
+새 관측 이벤트 라우팅
+근거: ticketing_action_received 및 prevention_*는 현재 router의 GROUPS에 없다.
+영향·확인 필요: 원본 저장 시 unclassified_events로 분류될 수 있다. 원본 대조 코드는 미분류 컬렉션도 읽는다.
+소스: R02 / R16 / R34
+실제 지표 DB와 관리자 연결
+근거: flow writer는 URI의 DB, setup은 FLOW_DATABASE를 사용한다. 관리자 코드는 단일 URI로 읽으며 network 실행은
+ticketguard를 강제한다.
+영향·확인 필요: 설정 일치·동시 조회·배포 완료는 코드만으로 보장하지 않는다.
+소스: R37 / R15 / R31 / R33
+QA 미구현 조회
+근거: 판정 결과·세션 특징·일부 지연 조회는 NotImplementedError. count_quarantined_events(run_id)는 run_id를 사용하지 않고
+전체 건수를 반환한다.
+영향·확인 필요: 미구현 컬렉션을 설계 확정으로 추가하지 않았다. 격리 수를 Run 단위로 해석하면 안 된다.
+소스: R32
+화면 조회 상한
+
+
+=== PAGE 118 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+118
+근거: 기본 관리자 clean_events 목록은 최대 5000개, 필터 선택지 최대 200개 등 조회 상한이 있다.
+영향·확인 필요: 화면 계산은 전체 영구 데이터의 통계와 다를 수 있음. 이 문서는 저장 스키마 기준.
+소스: R33
+시간·보존 형식 차이
+근거: 일부 epoch 숫자와 ISO 문자열, BSON Date가 같은 이름의 at/asOf/expiresAt에 사용된다.
+영향·확인 필요: 이름만 보고 형식을 통일하면 안 됨. TTL은 BSON Date와 해당 인덱스 선언을 함께 확인해야 함.
+소스: R08 / R09 / R17 / R13
+운영 상태 미조회
+근거: DB 접속·listCollections·index_information·샘플 문서·validator·실제 건수는 조회하지 않았다.
+영향·확인 필요: 표의 인덱스·자료형은 코드 경로 기준이며 운영 적용 여부는 별도 확인 필요.
+소스: R04 / R29
+
+
+=== PAGE 119 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+119
+9. 소스 근거 목록
+라인 번호는 분석 기준 커밋과 현재 파일 내용 기준이다. 함수 범위에는 직접 정의된 중첩 문서 생성 코드가 포함된다. SHA-256은
+파일 동일성 확인용이며 자격 증명·데이터 내용이 아니다.
+R01 raw_consumer/records.py
+document: L16-27 / binary: L12-13
+SHA-256 d15922fb2eb182d7769c6f5953241a434569239fd0a536bcca7a331d2a40b203
+R02 raw_consumer/router.py
+route: L39-66
+SHA-256 f2179bd9cd253e1769bfa6db31aee84c1b0eaece6cb4e2ee4c22beea7b124f11
+R03 raw_consumer/mongo_writer.py
+write_batch: L16-54
+SHA-256 5bf9a8161a87a47b192049398a21a42943028fe1f85c8e894b8f2a6283ccd36f
+R04 raw_consumer/mongo/setup.js
+L1-25
+SHA-256 dcd700e6a65921acf7ea2a5c695b87830a3116f16b791faf84f612ef3af37602
+R05 pipeline/ingestion/normalization.py
+normalize: L32-46 / booking_fields: L11-29
+SHA-256 b82ea9136d99c24752fa1e8a3fc085070d072db4659f914f9b5a17ecfd40261d
+R06 pipeline/ingestion/mongo_writer.py
+write_partition: L57-103 / refresh_metrics: L147-195 / write_batch: L106-119
+SHA-256 16bacf6df481cd04d29cb28c89e49ac8ef1ad22e8586402a741901cc04d9fba3
+R07 pipeline/anomaly/rules.py
+project: L50-92 / evaluate: L95-200 / Policy: L18-47
+SHA-256 32fb79b254dd241bafa32b3a75b634ff221fed9d3307b44fbdbb6938d78fafa0
+R08 pipeline/anomaly/store.py
+observe: L18-25 / publication: L38-90 / refresh: L93-129 / indexes: L28-31
+SHA-256 429892a87ff71eaa74fa3ced055337a26af3b19a488b261c88271d1f91016b15
+R09 pipeline/user_flow/store.py
+publish: L23-46 / indexes: L16-20 / cleanup_unpublished: L49-55 / read_public: L58-73
+SHA-256 167d135329352166ef6b4d1c39bf5c41668d52f36a376b63e419eabf9e9da906
+R10 pipeline/user_flow/metrics.py
+calculate: L15-108 / ratio: L11-12
+SHA-256 b631cf69a2939990da08fc341afd0931830f46af49bfcc62c4d6f0007162237c
+
+
+=== PAGE 120 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+120
+R11 pipeline/user_flow/runtime.py
+_publish: L125-207 / batch: L56-104
+SHA-256 7fbfa3b8dc42f8cef478a2d6474a6f6e390a597dbfda241602f2f364a15fbedf
+R12 pipeline/user_flow/events.py
+decode: L27-36 / stamp: L14-20 / iso: L23-24
+SHA-256 34beb3e52c52e17849e54824cf2e678104151bb765c59e5e0d574098def3e3ec
+R13 pipeline/network_metrics/store.py
+publish: L14-31 / indexes: L8-11 / cleanup: L34-40
+SHA-256 d344989e3711c2193b5c1207d175f017a16a18b2386e6d78be627fe67852c578
+R14 pipeline/network_metrics/metrics.py
+calculate: L53-93 / count_requests: L43-50 / project: L25-40
+SHA-256 bea0d83894a3347d60b6e6d7279add550a97aa2b3cda03ffb3ea8ba0fee986df
+R15 pipeline/network_metrics/runtime.py
+run: L100-160 / _publish: L79-97
+SHA-256 5931cb18d81d750aeda87300526b3bb015256a48d66c507c305bba92b95228d2
+R16 pipeline/early_monitor/events.py
+project: L27-54 / identifier: L23-24 / scope: L57-58
+SHA-256 0068f598a4cb50a74ca2b692bcd014ea24ac7e5def8df37741973e588bcc8e9f
+R17 pipeline/early_monitor/store.py
+observe: L25-33 / refresh: L65-128 / validate: L36-62 / begin: L17-18 / block: L21-22
+SHA-256 a4261788c24c09b1e09aa46df201c9f20822eae29f2fc458d2722bd743ab4ad6
+R18 pipeline/early_monitor/metrics.py
+calculate: L192-262 / findings: L83-105 / actions: L108-150 / durations: L153-189 / Policy: L42-59
+SHA-256 b55a38f4d90ccbdcaff6fd3e41963e3e14109c5bbf782064a8ddc15e26be9ec2
+R19 pipeline/early_monitor/stage_detections.py
+calculate: L18-49
+SHA-256 dd58f4b4efe5dd7516696c0610007c455cc1dd951f750a91a36853dc5c1104f1
+R20 pipeline/early_monitor/server_policies.py
+validate_policy: L16-56 / decisions: L59-91 / metrics: L94-142
+SHA-256 5bf6ff0012a8a732e77203b369cad3e70be88f5f0b387bcda0322bfc81979658
+R21 qa/src/ticket_guard_qa/test_runs/run_repository.py
+create_run: L50-60 / save_summary: L62-68 / delete_run: L70-72 / suite_result_to_document: L23-27
+SHA-256 83deb405b4d445bceea65c8237497723c51f8aa373d848927101f1d7196d3fb4
+
+
+=== PAGE 121 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+121
+R22 qa/src/ticket_guard_qa/domain/models.py
+RunConfig: L58-81 / run_config_to_dict: L321-326 / SessionBehavior: L91-105 / CriterionResult: L259-262
+SHA-256 1454af533833c1faf1829eaf4db5abd3eba975a191cff0f00c8215f76dfb8e42
+R23 qa/src/ticket_guard_qa/test_runs/run_service.py
+create_run_id: L45-46 / _reserve_run: L173-187 / _execute: L189-254 / delete_run: L158-168
+SHA-256 9863d19fb8dd32ce4142871c0c3539c71ed2f13dd5ee79d3abc3190343c56ff8
+R24 qa/src/ticket_guard_qa/answer_key/answer_key_repository.py
+save: L17-19 / save_for_suite: L21-23 / load: L31-33 / delete: L28-29
+SHA-256 de5820276b888623714c84cd4e646b44631e90bf8217f8a469eb6b4f4dce450c
+R25 qa/src/ticket_guard_qa/macro_bots/bot_profile_store.py
+save_new_version: L78-93 / find_version: L65-69
+SHA-256 3b0ae53710aec420a070b714d3614cc55497b906b8132498aec04b8e6f4a7c49
+R26 qa/src/ticket_guard_qa/macro_bots/bot_type_store.py
+create_draft: L86-109 / update_fields: L111-114 / update_identity: L116-130 / update_detection: L136-147 / change_status:
+L149-155
+SHA-256 0b17bfe050034ae544f9dff28772df6d4cd04c38daa024d1579575af45fbbc86
+R27 qa/src/ticket_guard_qa/macro_bots/behavior_fields.py
+behavior_to_dict: L117-118 / parse_behavior_form: L100-114
+SHA-256 5b09389c4f11a4a1f2cd484fe01edd521baed353c9002d3243811194e8f9162f
+R28 qa/src/ticket_guard_qa/qa_database/archive_export.py
+create_archive_id: L189-190 / build_archive_bundle: L228-258 / record_archive_export: L289-294 / find_published_bot_versions:
+L308-314
+SHA-256 82eb221e7a48c231b2a7caf7b0235a6241877d6a98ca958d70b7e695278d7b71
+R29 qa/src/ticket_guard_qa/qa_database/database.py
+create_indexes: L47-51 / connect_qa_database: L32-44
+SHA-256 e711326e9bf800cdae5f4bdaf470878cb806ed43eac21609697b388e974b59b1
+R30 pipeline/database/network_views.js
+L1-18
+SHA-256 5f086ef99a51ae47b68581d0df1f78c6b3746bf62b3e68adcd66b23c2c8ff6b8
+R31 pipeline/database/flow_permissions.js
+L1-83
+SHA-256 c6ed7fd475951659f2d54a74a9fce3771e7d3d3c64ba51634f0f6db99d58a146
+R32 qa/src/ticket_guard_qa/system_targets/live_mongo_reader.py
+read_stored_outcomes: L29-43 / count_quarantined_events: L76-82 / find_processed_event_ids: L45-55
+SHA-256 2d6e408143caf15cb553e87471b43c925fb2addab5270c7cf880fe2f6cdf7f96
+
+
+=== PAGE 122 ===
+TicketGuard | MongoDB 설계서 · c9a8f39
+122
+R33 admin_dashboard/src/ticket_guard_admin/mongo_reader.py
+read_dashboard: L47-82
+SHA-256 d11c92f5a33726d2451465aa37624077e5e1d98093ce442d50244a85b249df73
+R34 pipeline/user_flow/verification.py
+verified_records: L27-53 / verified_record: L12-24
+SHA-256 b90bccac97f1e591c91778e684b67d82dcc4669cd94a6e05502aa113e36a2f12
+R35 mongo/init.js
+L1-23
+SHA-256 30cf80db9afcbbb21f04793984c5d889dfdba432086e02b0f770ef712bdb5741
+R36 raw_consumer/mongo/init.js
+L1-21
+SHA-256 2118abb4190c50c041e3c359c939fd155783b071037f040252131833a1b4c13b
+R37 pipeline/configuration/user_flow.py
+load: L29-52
+SHA-256 d87b40145b1c23a93464468d96c268d9670242cd3d13143da6fb8399dfb834b8
