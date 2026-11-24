@@ -8,35 +8,40 @@ from threading import RLock
 from uuid import uuid4
 from django.conf import settings
 from .events import emit
+from .poster_catalog import WINTER_SHOWS
 
 SHOWS = {
-    'blue-hour': dict(id='blue-hour', title='블루 아워 라이브', english='BLUE HOUR LIVE',
-        genre='콘서트', venue='한빛아트홀', date='2026.12.12', time='19:00',
+    'blue-hour': dict(id='blue-hour', title='온기', english='WARM FREQUENCIES',
+        genre='콘서트', venue='한빛아트홀', date='2026.11.25', time='19:00',
         price=55000, kind='reserved', kind_label='지정석', poster='warm.png',
-        tagline='해가 지고, 가장 깊은 푸른 순간에 펼쳐지는 특별한 라이브.',
-        description='하루와 밤이 만나는 푸른 시간. 감성적인 라이브 사운드와 깊이 있는 무대로 잊지 못할 저녁을 선사합니다.'),
-    'open-air': dict(id='open-air', title='오픈 에어 세션', english='OPEN AIR SESSION',
-        genre='페스티벌', venue='리버사이드 파크', date='2026.12.19', time='18:00',
+        tagline='11월의 차가운 공기를 감싸는 따뜻한 라이브.',
+        description='WARM FREQUENCIES — 온기. 한빛아트홀에서 만나는 11월 라이브 세션입니다.'),
+    'open-air': dict(id='open-air', title='겨울의 문턱', english='NOVEMBER LIVE',
+        genre='콘서트', venue='리버사이드 파크', date='2026.11.26', time='18:00',
         price=35000, kind='general', kind_label='자유석', poster='winter.png',
-        tagline='도심을 벗어나, 하늘 아래 펼쳐지는 특별한 라이브.',
-        description='노을빛 하늘, 선선한 바람, 그리고 음악. 탁 트인 야외 무대에서 좋아하는 사람과 함께 특별한 시간을 보내세요.')
-    , 'spring-concert': dict(id='spring-concert', title='봄날의 콘서트', english='SPRING CONCERT',
-        genre='콘서트', venue='올림픽공원 올림픽홀', date='2026.04.19', time='19:00', price=65000,
-        kind='reserved', kind_label='지정석', poster='november.png', tagline='따뜻한 봄바람과 함께하는 특별한 라이브.',
-        description='봄의 시작을 알리는 싱어송라이터들의 따뜻한 무대입니다.')
-    , 'city-night': dict(id='city-night', title='도시의 밤', english='CITY NIGHT',
-        genre='뮤지컬', venue='세빛섬 컨벤션홀', date='2026.05.24', time='20:00', price=48000,
-        kind='reserved', kind_label='지정석', poster='warm.png', tagline='빛나는 도시의 밤, 새로운 이야기.',
-        description='도시의 불빛 아래 펼쳐지는 감각적인 음악과 퍼포먼스입니다.')
-    , 'starlight': dict(id='starlight', title='별빛 아래', english='UNDER THE STARLIGHT',
-        genre='페스티벌', venue='서울숲 야외무대', date='2026.06.06', time='18:30', price=42000,
-        kind='general', kind_label='자유석', poster='winter.png', tagline='별빛 아래 함께 듣는 한여름의 음악.',
-        description='자연과 음악이 만나는 야외 페스티벌에서 특별한 밤을 즐겨보세요.')
-    , 'summer-rhythm': dict(id='summer-rhythm', title='여름의 리듬', english='SUMMER RHYTHM',
-        genre='콘서트', venue='잠실실내체육관', date='2026.07.18', time='19:30', price=58000,
-        kind='reserved', kind_label='지정석', poster='november.png', tagline='뜨거운 계절을 깨우는 리듬.',
-        description='여름밤을 가득 채울 에너지 넘치는 라이브 콘서트입니다.')
+        tagline='가을과 겨울 사이, 음악으로 만나는 11월.',
+        description='겨울의 문턱 — NOVEMBER LIVE. 리버사이드 파크에서 만나는 11월 라이브 공연입니다.')
+    , 'spring-concert': dict(id='spring-concert', title='입동의 소리', english='INDIE LIVE / NOVEMBER',
+        genre='콘서트', venue='올림픽공원 올림픽홀', date='2026.11.27', time='19:00', price=65000,
+        kind='reserved', kind_label='지정석', poster='november.png', tagline='11월을 채우는 인디 라이브 사운드.',
+        description='입동의 소리 — INDIE LIVE / NOVEMBER. 올림픽공원 올림픽홀에서 열리는 인디 라이브 공연입니다.')
+    , 'city-night': dict(id='city-night', title='온기', english='WARM FREQUENCIES',
+        genre='콘서트', venue='세빛섬 컨벤션홀', date='2026.11.28', time='20:00', price=48000,
+        kind='reserved', kind_label='지정석', poster='warm.png', tagline='11월의 차가운 공기를 감싸는 따뜻한 라이브.',
+        description='WARM FREQUENCIES — 온기. 세빛섬 컨벤션홀에서 만나는 11월 라이브 세션입니다.')
+    , 'starlight': dict(id='starlight', title='겨울의 문턱', english='NOVEMBER LIVE',
+        genre='콘서트', venue='서울숲 야외무대', date='2026.11.29', time='18:30', price=42000,
+        kind='general', kind_label='자유석', poster='winter.png', tagline='가을과 겨울 사이, 음악으로 만나는 11월.',
+        description='겨울의 문턱 — NOVEMBER LIVE. 서울숲 야외무대에서 만나는 11월 라이브 공연입니다.')
+    , 'summer-rhythm': dict(id='summer-rhythm', title='입동의 소리', english='INDIE LIVE / NOVEMBER',
+        genre='콘서트', venue='잠실실내체육관', date='2026.11.30', time='19:30', price=58000,
+        kind='reserved', kind_label='지정석', poster='november.png', tagline='11월을 채우는 인디 라이브 사운드.',
+        description='입동의 소리 — INDIE LIVE / NOVEMBER. 잠실실내체육관에서 열리는 인디 라이브 공연입니다.')
 }
+
+SHOWS = {**WINTER_SHOWS, **SHOWS}
+for show in SHOWS.values():
+    show['weekday'] = '월화수목금토일'[datetime.strptime(show['date'], '%Y.%m.%d').weekday()]
 
 
 class FlowError(Exception):
