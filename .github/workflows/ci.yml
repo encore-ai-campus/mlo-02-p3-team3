@@ -18,8 +18,16 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install -r requirements.txt
-      - run: docker compose -f compose.state-test.yml up -d
+      - run: docker compose -f compose.state-test.yml up -d --wait --wait-timeout 90
       - run: python tools/init_test_mongo.py
       - run: python --version
       - run: python manage.py check
       - run: python manage.py test web -v 2
+      - name: Diagnose test MongoDB failure
+        if: failure()
+        run: |
+          docker compose -f compose.state-test.yml ps -a
+          docker compose -f compose.state-test.yml logs --no-color --tail 100 mongo-test
+      - name: Clean up test MongoDB
+        if: always()
+        run: docker compose -f compose.state-test.yml down -v
