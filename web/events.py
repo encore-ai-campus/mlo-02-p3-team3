@@ -1,4 +1,8 @@
-"""Asynchronous, bounded delivery. This is NOT a durable outbox."""
+"""
+[홍석환] 이벤트 생성과 Kafka 비동기 발행
+전송 상태·재시도·중복·청크 분할과 재조립을 관리한다.
+메모리 기반 발행 상태는 영속 송신 보관함을 대신하지 않는다.
+"""
 import atexit
 import base64
 import math
@@ -35,8 +39,16 @@ def event_request_context(view):
         context = {dest:data[src] for src,dest in (('pageId','pageInstanceId'),('pageViewId','pageViewId'))
                    if isinstance(data.get(src),str) and 1<=len(data[src])<=100}
         token = request_context.set(context)
-        try: return view(request,*args,**kwargs)
-        finally: request_context.reset(token)
+        from .observation import begin, context as observation_context
+        observation_token = None
+        try:
+            if request.method == 'POST' and request.path == '/api/action/':
+                observation_token = begin(request, data)
+            return view(request,*args,**kwargs)
+        finally:
+            if observation_token is not None:
+                observation_context.reset(observation_token)
+            request_context.reset(token)
     return wrapped
 
 
@@ -231,8 +243,11 @@ def build_event(user,event_type,attempt=None,**fields):
         event.update(bookingAttemptId=attempt['id'],pageInstanceId=attempt['page_id'],
                      pageViewId=request_context.get().get('pageViewId') or attempt.get('page_view_id'),
                      showId=attempt['show_id'],scheduleId=attempt['show_id']+'-evening',
-                     isSimulation=bool(attempt.get('scenario')),scenarioName=attempt.get('scenario'))
+                     isSimulation=bool(attempt.get('scenario') or attempt.get('is_simulation')),scenarioName=attempt.get('scenario'))
     event.update(fields)
+    from .observation import context as observation_context
+    if observation_context.get():
+        event['details'] = {**event['details'], **observation_context.get()}
     if event.get('schemaVersion')==1:
         from .telemetry import sanitize_capture
         cleaned,audit=sanitize_capture(event['details'])

@@ -14,6 +14,10 @@
   .step-cell .progress-bar i { transition: none; }
   .entry-chart { width: 100%; height: 190px; margin-top: 12px; }
   .entry-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 12.5px; }
+  .capture-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+  .capture-frame { margin: 0; }
+  .capture-frame svg, .capture-frame img { width: 100%; display: block; border-radius: 8px; }
+  .capture-frame figcaption { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; margin-top: 4px; white-space: nowrap; }
   .capture-box { border: 1.5px dashed #CBD3DF; border-radius: 14px; padding: 26px; text-align: center; color: var(--muted-text-color); margin-top: 12px; }
   .behavior-log { list-style: none; padding: 0; margin: 12px 0 0; max-height: 200px; overflow: auto; font-size: 13px; color: var(--sub-text-color); }
   .behavior-log li { padding: 5px 0; border-bottom: 1px solid var(--soft-line-color); }
@@ -26,17 +30,17 @@
 
 <section class="card run-strip">
   {% if is_running %}<span class="live-badge" id="live-badge">LIVE</span>{% endif %}
-  <span>Run <b class="mono">{{ summary.run_id }}</b> · VU {{ run_config.virtual_user_count }} · {{ '버스트' if run_config.is_open_burst else '분산 진입' }}</span>
+  <span>Run <b class="mono">{{ summary.run_id }}</b> · VU {{ run_config.virtual_user_count }} · {{ run_config.entry_title }}</span>
   <span class="row" style="gap:6px">{% for actor_value, version_number in bot_versions.items() %}{{ actor_chip(actor_value | bot_type_info, version_number) }}{% endfor %}</span>
   <span class="spacer"></span>
   {% if is_running %}<a class="button is-outline is-small" href="{{ base_path }}/runs/{{ summary.run_id }}/live"><i data-lucide="gauge"></i>Run 모니터</a>{% endif %}
   <a class="button is-small" id="detection-link" href="{{ base_path }}/runs/{{ summary.run_id }}/bots" {{ 'hidden' if is_running }}><i data-lucide="grid-3x3"></i>탐지 리포트</a>
 </section>
 
-{% if not has_verdict_suite %}
+{% if not has_traffic_suite %}
 <div class="notice is-db" style="margin-bottom:18px"><i data-lucide="info"></i>봇 트래픽 미발생 · 계획 분포만 표시</div>
 {% endif %}
-<div class="notice is-qa" id="finished-notice" style="margin-bottom:18px" {{ 'hidden' if is_running }}><i data-lucide="circle-check"></i>Run 종료 · 탐지 리포트 생성 완료</div>
+<div class="notice is-qa" id="finished-notice" style="margin-bottom:18px" {{ 'hidden' if is_running }}><i data-lucide="circle-check"></i>Run 종료 · {{ '탐지 리포트 생성 완료' if has_detection_report else '결과는 Run 리포트' }}</div>
 
 <div class="bot-live-grid">
   <div>
@@ -44,7 +48,7 @@
       <div class="row"><h2 class="section-heading">유형별 퍼널</h2><span class="spacer"></span><span class="muted" id="progress-updated">{{ 'Live' if is_running else 'Final' }}</span></div>
       <table class="result-table" style="margin-top:12px">
         <tr><th>유형</th><th>계획</th>{% for step, title in session_step_titles.items() %}<th>{{ title }}</th>{% endfor %}</tr>
-        {% for info in bot_type_catalog if info.actor_type.value in actor_progress %}
+        {% for info in bot_type_catalog() if info.actor_type.value in actor_progress %}
         {% set progress = actor_progress[info.actor_type.value] %}
         {% set planned_count = progress[planned_progress_key] %}
         <tr data-actor="{{ info.actor_type.value }}" data-planned="{{ planned_count }}">
@@ -102,8 +106,32 @@
     </section>
 
     <section class="card panel">
-      <div class="row"><h2 class="section-heading">봇 C 스크린샷</h2><span class="spacer"></span>{{ actor_chip('BOT_C' | bot_type_info) }}</div>
-      <div class="capture-box"><i data-lucide="image-off"></i><div style="margin-top:6px">스크린샷 수집 미구현</div></div>
+      <div class="row"><h2 class="section-heading">브라우저 봇 화면 캡처</h2><span class="spacer"></span>{% if capture_frames and is_mock_capture %}<span class="pill is-skipped">Mock 캡처</span>{% endif %}{% if captured_browser_type %}{{ actor_chip(captured_browser_type) }}{% endif %}</div>
+      {% if capture_frames %}
+      {% set screen_width, screen_height = capture_screen_size %}
+      <div class="capture-strip">
+        {% for frame in capture_frames %}
+        <figure class="capture-frame">
+          {% if frame.image_file_name %}
+          <img src="{{ base_path }}/runs/{{ summary.run_id }}/captures/{{ frame.image_file_name }}" alt="{{ frame.step }} 화면">
+          {% else %}
+          <svg viewBox="0 0 {{ screen_width }} {{ screen_height }}" role="img" aria-label="{{ frame.step }} 화면">
+            <rect x="0.5" y="0.5" width="{{ screen_width - 1 }}" height="{{ screen_height - 1 }}" rx="8" fill="#fff" stroke="var(--line-color)"/>
+            <rect x="0.5" y="0.5" width="{{ screen_width - 1 }}" height="16" rx="8" fill="var(--qa-blue-light)"/>
+            <text x="8" y="12" font-size="8" font-weight="700" fill="var(--qa-blue-text)">{{ frame.step }}</text>
+            <rect x="10" y="26" width="{{ screen_width - 20 }}" height="10" rx="3" fill="#EEF1F5"/>
+            <rect x="10" y="42" width="{{ (screen_width - 20) * 0.6 }}" height="10" rx="3" fill="#EEF1F5"/>
+            <rect x="10" y="{{ screen_height - 24 }}" width="{{ screen_width - 20 }}" height="14" rx="4" fill="var(--qa-blue)" opacity=".85"/>
+            {% if frame.click_x is not none %}<circle cx="{{ frame.click_x }}" cy="{{ frame.click_y }}" r="6" fill="var(--fail-red)" opacity=".35"/><circle cx="{{ frame.click_x }}" cy="{{ frame.click_y }}" r="2.5" fill="var(--fail-red)"/>{% endif %}
+          </svg>
+          {% endif %}
+          <figcaption><b>{{ frame.step }}</b><span class="muted">+{{ '%.2f' % (frame.elapsed_ms / 1000) }}초</span></figcaption>
+        </figure>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="capture-box"><i data-lucide="image-off"></i><div style="margin-top:6px">{{ '브라우저 트래픽 유형 비율 0%' if not captured_browser_type else ('Run 진행 중 · 종료 후 표시' if summary.status.value == 'RUNNING' else '캡처 없음 · 브라우저 실행 환경 미구성(browser 묶음 · Chromium)') }}</div></div>
+      {% endif %}
     </section>
   </aside>
 </div>
@@ -123,7 +151,7 @@
         cell.querySelector(".progress-bar i").style.width = `${Math.min(count / plannedCount, 1) * 100}%`;
       });
     });
-    document.getElementById("progress-updated").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    document.getElementById("progress-updated").textContent = `갱신 ${new Date().toLocaleTimeString("ko-KR", { hour12: false })}`;
   }
 
   function addLog(text) {

@@ -34,6 +34,9 @@
   --bot-b: #A78BFA;
   --bot-c: #0EA5A4;
   --bot-d: #E5484D;
+  --bot-captcha: #CA8A04;
+  --bot-reentry: #BE185D;
+  --bot-device-spoof: #4D7C0F;
   --bot-new: #64748B;
 
   --card-radius: 18px;

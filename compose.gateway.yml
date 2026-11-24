@@ -1,5 +1,7 @@
+# [홍석환] 관리자 인증 게이트웨이 서비스 구성
+# 웹·QA·관리자 대시보드를 내부 서비스로 연결하고 단일 접속 입구를 제공한다.
 # 팀 입구 · 관리자 로그인 → QA 대시보드 · compose.yml에 덧붙여 실행
-# docker compose -f compose.yml -f compose.gateway.yml up -d --build
+# docker compose --env-file .env -f compose.yml -f compose.gateway.yml up -d --build
 # 밖으로 열린 포트는 gateway의 127.0.0.1:8000 하나 · web · qa-dashboard는 안쪽 네트워크로만
 services:
   web:
@@ -32,6 +34,16 @@ services:
       web:
         condition: service_healthy
 
+  admin-dashboard:
+    image: ticket-guard-admin:dev
+    build: ./admin_dashboard
+    environment:
+      TICKET_GUARD_ADMIN_MONGO_URI: ${TICKET_GUARD_ADMIN_MONGO_URI:-}
+      TICKET_GUARD_ADMIN_BASE_PATH: /admin
+    networks:
+      - default
+      - admin-mongo
+
   gateway:
     image: nginx:1.27-alpine
     ports:
@@ -43,6 +55,13 @@ services:
         condition: service_healthy
       qa-dashboard:
         condition: service_started
+      admin-dashboard:
+        condition: service_started
 
 volumes:
   qa-data:
+
+networks:
+  admin-mongo:
+    external: true
+    name: ${TICKET_GUARD_ADMIN_MONGO_NETWORK:-ticket-guard-workspace-db_mongo-backend}

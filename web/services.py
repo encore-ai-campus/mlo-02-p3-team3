@@ -1,4 +1,8 @@
-"""Demo-only service, protected by one process lock. Never use with multiple workers."""
+"""
+[홍석환] 예매 시뮬레이션 업무 상태 관리
+대기열·보안문자·재고·예매 확정과 시나리오 동작을 메모리에서 관리한다.
+단일 프로세스 잠금을 사용하므로 다중 작업자 운영용 저장소로 사용하지 않는다.
+"""
 import secrets
 import math
 import time
@@ -9,6 +13,7 @@ from uuid import uuid4
 from django.conf import settings
 from .events import emit
 from .poster_catalog import WINTER_SHOWS
+from . import prevention
 
 SHOWS = {
     'blue-hour': dict(id='blue-hour', title='온기', english='WARM FREQUENCIES',
@@ -41,6 +46,8 @@ SHOWS = {
 
 SHOWS = {**WINTER_SHOWS, **SHOWS}
 for show in SHOWS.values():
+    # 신규 공연도 서버가 정의한 회차 ID와 날짜 기준 요일을 함께 사용한다.
+    show['schedule_id'] = show['id'] + '-evening'
     show['weekday'] = '월화수목금토일'[datetime.strptime(show['date'], '%Y.%m.%d').weekday()]
 
 
@@ -95,7 +102,7 @@ class MockRepository:
             waiting = []
             for user in list(self.attempts):
                 a = self.current(user, False)
-                if a and a['stage'] == 'queue':
+                if a and a['stage'] == 'queue' and a.get('policy_restricted_until', 0) <= time.time():
                     waiting.append((user, a))
             waiting.sort(key=lambda item: item[1]['rank'])
             available = settings.BOOKING_ADMISSION_BATCH_SIZE - self.admission_count
@@ -108,7 +115,7 @@ class MockRepository:
         with self.lock:
             if a['stage'] != 'queue':
                 return 0, 0
-            rank = sum(other['stage'] == 'queue' and other['rank'] <= a['rank']
+            rank = sum(other['stage'] == 'queue' and other.get('policy_restricted_until', 0) <= time.time() and other['rank'] <= a['rank']
                        for other in self.attempts.values())
             available = settings.BOOKING_ADMISSION_BATCH_SIZE - self.admission_count
             if rank <= available:
@@ -118,14 +125,18 @@ class MockRepository:
             wait += ((rank - available - 1) // settings.BOOKING_ADMISSION_BATCH_SIZE) * interval
             return rank, math.ceil(wait)
 
+    @prevention.transaction
     def start(self, user, show_id, page_id):
         if not isinstance(show_id, str) or show_id not in SHOWS:
             raise FlowError('공연을 찾을 수 없어요.')
         if not isinstance(page_id, str) or not 1 <= len(page_id) <= 80:
             raise FlowError('페이지 식별자가 필요해요.')
         with self.lock:
+            policy = prevention.booking_policy(self, user, show_id)
             if self.opens_at(user, show_id) > time.time():
+                policy.count('not_open_repeat')
                 raise FlowError('아직 예매 시작 전이에요.', 'NOT_OPEN', 409)
+            policy.event('prevention_evaluated', 'not_open_repeat', observed=0, openingState='open')
             old = self.current(user, False)
             if old and old['stage'] not in ('complete', 'cancelled', 'expired'):
                 if old['page_id'] != page_id:
@@ -138,21 +149,43 @@ class MockRepository:
             a = dict(id=str(uuid4()), show_id=show_id, page_id=page_id, stage='queue',
                      entered=time.monotonic(), heartbeat=time.monotonic(), rank=self.queue_counter,
                      wrong=0, captcha='', sequence=0, booking_id=None, scenario=self.scenarios.get((user,show_id)))
+            a['is_simulation'] = prevention.simulated_account(user)
             self.attempts[user] = a
+            policy.attempt = a
+            prior_key = 'entry:' + policy.target
+            prior = policy.session.get(prior_key)
+            # Only server-owned same-scope causes are linked. Recovery is excluded.
+            known_old = old if old and old['show_id'] == show_id and bool(
+                old.get('scenario') or old.get('is_simulation')) == policy.simulation else None
+            previous_id = known_old['id'] if known_old else (prior or {}).get('attempt')
+            previous_status = known_old['stage'] if known_old else (prior or {}).get('status')
+            cause = ('connection_expired' if previous_status == 'expired' else
+                     'user_cancel' if previous_status == 'cancelled' else
+                     'completed' if previous_status == 'complete' else
+                     'initial' if prior is None and known_old is None else 'unconfirmed')
+            policy.session.put(prior_key, {'attempt': a['id'], 'status': 'active'})
+            detected = policy.count('reentry_repeat', identity=a['id'],
+                excluded=cause in ('connection_expired', 'unconfirmed'),
+                predecessorAttemptId=previous_id, entryCause=cause)
             emit(user, 'queue_enter', a)
             rank, wait = self.queue_status(a)
             emit(user, 'queue_register', a, details={'initialRank':max(1,rank),'estimatedWaitMs':wait*1000})
+            if detected:
+                raise FlowError('반복 재입장으로 5분 동안 예매가 제한되었어요.', 'TEMPORARILY_RESTRICTED', 429)
             self.advance_queue()
             return a
 
+    @prevention.transaction
     def owned(self, user, page_id, attempt_id):
         a = self.current(user)
         if a['id'] != attempt_id:
             raise FlowError('이전 예매 요청이에요. 현재 페이지를 확인해 주세요.', 'STALE_ATTEMPT', 409)
         if not page_id or a['page_id'] != page_id:
             raise FlowError('다른 페이지에서 예매가 진행 중이에요.', 'DUPLICATE_PAGE', 409)
+        prevention.booking_policy(self, user, a['show_id'], a)
         return a
 
+    @prevention.transaction
     def tick(self, user, page_id, attempt_id):
         with self.lock:
             a = self.owned(user, page_id, attempt_id)
@@ -160,6 +193,7 @@ class MockRepository:
             self.advance_queue()
             return a
 
+    @prevention.transaction
     def challenge(self, user, page_id, attempt_id, reason='initial'):
         with self.lock:
             a = self.owned(user, page_id, attempt_id)
@@ -170,6 +204,7 @@ class MockRepository:
             if reason=='user_refresh': emit(user,'captcha_refresh',a,details={'reason':'user_refresh'})
             return a['captcha']
 
+    @prevention.transaction
     def verify(self, user, page_id, attempt_id, answer):
         with self.lock:
             a = self.owned(user, page_id, attempt_id)
@@ -189,18 +224,45 @@ class MockRepository:
             emit(user, 'captcha_success', a)
             return a
 
+    @prevention.transaction
     def cancel(self, user, page_id, attempt_id, reason='user_cancel'):
         with self.lock:
             a = self.owned(user, page_id, attempt_id)
             if a['stage'] != 'complete':
                 a['stage'], a['captcha'] = 'cancelled', ''
+                policy = prevention.booking_policy(self, user, a['show_id'], a)
+                policy.session.put('entry:' + policy.target, {'attempt': a['id'], 'status': 'cancelled'})
                 emit(user, 'queue_cancel', a, details={'reason':reason,'elapsedMs':round((time.monotonic()-a['entered'])*1000,2)})
             return a
 
+    @prevention.transaction
     def confirm(self, user, page_id, attempt_id, sequence, seats, quantity):
         started=time.monotonic()
         with self.lock:
+            durable = prevention.active.get().replay(attempt_id) if isinstance(attempt_id, str) else None
+            if durable and durable.get('user') == user and durable.get('page_id') == page_id:
+                # A committed purchase can be replayed after process restart without
+                # recreating the attempt, changing inventory or debiting the quota.
+                recovered = dict(id=attempt_id, page_id=durable['page_id'], show_id=durable['show_id'],
+                                 scenario=durable.get('scenario'), is_simulation=durable['is_simulation'])
+                policy = prevention.Policy(prevention.active.get(), prevention.scope(user,
+                    durable['show_id'], durable['schedule_id'], durable['is_simulation']), recovered)
+                if self.opens_at(user, durable['show_id']) <= policy.now:
+                    policy.release('not_open_repeat')
+                policy.check()
+                self.bookings[durable['id']] = durable
+                from .events import build_event
+                policy.session.enqueue(build_event(user, 'booking_confirm_replayed', recovered,
+                    details=self.booking_details(durable, started)))
+                return durable
             a = self.owned(user, page_id, attempt_id)
+            policy = prevention.booking_policy(self, user, a['show_id'], a)
+            durable = policy.session.replay(a['id'])
+            if durable:
+                self.bookings[durable['id']] = durable
+                a['booking_id'], a['stage'] = durable['id'], 'complete'
+                emit(user, 'booking_confirm_replayed', a, details=self.booking_details(durable, started))
+                return durable
             if a['booking_id']:
                 existing=self.bookings[a['booking_id']]
                 emit(user,'booking_confirm_replayed',a,details=self.booking_details(existing,started))
@@ -215,37 +277,66 @@ class MockRepository:
             emit(user, 'booking_confirm_request', a, requestSequence=sequence)
             try:
                 show = SHOWS[a['show_id']]
+                selection_error = None
                 if show['kind'] == 'reserved':
                     valid = {f'{r}{c}' for r in 'ABCDEFGHIJ' for c in range(1, 11)}
                     if not isinstance(seats, list) or any(not isinstance(s, str) for s in seats):
+                        selection_error = 'invalid_seat'
                         raise FlowError('좌석 선택을 확인해 주세요.')
                     if not 1 <= len(seats) <= 4 or len(set(seats)) != len(seats) or not set(seats) <= valid:
+                        selection_error = ('quantity_range' if not 1 <= len(seats) <= 4 else
+                                           'duplicate_seat' if len(set(seats)) != len(seats) else 'invalid_seat')
                         raise FlowError('좌석은 1~4석까지 선택할 수 있어요.', 'SELECTION_LIMIT')
                     if self.sold.intersection(seats):
                         raise FlowError('선택한 좌석이 먼저 판매되었어요. 다른 좌석을 선택해 주세요.', 'SEAT_SOLD', 409)
                     quantity = len(seats)
                 else:
                     if type(quantity) is not int or not 1 <= quantity <= 4:
+                        selection_error = 'quantity_range'
                         raise FlowError('관람 인원은 1~4명까지 선택할 수 있어요.', 'SELECTION_LIMIT')
                     if quantity > self.remaining:
                         raise FlowError(f'잔여 수량이 {self.remaining}명으로 변경되었어요. 인원을 수정해 주세요.', 'INSUFFICIENT_STOCK', 409)
                     seats = []
+                policy.event('prevention_evaluated', 'selection_repeat', observed=0, selectionValid=True)
+                policy.quota(quantity)
                 booking_id = 'TG-' + uuid4().hex[:10].upper()
                 b = dict(id=booking_id, user=user, show_id=show['id'], seats=seats,
                          quantity=quantity, total=show['price'] * quantity,
-                         created_at=datetime.now(timezone.utc).isoformat())
+                         created_at=datetime.now(timezone.utc).isoformat(),
+                         page_id=page_id, schedule_id=show['schedule_id'], is_simulation=policy.simulation,
+                         booking_attempt_id=a['id'], scenario=a.get('scenario'))
+                policy.session.purchase(policy.target, a['id'], b)
+                policy.session.put('entry:' + policy.target, {'attempt': a['id'], 'status': 'complete'})
                 if show['kind'] == 'reserved':
                     self.sold.update(seats)
                 else:
                     self.remaining -= quantity
                 self.bookings[booking_id] = b
                 a['booking_id'], a['stage'] = booking_id, 'complete'
-                emit(user, 'booking_confirm_success', a, requestSequence=sequence,details=self.booking_details(b,started))
+                from .events import build_event
+                policy.session.enqueue(build_event(user, 'booking_confirm_success', a,
+                    requestSequence=sequence, details=self.booking_details(b, started)))
                 return b
             except FlowError as e:
+                if selection_error:
+                    policy.count('selection_repeat', selectionError=selection_error)
+                    requested = (len(seats) if isinstance(seats, list) and all(isinstance(s, str) for s in seats)
+                                 and len(set(seats)) == len(seats) and set(seats) <= valid else None) if show['kind'] == 'reserved' else quantity
+                    if selection_error == 'quantity_range' and type(requested) is int and requested > 4:
+                        # Preserve the existing selection error response while recording
+                        # the independently exceeded account quota and its restriction.
+                        try:
+                            policy.quota(requested)
+                        except FlowError as quota_error:
+                            if quota_error.code != 'PURCHASE_LIMIT':
+                                raise
+                elif e.code in ('SEAT_SOLD', 'INSUFFICIENT_STOCK'):
+                    policy.event('prevention_evaluated', 'selection_repeat', observed=None,
+                                 excluded=True, selectionError=e.code)
                 e.logged=True
                 emit(user, 'booking_confirm_fail', a, requestSequence=sequence, result='failure', errorCode=e.code,
-                     details={'seatType':SHOWS[a['show_id']]['kind'],'durationMs':round((time.monotonic()-started)*1000,2)})
+                     details={'seatType':SHOWS[a['show_id']]['kind'],'durationMs':round((time.monotonic()-started)*1000,2),
+                              'selectionError':selection_error})
                 raise
 
     @staticmethod

@@ -1,3 +1,5 @@
+# [홍석환] 기본 서비스와 데이터 처리 실행 구성
+# Django·Kafka 및 선택 실행 MongoDB·Spark 서비스의 연결과 실행 조건을 정의한다.
 name: ticket-guard
 
 services:
@@ -11,6 +13,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - .:/app
+      - web-policy-data:/var/lib/ticketguard
     environment:
       DJANGO_DEBUG: "1"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-local-demo-only-change-before-deployment-ticket-guard}
@@ -28,6 +31,7 @@ services:
       QA_CAPTCHA_FIXED_ANSWER: ${QA_CAPTCHA_FIXED_ANSWER:-}
       QA_RESET_ENABLED: ${QA_RESET_ENABLED:-0}
       PYTHONUNBUFFERED: "1"
+      TICKETING_STATE_PATH: ${TICKETING_STATE_PATH:-/var/lib/ticketguard/web.sqlite3}
       CAPTURE_ENABLED: ${CAPTURE_ENABLED:-1}
       EVENT_PUBLISHER: ${EVENT_PUBLISHER:-kafka}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -99,6 +103,8 @@ services:
       MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-ticketguard}
       MONGO_WRITER_USERNAME: ${MONGO_WRITER_USERNAME:-}
       MONGO_WRITER_PASSWORD: ${MONGO_WRITER_PASSWORD:-}
+      MONGO_ADMIN_READER_USERNAME: ${MONGO_ADMIN_READER_USERNAME:-}
+      MONGO_ADMIN_READER_PASSWORD: ${MONGO_ADMIN_READER_PASSWORD:-}
     entrypoint: ["bash", "/opt/mongo/start.sh"]
     command: ["mongod", "--auth", "--bind_ip_all"]
     networks:
@@ -110,6 +116,7 @@ services:
       - ./mongo/init.js:/docker-entrypoint-initdb.d/10-ticketguard.js:ro
       - ./mongo/healthcheck.js:/opt/mongo/healthcheck.js:ro
       - ./mongo/verify.js:/opt/mongo/verify.js:ro
+      - ./mongo/setup-reader.js:/opt/mongo/setup-reader.js:ro
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--norc", "/opt/mongo/healthcheck.js"]
       interval: 10s
@@ -141,6 +148,13 @@ services:
       SPARK_MONGO_BULK_SIZE: ${SPARK_MONGO_BULK_SIZE:-200}
       SPARK_MONGO_TIMEOUT_MS: ${SPARK_MONGO_TIMEOUT_MS:-10000}
       SPARK_MONGO_WRITE_ATTEMPTS: ${SPARK_MONGO_WRITE_ATTEMPTS:-3}
+      # 미설정 규칙은 판정하지 않는다. 시안 수치를 기본 정책으로 사용하지 않는다.
+      ANOMALY_OVERLAP_ENABLED: ${ANOMALY_OVERLAP_ENABLED:-}
+      ANOMALY_RETRY_SECONDS: ${ANOMALY_RETRY_SECONDS:-}
+      ANOMALY_PAGES_SECONDS: ${ANOMALY_PAGES_SECONDS:-}
+      ANOMALY_FAST_SECONDS: ${ANOMALY_FAST_SECONDS:-}
+      ANOMALY_PURCHASE_SECONDS: ${ANOMALY_PURCHASE_SECONDS:-}
+      ANOMALY_ACCOUNT_LIMIT: ${ANOMALY_ACCOUNT_LIMIT:-}
     networks:
       - spark-kafka
       - spark-mongo
@@ -152,6 +166,7 @@ services:
     stop_grace_period: 60s
 
 volumes:
+  web-policy-data:
   kafka-data:
   mongo-data:
   mongo-config:

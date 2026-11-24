@@ -43,6 +43,12 @@ class PosterCatalogTests(SimpleTestCase):
         self.assertEqual(SHOWS['first-snow-classics']['weekday'], '일')
         self.assertEqual(SHOWS['november-last-night']['weekday'], '월')
 
+    def test_all_performances_keep_server_schedule_and_display_weekday(self):
+        for show_id, show in SHOWS.items():
+            with self.subTest(show=show_id):
+                self.assertEqual(show['schedule_id'], show_id + '-evening')
+                self.assertIn(show['weekday'], '월화수목금토일')
+
     def test_original_performances_match_their_poster_text(self):
         poster_titles = {
             'warm.png': ('온기', 'WARM FREQUENCIES'),

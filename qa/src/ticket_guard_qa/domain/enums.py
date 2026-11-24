@@ -1,5 +1,5 @@
 """용어집의 고정 값 · AGENTS.md 10장"""
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 
 
 class VerdictStage(StrEnum):
@@ -13,25 +13,78 @@ class VerdictStage(StrEnum):
         return self in (VerdictStage.CHALLENGE, VerdictStage.HOLD)  # 탐지 = CHALLENGE 이상
 
 
-class ActorType(StrEnum):
-    HUMAN = "HUMAN"
-    BOT_A = "BOT_A"
-    BOT_B = "BOT_B"
-    BOT_C = "BOT_C"
-    BOT_D = "BOT_D"
-    BOT_NEW = "BOT_NEW"  # 새 유형 · 목표 없음 · 결과만 공개
+class ActorType(str):
+    """봇 유형 id · 기본 12종 = 아래 상수 · 화면에서 추가한 유형 = QA DB bot_types · 전체 목록은 macro_bots/bot_catalog"""
+    __slots__ = ()
+
+    HUMAN: "ActorType"
+    BOT_A: "ActorType"
+    BOT_B: "ActorType"
+    BOT_C: "ActorType"
+    BOT_D: "ActorType"
+    BOT_CAPTCHA: "ActorType"  # 보안문자 반복 시도 · 화면 추가 id(BOT_E …)와 겹치지 않게 이름 id
+    BOT_REENTRY: "ActorType"  # 대기열 재진입 반복
+    BOT_DEVICE_SPOOF: "ActorType"  # 세션마다 기기 정보 변경
+    BOT_NEW: "ActorType"  # 새 유형 · 목표 없음 · 결과만 공개
+    BOT_NEW_SLOW_REGULAR: "ActorType"  # 미학습 · 느린 정주기
+    BOT_NEW_SPLIT_ACCOUNT: "ActorType"  # 미학습 · 기기당 창 2개로 분산
+    BOT_NEW_HUMAN_MIMIC: "ActorType"  # 미학습 · 사람 모사 + 과도한 재시도
+
+    @property
+    def value(self) -> str:
+        return str.__str__(self)
 
     @property
     def is_bot(self) -> bool:
-        return self is not ActorType.HUMAN
+        return self.value != HUMAN_ACTOR_ID
+
+    def __repr__(self) -> str:
+        return f"ActorType({self.value!r})"
+
+
+HUMAN_ACTOR_ID = "HUMAN"
+ActorType.HUMAN = ActorType(HUMAN_ACTOR_ID)
+ActorType.BOT_A = ActorType("BOT_A")
+ActorType.BOT_B = ActorType("BOT_B")
+ActorType.BOT_C = ActorType("BOT_C")
+ActorType.BOT_D = ActorType("BOT_D")
+ActorType.BOT_CAPTCHA = ActorType("BOT_CAPTCHA")
+ActorType.BOT_REENTRY = ActorType("BOT_REENTRY")
+ActorType.BOT_DEVICE_SPOOF = ActorType("BOT_DEVICE_SPOOF")
+ActorType.BOT_NEW = ActorType("BOT_NEW")
+ActorType.BOT_NEW_SLOW_REGULAR = ActorType("BOT_NEW_SLOW_REGULAR")
+ActorType.BOT_NEW_SPLIT_ACCOUNT = ActorType("BOT_NEW_SPLIT_ACCOUNT")
+ActorType.BOT_NEW_HUMAN_MIMIC = ActorType("BOT_NEW_HUMAN_MIMIC")
+BUILT_IN_ACTOR_TYPES: tuple[ActorType, ...] = (
+    ActorType.HUMAN, ActorType.BOT_A, ActorType.BOT_B, ActorType.BOT_C, ActorType.BOT_D, ActorType.BOT_CAPTCHA,
+    ActorType.BOT_REENTRY, ActorType.BOT_DEVICE_SPOOF, ActorType.BOT_NEW, ActorType.BOT_NEW_SLOW_REGULAR,
+    ActorType.BOT_NEW_SPLIT_ACCOUNT, ActorType.BOT_NEW_HUMAN_MIMIC,
+)
 
 
 class SessionStep(StrEnum):
     """B3 종류별 진행 · 가상 사용자 한 명이 지나가는 단계"""
-    ENTERED = "ENTERED"
+    ENTERED = "ENTERED"  # 예매 시작
+    QUEUE_PASSED = "QUEUE_PASSED"
+    CAPTCHA_PASSED = "CAPTCHA_PASSED"
     SEAT_SELECTED = "SEAT_SELECTED"
     CONFIRMED = "CONFIRMED"
     VERDICT_RECEIVED = "VERDICT_RECEIVED"
+
+
+class BookingSequence(IntEnum):
+    """예매 순서 · 행동 값 booking_sequence · 단계 차이는 domain/models.BOOKING_SEQUENCE_STEPS"""
+    STANDARD = 0  # 로그인 → 대기열 → 보안문자 → 좌석 → 확정
+    CAPTCHA_REFRESH = 1  # 보안문자 여러 번 새로 받은 뒤 입력
+    CAPTCHA_WRONG_ANSWER = 2  # 제한 직전까지 오답 뒤 정답
+    CAPTCHA_REFRESH_AND_WRONG_ANSWER = 3  # 오답 → 새로 받기 반복 뒤 정답
+    QUEUE_REENTRY = 4  # 대기열 진입 → 취소 → 재진입 반복 뒤 진행
+
+
+class BrowserIdentity(IntEnum):
+    """기기 정보 · 행동 값 browser_identity · 브라우저 정보 목록은 macro_bots/browser_profiles"""
+    FIXED = 0  # 브라우저 흔적 설정 기준 한 가지
+    ROTATING = 1  # 세션마다 다른 브라우저 정보 · 같은 기기 예매 창끼리는 같음
 
 
 class BookingOutcome(StrEnum):

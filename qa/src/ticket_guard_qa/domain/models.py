@@ -1,4 +1,5 @@
 """시험 입력 · 결과의 데이터 모양"""
+import math
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, NewType
@@ -7,6 +8,8 @@ from ticket_guard_qa.domain.enums import (
     ActorType,
     AlertPolicy,
     BookingOutcome,
+    BookingSequence,
+    BrowserIdentity,
     RunStatus,
     SuiteOutcome,
     TargetKind,
@@ -19,26 +22,36 @@ SystemVerdicts = dict[SessionKey, VerdictStage]
 ActorProgress = dict[str, dict[str, int]]  # 종류 → {"PLANNED" · SessionStep 값: 사람 수} · B3
 
 
+LEGACY_TRAFFIC_FIELD_TO_ACTOR = {  # 이전 Run 기록 · 이전 폼 이름 호환
+    "human_percent": "HUMAN", "bot_a_percent": "BOT_A", "bot_b_percent": "BOT_B",
+    "bot_c_percent": "BOT_C", "bot_d_percent": "BOT_D",
+}
+DEFAULT_TRAFFIC_PERCENTS = {"HUMAN": 80, "BOT_A": 5, "BOT_B": 5, "BOT_C": 5, "BOT_D": 5}
+
+
 @dataclass(frozen=True)
 class TrafficMix:
-    human_percent: int = 80
-    bot_a_percent: int = 5
-    bot_b_percent: int = 5
-    bot_c_percent: int = 5
-    bot_d_percent: int = 5
+    """유형 id → 비율(%) · 봇 유형이 늘어도 구조 그대로 · 0% 유형은 저장 안 함"""
+    percent_by_type: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_TRAFFIC_PERCENTS))
 
     def __post_init__(self) -> None:
-        if sum(self.percent_by_actor_type().values()) != 100:
+        if any(percent < 0 for percent in self.percent_by_type.values()):
+            raise ValueError("트래픽 구성 오류 · 음수 비율")
+        if sum(self.percent_by_type.values()) != 100:
             raise ValueError("트래픽 구성 합계 오류 · 100% 필요")
+        object.__setattr__(self, "percent_by_type", {key: value for key, value in self.percent_by_type.items() if value})
 
     def percent_by_actor_type(self) -> dict[ActorType, int]:
-        return {
-            ActorType.HUMAN: self.human_percent,
-            ActorType.BOT_A: self.bot_a_percent,
-            ActorType.BOT_B: self.bot_b_percent,
-            ActorType.BOT_C: self.bot_c_percent,
-            ActorType.BOT_D: self.bot_d_percent,
-        }
+        return {ActorType(key): value for key, value in self.percent_by_type.items()}
+
+    def percent_of(self, actor_type: ActorType | str) -> int:
+        return self.percent_by_type.get(str(actor_type), 0)
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "TrafficMix":
+        if "percent_by_type" in raw:
+            return cls(dict(raw["percent_by_type"]))
+        return cls({LEGACY_TRAFFIC_FIELD_TO_ACTOR[name]: value for name, value in raw.items() if name in LEGACY_TRAFFIC_FIELD_TO_ACTOR})
 
 
 @dataclass(frozen=True)
@@ -46,12 +59,26 @@ class RunConfig:
     target_kind: TargetKind
     suite_names: tuple[str, ...]
     virtual_user_count: int = 200
-    duration_sec: int = 300
+    duration_sec: int = 300  # Live = 트래픽 Suite 1개 최대 시간 · 0 = 자동(예상 시간 기준) · Mock = 영향 없음
     traffic_mix: TrafficMix = field(default_factory=TrafficMix)
     random_seed: int = 20261103
-    is_open_burst: bool = True  # 오픈 시각에 한꺼번에 진입 · T1
+    is_open_burst: bool = True  # 한 번에 전원 진입 · 이전 기록 호환 · wave_size와 함께 정해짐
     alert_policy: AlertPolicy = AlertPolicy.ON_FAILURE
     bot_version_numbers: dict[str, int] = field(default_factory=dict)  # 종류 → 봇 버전 · 실행 시작 때 채움
+    wave_size: int = 0  # 접속 방식 · 회차당 인원 · 0 = 한 번에 전원 진입 · 앞 회차 종료 후 다음 회차
+
+    @property
+    def wave_count(self) -> int:
+        return math.ceil(self.virtual_user_count / self.wave_size) if self.wave_size else 1
+
+    @property
+    def entry_title(self) -> str:
+        """화면 표시 · 40명씩 5회 · 45명씩 4회 + 마지막 20명"""
+        if not self.wave_size:
+            return "한 번에 전원 진입"
+        full_wave_count, last_wave_size = divmod(self.virtual_user_count, self.wave_size)
+        title = f"{self.wave_size}명씩 {full_wave_count}회"
+        return f"{title} + 마지막 {last_wave_size}명" if last_wave_size else title
 
 
 @dataclass(frozen=True)
@@ -67,7 +94,67 @@ class SessionBehavior:
     entry_delay_deviation_ms: int
     click_interval_mean_ms: int
     click_interval_deviation_ms: int
+    browse_page_count: int  # 예매 전 목록 · 상세 화면 조회 수 · 0 = 바로 예매
+    page_dwell_mean_ms: int
+    page_dwell_deviation_ms: int
     sessions_per_device: int
+    sold_out_retry_count: int  # 먼저 팔린 좌석 → 다른 좌석 재시도 · 0 = 바로 포기
+    sold_out_retry_delay_ms: int
+    browser_trace_level: int  # 0 = API 요청만 · 1 = 화면 조회 · 화면 이벤트 · 브라우저 정보 전송
+    booking_sequence: int = BookingSequence.STANDARD  # 예매 순서 · 필드 추가 전 저장 버전 = 기본 순서
+    browser_identity: int = BrowserIdentity.FIXED  # 기기 정보 · 필드 추가 전 저장 버전 = 고정
+
+
+@dataclass(frozen=True)
+class BrowserProfile:
+    """세션 하나가 보내는 브라우저 정보 · 요청 헤더 그대로 · 시스템 server_request 이벤트에 기록"""
+    profile_id: str
+    user_agent: str
+    accept_language: str
+
+    def to_request_headers(self) -> dict[str, str]:
+        return {"User-Agent": self.user_agent, "Accept-Language": self.accept_language}
+
+
+CAPTCHA_ATTEMPT_LIMIT = 5  # 시스템 오답 제한 · web/services.verify · 5회째 = 예매 취소
+CAPTCHA_REFRESH_COUNT = 4  # 새로 받기 · 시스템 횟수 제한 없음
+CAPTCHA_WRONG_ANSWER_COUNT = CAPTCHA_ATTEMPT_LIMIT - 1  # 제한 직전 · 다음 정답으로 통과
+QUEUE_REENTRY_COUNT = 3  # 진입 → 취소 반복 · 시스템 취소 후 재진입 허용 · 횟수 제한 없음
+CAPTCHA_WRONG_ANSWER_ACTION = "wrong_answer"
+CAPTCHA_REFRESH_ACTION = "refresh"
+
+
+@dataclass(frozen=True)
+class BookingSequenceSteps:
+    """예매 순서별 기본 순서와 다른 단계 · 실제 · 모의 대상이 같이 사용"""
+    captcha_refresh_count: int = 0  # 정답 입력 전 새로 받기 횟수
+    captcha_wrong_answer_count: int = 0  # 정답 입력 전 오답 횟수 · 제한 미만
+    queue_reentry_count: int = 0  # 마지막 진입 전 진입 → 취소 횟수 · 취소한 예매 시도는 정답표 밖
+
+    @property
+    def captcha_retry_actions(self) -> tuple[str, ...]:
+        """정답 전 보안문자 동작 순서 · 오답 → 새로 받기 번갈아 · 남는 쪽은 뒤에 이어서"""
+        actions: list[str] = []
+        for index in range(max(self.captcha_refresh_count, self.captcha_wrong_answer_count)):
+            if index < self.captcha_wrong_answer_count:
+                actions.append(CAPTCHA_WRONG_ANSWER_ACTION)
+            if index < self.captcha_refresh_count:
+                actions.append(CAPTCHA_REFRESH_ACTION)
+        return tuple(actions)
+
+
+BOOKING_SEQUENCE_STEPS: dict[int, BookingSequenceSteps] = {
+    BookingSequence.STANDARD: BookingSequenceSteps(),
+    BookingSequence.CAPTCHA_REFRESH: BookingSequenceSteps(captcha_refresh_count=CAPTCHA_REFRESH_COUNT),
+    BookingSequence.CAPTCHA_WRONG_ANSWER: BookingSequenceSteps(captcha_wrong_answer_count=CAPTCHA_WRONG_ANSWER_COUNT),
+    BookingSequence.CAPTCHA_REFRESH_AND_WRONG_ANSWER: BookingSequenceSteps(
+        captcha_refresh_count=CAPTCHA_REFRESH_COUNT, captcha_wrong_answer_count=CAPTCHA_WRONG_ANSWER_COUNT),
+    BookingSequence.QUEUE_REENTRY: BookingSequenceSteps(queue_reentry_count=QUEUE_REENTRY_COUNT),
+}
+
+
+def find_sequence_steps(behavior: SessionBehavior) -> BookingSequenceSteps:
+    return BOOKING_SEQUENCE_STEPS.get(behavior.booking_sequence, BookingSequenceSteps())
 
 
 @dataclass(frozen=True)
@@ -77,6 +164,20 @@ class VirtualUserSessionPlan:
     entry_delay_ms: float  # 오픈(T0) → 예매 시작
     click_intervals_ms: tuple[float, ...]  # 좌석 클릭 간격 · 마지막 = 클릭 → 확정 · 재시도 때 반복 사용
     preferred_seat_ids: tuple[str, ...]  # 고를 좌석 순서 · 팔린 좌석은 건너뜀
+    page_dwell_ms: tuple[float, ...] = ()  # 예매 전 화면마다 머무는 시간 · 길이 = 조회 화면 수
+    device_key: str = ""  # 같은 값 = 같은 기기(쿠키 · 브라우저 정보 공유) · 봇 D 예매 창 묶음
+    uses_browser: bool = False  # 브라우저 트래픽 유형(봇 C 등) · 실제 화면 열고 버튼 클릭
+    browser_profile: BrowserProfile | None = None  # 기기 정보 변경 세션만 · None = 브라우저 흔적 설정 기준
+
+
+@dataclass(frozen=True)
+class BrowserCaptureFrame:
+    """브라우저 세션 한 단계 화면 · 클릭 위치는 화면 비율(0 ~ 1) · 이미지는 PNG 그대로"""
+    step: str
+    elapsed_ms: float  # 오픈(T0) 기준
+    click_ratio_x: float | None
+    click_ratio_y: float | None
+    image_png: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -110,7 +211,15 @@ FEATURE_FIELD_BY_BEHAVIOR_FIELD: dict[str, str | None] = {
     "entry_delay_deviation_ms": None,
     "click_interval_mean_ms": "click_interval_mean_ms",
     "click_interval_deviation_ms": "click_interval_std_ms",
+    "browse_page_count": None,
+    "page_dwell_mean_ms": None,
+    "page_dwell_deviation_ms": None,
     "sessions_per_device": "sessions_per_device",
+    "sold_out_retry_count": None,
+    "sold_out_retry_delay_ms": None,
+    "browser_trace_level": None,
+    "booking_sequence": None,
+    "browser_identity": None,
 }
 
 
@@ -133,6 +242,8 @@ class VirtualUserSessionResult:
     booking_outcome: BookingOutcome | None = None  # 오류면 None
     booked_seat_ids: tuple[str, ...] = ()  # 중복 판매 확인
     sent_event_ids: tuple[str, ...] = ()  # VU가 직접 보낸 브라우저 이벤트 · 이벤트 전달 검증 대조
+    device_key: str = ""  # 계획의 기기 묶음 그대로 · 같은 기기 세션 대조
+    capture_frames: tuple["BrowserCaptureFrame", ...] = ()  # 브라우저 세션 단계별 화면 · B3
 
 
 @dataclass(frozen=True)
@@ -163,6 +274,7 @@ class SuiteResult:
     metrics: dict[str, float] = field(default_factory=dict)
     message: str = ""  # 여러 항목은 MESSAGE_LINE_SEPARATOR로 구분
     details: dict[str, Any] = field(default_factory=dict)  # 화면용 · 놓친 세션 · 정답 × 판정 표
+    duration_sec: float | None = None  # 실제 소요 · 다음 Run 예상 시간 보정 · 이전 기록 = None
 
 
 @dataclass
@@ -220,11 +332,12 @@ def run_config_from_dict(raw: dict[str, Any]) -> RunConfig:
         suite_names=tuple(raw["suite_names"]),
         virtual_user_count=raw["virtual_user_count"],
         duration_sec=raw["duration_sec"],
-        traffic_mix=TrafficMix(**raw["traffic_mix"]),
+        traffic_mix=TrafficMix.from_dict(raw["traffic_mix"]),
         random_seed=raw["random_seed"],
         is_open_burst=raw.get("is_open_burst", True),  # 이전 기록 호환
         alert_policy=AlertPolicy(raw.get("alert_policy", AlertPolicy.ON_FAILURE.value)),
         bot_version_numbers=raw.get("bot_version_numbers", {}),
+        wave_size=raw.get("wave_size", 0),  # 이전 기록 = 한 번에 전원 진입
     )
 
 

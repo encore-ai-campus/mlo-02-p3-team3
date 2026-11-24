@@ -13,10 +13,11 @@ from ticket_guard_qa.domain.models import (
     VirtualUserSessionResult,
 )
 from ticket_guard_qa.scoring.latency_metrics import calculate_p95
-from ticket_guard_qa.system_targets.target_interfaces import AccountPoolExhaustedError, StreamRecord
-from ticket_guard_qa.test_suites.suite_interface import SuiteContext
+from ticket_guard_qa.system_targets.target_interfaces import AccountPoolExhaustedError, EventStreamReader, StreamRecord
+from ticket_guard_qa.test_suites.suite_interface import SuiteContext, SuiteGuide
+from ticket_guard_qa.traffic_generators.session_funnel import ACTOR_PROGRESS_DETAIL_KEY, build_funnel_progress
 from ticket_guard_qa.traffic_generators.virtual_user_traffic import (
-    build_session_plans,
+    build_planned_user_session_plans,
     reset_before_traffic,
     send_virtual_user_traffic,
 )
@@ -35,10 +36,21 @@ SOLD_OUT_SERVER_EVENT_TYPES = frozenset({
     "queue_enter", "queue_register", "queue_admitted", "captcha_success", "booking_confirm_request", "booking_confirm_fail",
     "queue_cancel",
 })
+# 화면에서 원하는 좌석이 이미 전부 팔림 → 확정 없이 포기 · 확정 요청 · 실패 이벤트 없음이 정상
+SOLD_OUT_BEFORE_CONFIRM_SERVER_EVENT_TYPES = SOLD_OUT_SERVER_EVENT_TYPES - {"booking_confirm_request", "booking_confirm_fail"}
 REQUIRED_SERVER_EVENT_TYPES = {
     BookingOutcome.BOOKED: BOOKED_SERVER_EVENT_TYPES,
     BookingOutcome.SOLD_OUT: SOLD_OUT_SERVER_EVENT_TYPES,
 }
+
+
+def find_required_server_event_types(result: VirtualUserSessionResult) -> frozenset[str] | None:
+    """오류 세션 = 판정 안 함 · Live 확정 소요 0 = 확정 요청을 보내지 않음"""
+    if result.is_error:
+        return None
+    if result.booking_outcome is BookingOutcome.SOLD_OUT and result.step_latency_ms.get("confirm") == 0.0:
+        return SOLD_OUT_BEFORE_CONFIRM_SERVER_EVENT_TYPES
+    return REQUIRED_SERVER_EVENT_TYPES.get(result.booking_outcome)
 
 
 @dataclass
@@ -71,14 +83,15 @@ def is_capture_event(event: dict) -> bool:
     return event.get("schemaVersion") == CAPTURE_SCHEMA_VERSION or event.get("eventType") == CAPTURE_CHUNK_EVENT_TYPE
 
 
-def evaluate_delivery(session_results: list[VirtualUserSessionResult], records: list[StreamRecord]) -> DeliveryReport:
-    """QA가 보낸 것(eventId · 예매 시도 번호 · 시험 계정) ↔ 토픽 메시지 대조"""
-    report = DeliveryReport(invalid_record_count=sum(record.event is None for record in records))
-    sent_event_ids = {event_id for result in session_results for event_id in result.sent_event_ids}
-    attempt_ids = {result.session_key for result in session_results}
-    report.sent_browser_event_count = len(sent_event_ids)
+def collect_sent_event_ids(session_results: list[VirtualUserSessionResult]) -> set[str]:
+    return {event_id for result in session_results for event_id in result.sent_event_ids}
 
-    qa_records = [
+
+def select_qa_records(session_results: list[VirtualUserSessionResult], records: list[StreamRecord]) -> list[StreamRecord]:
+    """QA 메시지 = 시험 계정 · QA가 받은 예매 시도 번호 · QA가 만든 eventId · 원본 적재 검증도 사용"""
+    sent_event_ids = collect_sent_event_ids(session_results)
+    attempt_ids = {result.session_key for result in session_results}
+    return [
         record for record in records
         if record.event is not None and (
             str(record.event.get("userId") or "").startswith(TEST_ACCOUNT_PREFIX)
@@ -86,6 +99,37 @@ def evaluate_delivery(session_results: list[VirtualUserSessionResult], records: 
             or record.event.get("eventId") in sent_event_ids
         )
     ]
+
+
+def send_traffic_and_read_stream(
+    context: SuiteContext, stream_reader: EventStreamReader,
+) -> tuple[dict[int, int], list[VirtualUserSessionResult], list[StreamRecord]]:
+    """초기화 → 토픽 끝 위치 기록 → VU 트래픽 → 시작 위치부터 읽기 · AccountPoolExhaustedError는 호출한 Suite가 처리"""
+    run_config = context.run_config
+    planned_users = plan_virtual_users(run_config.traffic_mix, run_config.virtual_user_count, run_config.random_seed)
+
+    context.report_progress(reset_before_traffic(context.system_target.booking_api))
+    start_offsets = stream_reader.snapshot_end_offsets()
+    context.report_progress(f"토픽 시작 위치 · {' · '.join(f'P{p}={o}' for p, o in sorted(start_offsets.items()))}")
+    session_results = send_virtual_user_traffic(
+        context.system_target.booking_api,
+        build_planned_user_session_plans(planned_users, context.bot_profile_registry, run_config.random_seed, run_config.wave_size),
+        context.traffic_time_limit_sec,
+        lambda results: context.report_progress(f"VU {sum(r is not None for r in results)}/{len(planned_users)} 종료",
+                                                actor_progress=build_funnel_progress(planned_users, results)),
+        run_config.wave_size,
+    )
+    context.report_progress("이벤트 수신 대기 · 토픽 조회")
+    return start_offsets, session_results, stream_reader.read_since(start_offsets, context.run_id)
+
+
+def evaluate_delivery(session_results: list[VirtualUserSessionResult], records: list[StreamRecord]) -> DeliveryReport:
+    """QA가 보낸 것(eventId · 예매 시도 번호 · 시험 계정) ↔ 토픽 메시지 대조"""
+    report = DeliveryReport(invalid_record_count=sum(record.event is None for record in records))
+    sent_event_ids = collect_sent_event_ids(session_results)
+    report.sent_browser_event_count = len(sent_event_ids)
+
+    qa_records = select_qa_records(session_results, records)
     report.qa_record_count = len(qa_records)
     event_id_counts = Counter(record.event.get("eventId") for record in qa_records)
     report.duplicate_event_ids = sorted(event_id for event_id, count in event_id_counts.items() if count > 1)
@@ -110,7 +154,7 @@ def evaluate_delivery(session_results: list[VirtualUserSessionResult], records: 
             report.delivery_latency_ms.append(max(record.timestamp_ms - occurred_at_ms, 0.0))
 
     for result in session_results:
-        required = REQUIRED_SERVER_EVENT_TYPES.get(result.booking_outcome) if not result.is_error else None
+        required = find_required_server_event_types(result)
         if required:
             report.missing_server_events += [
                 f"{result.session_key} · {event_type}"
@@ -151,31 +195,25 @@ class EventDeliverySuite:
     suite_name = EVENT_DELIVERY_SUITE_NAME
     title = "이벤트 전달 검증"
     related_codes: tuple[str, ...] = ()
+    guide = SuiteGuide(
+        "화면 · 서버 기록이 데이터 통로까지 빠짐없이 도착",
+        "남긴 기록과 도착한 기록을 하나씩 대조",
+        "누락 0 · 중복 0",
+    )
 
     def run(self, context: SuiteContext) -> SuiteResult:
         stream_reader = context.system_target.event_stream_reader
         if stream_reader is None:
             raise NotImplementedError("이벤트 스트림 읽기 미설정 · TICKET_GUARD_QA_KAFKA_BOOTSTRAP_SERVERS")
-        run_config = context.run_config
-        booking_api = context.system_target.booking_api
-        planned_users = plan_virtual_users(run_config.traffic_mix, run_config.virtual_user_count, run_config.random_seed)
-        behaviors = [context.bot_profile_registry.get_profile(user.actor_type).behavior for user in planned_users]
-
-        context.report_progress(reset_before_traffic(booking_api))
-        start_offsets = stream_reader.snapshot_end_offsets()
-        context.report_progress(f"토픽 시작 위치 · {' · '.join(f'P{p}={o}' for p, o in sorted(start_offsets.items()))}")
         try:
-            session_results = send_virtual_user_traffic(
-                booking_api, build_session_plans(behaviors, run_config.random_seed), run_config.duration_sec,
-                lambda results: context.report_progress(f"VU {sum(r is not None for r in results)}/{len(planned_users)} 종료"),
-            )
+            start_offsets, session_results, records = send_traffic_and_read_stream(context, stream_reader)
         except AccountPoolExhaustedError as error:
             return SuiteResult(self.suite_name, SuiteOutcome.FAILED, message=f"FAIL: {error}")
 
-        context.report_progress("이벤트 수신 대기 · 토픽 조회")
-        records = stream_reader.read_since(start_offsets, context.run_id)
         report = evaluate_delivery(session_results, records)
         is_passed = report.issue_count == 0  # 전달 결과만 판정
+        run_config = context.run_config
+        planned_users = plan_virtual_users(run_config.traffic_mix, run_config.virtual_user_count, run_config.random_seed)
         return SuiteResult(
             suite_name=self.suite_name,
             outcome=SuiteOutcome.PASSED if is_passed else SuiteOutcome.FAILED,
@@ -191,6 +229,7 @@ class EventDeliverySuite:
             details={
                 "start_offsets": {str(partition): offset for partition, offset in start_offsets.items()},
                 "read_record_count": len(records),
+                ACTOR_PROGRESS_DETAIL_KEY: build_funnel_progress(planned_users, session_results),
                 "missing_browser_event_ids": report.missing_browser_event_ids[:MAX_LISTED_ISSUE_COUNT],
                 "missing_server_events": report.missing_server_events[:MAX_LISTED_ISSUE_COUNT],
                 "duplicate_event_ids": report.duplicate_event_ids[:MAX_LISTED_ISSUE_COUNT],

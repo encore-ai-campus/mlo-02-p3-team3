@@ -1,3 +1,7 @@
+<!--
+[홍석환] 원본 이벤트 적재 운영 안내
+컬렉션 라우팅·환경 설정·실행·복구 및 검증 방법을 설명한다.
+-->
 # Kafka 원본 컬렉션 라우팅
 
 Kafka를 작은 배치로 읽고 종류별 컬렉션에 원본을 직접 저장한다.
@@ -64,55 +68,71 @@ Kafka offset이 다르면 payload/eventId가 같아도 별도 문서다.
 
 ## 설치·기존 DB 적용
 
-저장소 루트에서 실행한다. 기존 .env는 복사/덮어쓰지 않는다.
-새 설치만 raw_consumer/.env.example을 .env로 복사하고 credentials placeholder를 바꾼다.
-비밀번호는 관리자와 writer를 구분하고 충분히 긴 값으로 설정한다.
+Docker 환경 설정은 저장소 루트 `.env` 하나로 통합한다. 예시는 루트 `.env.example`이다.
+새 설치에서만 `Copy-Item .env.example .env`로 만들고 기존 값은 덮어쓰지 않는다.
+기존 `raw_consumer/.env`는 보관 파일이며 아래 명령에서는 사용하지 않는다.
+계정·DB·토픽·출처 값은 유지한다. 환경 파일 통합 때문에 DB를 재생성하지 않는다.
+
+최초 설치 순서·명령·성공 기준은 [루트 DB 매뉴얼](../README.md#db별-포트-번호)을 따른다.
+모든 명령은 저장소 루트에서 `--env-file .env`를 사용한다.
+
+| 설정 | 용도 |
+|---|---|
+| `RAW_MONGO_ROOT_USERNAME/PASSWORD` | 관리자 생성, 인증 DB `admin` |
+| `RAW_MONGO_WRITER_USERNAME/PASSWORD` | 기존 적재·Compass 계정, 인증 DB `RAW_MONGO_DATABASE`, `readWrite` |
+| `RAW_MONGO_READER_USERNAME/PASSWORD` | 선택 사항, 둘 다 없으면 생성 생략 |
+| `RAW_SOURCE_ID` | 출처 세대, 재시작 시 유지 |
+| `RAW_KAFKA_TOPIC` | `KAFKA_EVENTS_TOPIC`과 일치 |
+| `RAW_KAFKA_NETWORK` | Kafka 네트워크, 기본 `ticket-guard_default` |
+
+빈 볼륨에서 root·writer와 기존 컬렉션·인덱스가 생성된다. reader는 선택 설정이며
+기본 실행·writer 검사·Compass를 위해 필수로 추가하지 않는다. 원본 DB는 내부·PC
+포트 `27020`, 공식 초기화 임시 서버는 `27017`을 사용한다.
+Kafka·토픽·공용 네트워크는 적재기를 실행하기 전에 준비한다.
+
+### 기존 볼륨
+
+초기화는 기존 볼륨에서 다시 실행되지 않는다. `setup.js`는 유효한 writer로 인증해
+없는 컬렉션·인덱스를 적용한다. 기존 계정·문서·raw_events 인덱스는 변경하지 않는다.
 
 ```powershell
-docker compose --env-file raw_consumer/.env -f compose.raw.yml config --quiet
-docker compose --env-file raw_consumer/.env -f compose.raw.yml build raw-consumer
-docker compose --env-file raw_consumer/.env -f compose.raw.yml -f compose.raw.local.yml up -d --wait mongo-raw
-docker compose --env-file raw_consumer/.env -f compose.raw.yml exec -T mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/setup.js
-docker compose --env-file raw_consumer/.env -f compose.raw.yml up -d --no-deps raw-consumer
+docker compose --env-file .env -f compose.raw.yml -f compose.raw.local.yml up -d --no-deps --wait mongo-raw
+docker compose --env-file .env -f compose.raw.yml exec -T mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/setup.js
+docker compose --env-file .env -f compose.raw.yml exec -T mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/verify.js
 ```
 
-신규 DB는 init.js에서 사용자와 raw_events, 라우팅 컬렉션들을 만든다.
-기존 볼륨은 init.js가 다시 실행되지 않으므로 setup.js를 명시적으로 실행한다.
-setup은 기존 데이터·사용자를 변경하지 않고 9개 컬렉션과 비고유 인덱스
-raw_kafka_position_v1 {source:1,topic:1,partition:1,offset:1}을 멱등 생성한다.
-raw_events 인덱스는 변경하지 않는다. TTL/업무 validator는 없다.
-현재 실행 중인 DB를 재생성하지 않고 setup만 적용하려면 다음도 가능하다.
+writer가 없을 때만 유효한 관리자 인증으로 `/opt/raw/setup-writer.js`를 실행한다.
+기존 계정의 비밀번호·권한이 다르면 덮어쓰지 않고 실패한다. `setup.js`는 계정 복구 도구가
+아니며 환경 파일 변경만으로 기존 비밀번호가 바뀌지 않는다.
+
+### 선택적 reader
+
+필요할 때만 루트 `.env`의 `RAW_MONGO_READER_USERNAME/PASSWORD`를 둘 다 설정한다.
+root·writer와 다른 이름을 사용한다. 기존 DB에는 위 `up` 명령으로 환경 변수를 반영한 뒤
+관리자 인증으로 적용한다. 기본 writer 설치에서는 아래 두 명령을 실행하지 않는다.
 
 ```powershell
-Get-Content -Raw raw_consumer/mongo/setup.js | docker compose --env-file raw_consumer/.env -f compose.raw.yml exec -T mongo-raw mongosh --quiet --norc --port 27020 --file /dev/stdin
+docker compose --env-file .env -f compose.raw.yml exec -T mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/setup-reader.js
+docker compose --env-file .env -f compose.raw.yml exec -T -e RAW_MONGO_VERIFY_ROLE=reader mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/verify.js
 ```
 
-공식 Mongo 초기화 임시 서버는 27017을 쓰지만 운영 실행·인증·healthcheck·조회는 27020이다.
-DB 호스트 공개가 필요 없으면 compose.raw.local.yml을 생략한다.
+QA 자체 DB와 외부 원본 DB 검증은 별개다. QA 전용 원본 DB를 만들지 않는다.
+[선택적 연결](../README.md#4-선택-별도-읽기-계정과-qa-외부-db-검증)을 참고한다.
+출처는 같은 루트 `.env`의 `RAW_SOURCE_ID`와 `TICKET_GUARD_QA_SYSTEM_RAW_SOURCE_ID`를 맞춘다.
 
 ## 실행·조회
 
 ```powershell
-docker compose --env-file raw_consumer/.env -f compose.raw.yml ps -a
-docker compose --env-file raw_consumer/.env -f compose.raw.yml logs --tail 30 raw-consumer
-docker compose --env-file raw_consumer/.env -f compose.raw.yml exec -T mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/verify.js
-docker compose --env-file raw_consumer/.env -f compose.raw.yml stop raw-consumer
+docker compose --env-file .env -f compose.raw.yml ps -a
+docker compose --env-file .env -f compose.raw.yml logs --since 2m raw-consumer
+docker compose --env-file .env -f compose.raw.yml exec -T mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/verify.js
+docker compose --env-file .env -f compose.raw.yml stop raw-consumer
 ```
 
-Compass: localhost:27020, 실제 .env의 raw_writer 계정, 인증 DB ticketguard_raw.
-새로고침 후 각 컬렉션 Documents에서 다음 Filter와 Sort 사용:
-
-```javascript
-// Filter
-{topic: "ticketguard.events.v1"}
-// Sort
-{ingestedAt: -1}
-// 인증된 mongosh
-db.getSiblingDB('ticketguard_raw').http_events.countDocuments({topic:'ticketguard.events.v1'})
-db.getSiblingDB('ticketguard_raw').unclassified_events.aggregate([
-  {$group:{_id:'$routing.reason',count:{$sum:1}}}
-])
-```
+Compass는 `127.0.0.1:27020`, 루트 `.env`의 `RAW_MONGO_WRITER_*`, 인증 DB
+`RAW_MONGO_DATABASE`를 사용한다. PC 포트는 local override 적용 시에만 공개된다.
+[루트 Compass 안내](../README.md#3-mongodb-compass-접속)에 따라 웹 동작 후
+최신 `batch_saved`와 실제 문서 증가를 함께 확인한다.
 
 ## 실패·소유권·종료
 
@@ -153,8 +173,8 @@ SHA-256이며 현재 Compose 기본값과 실제 .env에 고정한다. 매핑을
 ## 검증
 
 ```powershell
-docker compose --env-file raw_consumer/.env -f compose.raw.yml run --rm --no-deps raw-consumer python -m unittest discover -s tests -v
-docker compose --env-file raw_consumer/.env -f compose.raw.yml run --rm --no-deps raw-consumer python integration.py
+docker compose --env-file .env -f compose.raw.yml run --rm --no-deps raw-consumer python -m unittest discover -s tests -v
+docker compose --env-file .env -f compose.raw.yml run --rm --no-deps raw-consumer python integration.py
 ```
 
 integration은 독립 UUID 테스트 토픽/그룹만 사용하고 테스트 source로 문서를 남긴다.
@@ -163,8 +183,14 @@ integration은 독립 UUID 테스트 토픽/그룹만 사용하고 테스트 sou
 종단 간 exactly-once나 여러 컬렉션의 원자 트랜잭션을 보장하지 않는다.
 
 AWS: 네트워크/advertised listener/인증 연결을 실제 환경에 맞춰야 한다.
+단일 EC2의 Docker Compose에서도 루트 `.env` 또는 동등한 환경 변수 주입이
+필요하다. 같은 Docker 호스트의 네트워크 이름만 `RAW_KAFKA_NETWORK`로 지정할 수
+있으며 서로 다른 EC2의 Docker 네트워크는 자동 연결되지 않는다. 현재 MongoDB
+호스트와 포트는 Compose의 `mongo-raw:27020`에 맞춰져 있어 외부 관리형 DB 연결이나
+MongoDB TLS는 별도 구성이 필요하다. 로컬 override는 AWS 기본 실행에서 생략한다.
 현재 Kafka는 PLAINTEXT이며 SASL/TLS가 필요한 경우 추가 구현이 필요하다.
 DB 포트를 인터넷에 공개하지 않고 VPC/터널을 사용한다.
+Compass 원격 조회는 승인된 SSH 터널을 사용한다. AWS 실제 배포는 미검증이다.
 
 참고: https://docs.confluent.io/kafka-clients/python/current/index.html
 https://www.mongodb.com/docs/languages/python/pymongo-driver/current/connect/connection-options/csot/

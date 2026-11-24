@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}홈 | TicketGuard QA{% endblock %}
+{% block header %}{% endblock %}
 {% block head %}
 <style>
   .hero { position: relative; border-radius: 22px; padding: 42px 48px; color: #fff; overflow: hidden;
@@ -15,21 +16,69 @@
   .status-row { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.18); font-size: 15px; }
   .status-row b { font-weight: 800; }
   .status-row .is-warning { color: #FFD3A8; }
-  .choice-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 360px; gap: 22px; margin-top: 24px; }
-  .choice-card { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 24px; padding: 22px; }
-  .choice-visual { border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #fff; font-weight: 800; min-height: 280px; }
-  .choice-visual svg { width: 64px; height: 64px; stroke-width: 1.6; }
+  body:has(.home-layout) { overflow: hidden; }
+  .page:has(> .home-layout) { max-width: none; margin-left: 350px; height: 100dvh; overflow-y: auto; padding: 24px; }
+  .home-layout { min-height: calc(100dvh - 48px); }
+  .home-sidebar { position: fixed; inset: 0 auto 0 0; width: 350px; padding: 0 16px 16px; background: var(--card-background); border-right: 1px solid var(--line-color); overflow-y: auto; z-index: 50; }
+  .home-sidebar > .brand-group { min-height: 76px; height: 76px; gap: 10px; }
+  .home-toolbar { position: fixed; inset: 0 0 auto 350px; min-height: 76px; display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 16px; padding: 12px 24px; background: var(--card-background); border-bottom: 1px solid var(--line-color); z-index: 50; }
+  .home-sidebar, .home-main { min-width: 0; }
+  .home-main { display: flex; flex-direction: column; min-height: calc(100dvh - 48px); padding-top: 70px; }
+  .home-main > .hero { grid-template-columns: minmax(0, 1fr); align-content: center; flex: 1; min-height: 360px; }
+  .home-main .hero-search { max-width: none; }
+  .hero-search input { min-width: 0; }
+  .home-sidebar > .choice-grid { display: grid; grid-template-columns: minmax(0, 1fr) !important; gap: 20px; }
+  @media (max-width: 1000px) {
+    body:has(.home-layout) { overflow: auto; }
+    .page:has(> .home-layout) { margin-left: 0; height: auto; overflow: visible; padding: 92px 16px 16px; }
+    .home-toolbar { left: 0; padding-inline: 16px; }
+    .home-main { padding-top: 0; }
+    .home-sidebar { position: static; width: auto; padding: 0 0 20px; background: transparent; border-right: 0; overflow: visible; }
+    .home-sidebar > .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .home-main > .hero { padding: 28px; }
+  }
+  @media (max-width: 760px) {
+    .home-sidebar > .choice-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  }
+  .choice-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 12px; row-gap: 16px; padding: 18px 14px; }
+  .choice-card > .button { grid-column: 1 / -1; }
+  @media (max-width: 1280px) {
+    .choice-grid > .choice-card { grid-template-columns: 64px minmax(0, 1fr) !important; }
+    .choice-card > .choice-visual { flex-direction: column !important; }
+  }
+  .choice-visual { border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #fff; font-weight: 800; height: 80px; min-height: 0 !important; align-self: start; }
+  .choice-visual svg { width: 32px; height: 32px; stroke-width: 1.6; }
   .choice-visual.is-qa { background: linear-gradient(180deg, #2D63EE, #13308F); }
   .choice-visual.is-db { background: linear-gradient(180deg, #F7893F, #DB4F0F); }
+  .choice-body { display: flex; flex-direction: column; min-width: 0; }
+  .choice-body > .tag { align-self: flex-start; }
+  .choice-body > .flow-chips { margin-top: auto; padding-top: 14px; }
   .choice-body h2 { margin: 10px 0 12px; font-size: 30px; font-weight: 800; letter-spacing: -.04em; }
   .choice-line { display: flex; align-items: center; gap: 8px; color: var(--strong-text-color); font-size: 15px; margin-bottom: 10px; }
   .choice-line .is-fail { color: var(--fail-red-text); font-weight: 800; }
   .flow-chips { display: flex; align-items: center; gap: 6px; margin: 14px 0 18px; color: var(--muted-text-color); flex-wrap: wrap; }
   .flow-chips .tag { font-size: 13px; padding: 5px 10px; }
-  .first-steps { padding: 24px; }
-  .first-step { display: flex; gap: 12px; margin-top: 16px; }
-  .first-step .step-number { width: 30px; height: 30px; border-radius: 50%; background: var(--qa-blue-light); color: var(--qa-blue-text); font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .first-step b { display: block; font-size: 15.5px; }
+  .home-sidebar .choice-card { padding: 12px; row-gap: 10px; }
+  .home-sidebar .choice-body h2 { margin: 6px 0 8px; font-size: 24px; }
+  .home-sidebar .choice-line { font-size: 13px; margin-bottom: 6px; }
+  .home-sidebar .choice-visual { height: 64px; gap: 4px; }
+  .home-sidebar .choice-visual svg { width: 28px; height: 28px; }
+  .home-sidebar .flow-chips { gap: 4px; margin-bottom: 8px; padding-top: 8px; }
+  .home-sidebar .flow-chips .tag { font-size: 12px; padding: 4px 7px; }
+  .home-sidebar .choice-card > .button { height: 44px; font-size: 16px; }
+  @media (min-width: 1001px) {
+    .home-sidebar > .brand-group { min-height: 76px; }
+    .home-sidebar > .choice-grid { gap: 12px; zoom: .95; }
+  }
+  @media (min-width: 1001px) and (max-height: 750px) {
+    .home-sidebar > .choice-grid { zoom: .85; }
+  }
+  @media (min-width: 1001px) and (max-height: 620px) {
+    .home-sidebar > .choice-grid { zoom: .75; }
+  }
+  .onboarding-line { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,.28); font-size: 13px; white-space: nowrap; overflow-x: auto; }
+  .onboarding-line strong { margin-right: 4px; }
+  .onboarding-line svg { width: 14px; height: 14px; }
   .continue-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
   .continue-card { display: flex; align-items: center; gap: 14px; padding: 18px 20px; }
   .continue-card .continue-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -37,8 +86,57 @@
 </style>
 {% endblock %}
 {% block content %}
+<div class="home-layout">
+  <aside class="home-sidebar" aria-label="대시보드 바로가기">
+    <div class="brand-group">
+      <a class="brand" href="{{ base_path }}/" aria-label="티켓가드 관리자 콘솔 홈">
+        <span class="brand-mark">{% include "brand_mark.svg" %}</span>
+        <span><div class="brand-name">티켓가드</div><div class="brand-english">TICKET GUARD</div></span>
+      </a>
+      <span class="brand-badge">QA 콘솔</span>
+    </div>
+<div class="choice-grid">
+  <section class="card choice-card">
+    <div class="choice-visual is-qa"><i data-lucide="flask-conical"></i>QA</div>
+    <div class="choice-body">
+      <span class="tag is-qa">QA 대시보드</span>
+      <h2>테스트 실행</h2>
+      {% if latest_summary %}
+      <div class="choice-line"><i data-lucide="history"></i>최근 Run {{ latest_summary.run_id[-11:] }} · {{ latest_summary.started_at | time_ago }}</div>
+      {% if latest_summary.status.value == 'FAILED' %}
+      <div class="choice-line" style="white-space:nowrap"><i data-lucide="circle-alert"></i><span class="is-fail">FAIL · Suite 실패 {{ latest_summary.failed_suite_count }}</span></div>
+      {% else %}
+      <div class="choice-line" style="white-space:nowrap"><i data-lucide="circle-check"></i>{{ 'PASS' if latest_summary.status.value == 'PASSED' else latest_summary.status.value }} · Suite 통과 {{ latest_summary.passed_suite_count }}/{{ latest_summary.suite_results | length }}</div>
+      {% endif %}
+      {% else %}
+      <div class="choice-line"><i data-lucide="sparkles"></i>Mock 대상 즉시 시작 가능</div>
+      {% endif %}
+      <div class="flow-chips"><span class="tag is-qa">Run 설정</span><i data-lucide="chevron-right"></i><span class="tag is-qa">Run 모니터</span><i data-lucide="chevron-right"></i><span class="tag is-qa">Run 리포트</span></div>
+    </div>
+    <a class="button is-wide" href="{{ base_path }}/runs/new">테스트 시작<i data-lucide="chevron-right"></i></a>
+  </section>
+  <section class="card choice-card">
+    <div class="choice-visual is-db"><i data-lucide="database"></i>DB</div>
+    <div class="choice-body">
+      <span class="tag is-db">DB 대시보드</span>
+      <h2>데이터 검증</h2>
+      <div class="choice-line"><i data-lucide="layers"></i>Bronze · 격리 · Silver · Gold 기록</div>
+      <div class="choice-line"><i data-lucide="lock"></i>읽기 전용 · 조회 계정</div>
+      <div class="flow-chips"><span class="tag is-db">세션 선택</span><i data-lucide="chevron-right"></i><span class="tag is-db">Ground Truth 비교</span><i data-lucide="chevron-right"></i><span class="tag is-db">DB 기록</span></div>
+    </div>
+    <a class="button is-wide is-db" href="{{ base_path }}/db">DB 대시보드<i data-lucide="chevron-right"></i></a>
+  </section>
+</div>
+  </aside>
+  <div class="home-main">
+    <div class="home-toolbar console-header console-account-menu">
+      <span class="target-chip"><span class="status-dot {{ '' if target_status.is_connected else 'is-down' }}"></span>{{ target_status.label }} · {{ '연결 정상' if target_status.is_connected else '연결 끊김' }}</span>
+      <span class="admin-user"><i data-lucide="user-round"></i>{{ admin_user }}</span>
+      <button type="button" class="console-logout" data-console-logout>로그아웃</button>
+    </div>
 <section class="hero">
   <div>
+    <div class="onboarding-line" aria-label="온보딩 순서"><strong>온보딩 순서</strong><span>Mock 대상 Self-check</span><i data-lucide="chevron-right"></i><span>Live 대상 테스트</span><i data-lucide="chevron-right"></i><span>DB 원인 분석</span></div>
     <h1>QA 운영 현황</h1>
     <p>테스트 실행 · 시스템 데이터 검증</p>
     <form class="hero-search" action="{{ base_path }}/search" method="get">
@@ -65,52 +163,14 @@
 <a class="notice is-qa" style="margin-top:18px" href="{{ base_path }}/runs/{{ active_run_id }}/live"><i data-lucide="loader"></i>실행 중 Run {{ active_run_id }} · Run 모니터</a>
 {% endif %}
 
-<div class="choice-grid">
-  <section class="card choice-card">
-    <div class="choice-visual is-qa"><i data-lucide="flask-conical"></i>QA</div>
-    <div class="choice-body">
-      <span class="tag is-qa">QA 대시보드</span>
-      <h2>테스트 실행</h2>
-      {% if latest_summary %}
-      <div class="choice-line"><i data-lucide="history"></i>최근 Run {{ latest_summary.run_id[-11:] }} · {{ latest_summary.started_at | time_ago }}</div>
-      {% if latest_summary.status.value == 'FAILED' %}
-      <div class="choice-line" style="white-space:nowrap"><i data-lucide="circle-alert"></i><span class="is-fail">FAIL · Suite 실패 {{ latest_summary.failed_suite_count }}</span></div>
-      {% else %}
-      <div class="choice-line" style="white-space:nowrap"><i data-lucide="circle-check"></i>{{ 'PASS' if latest_summary.status.value == 'PASSED' else latest_summary.status.value }} · Suite 통과 {{ latest_summary.passed_suite_count }}/{{ latest_summary.suite_results | length }}</div>
-      {% endif %}
-      {% else %}
-      <div class="choice-line"><i data-lucide="sparkles"></i>Mock 대상 즉시 시작 가능</div>
-      {% endif %}
-      <div class="flow-chips"><span class="tag is-qa">Run 설정</span><i data-lucide="chevron-right"></i><span class="tag is-qa">Run 모니터</span><i data-lucide="chevron-right"></i><span class="tag is-qa">Run 리포트</span></div>
-      <a class="button is-wide" href="{{ base_path }}/runs/new">테스트 시작<i data-lucide="chevron-right"></i></a>
-    </div>
-  </section>
-  <section class="card choice-card">
-    <div class="choice-visual is-db"><i data-lucide="database"></i>DB</div>
-    <div class="choice-body">
-      <span class="tag is-db">DB 대시보드</span>
-      <h2>데이터 검증</h2>
-      <div class="choice-line"><i data-lucide="layers"></i>Bronze · 격리 · Silver · Gold 기록</div>
-      <div class="choice-line"><i data-lucide="lock"></i>읽기 전용 · 조회 계정</div>
-      <div class="flow-chips"><span class="tag is-db">세션 선택</span><i data-lucide="chevron-right"></i><span class="tag is-db">Ground Truth 비교</span><i data-lucide="chevron-right"></i><span class="tag is-db">DB 기록</span></div>
-      <a class="button is-wide is-db" href="{{ base_path }}/db">DB 대시보드<i data-lucide="chevron-right"></i></a>
-    </div>
-  </section>
-  <section class="card first-steps">
-    <h3 class="section-heading"><i data-lucide="compass" style="color:var(--qa-blue)"></i>온보딩 순서</h3>
-    <div class="sub-text">권장 진행 순서</div>
-    <div class="first-step"><span class="step-number">1</span><div><b>Mock 대상 Self-check</b><span class="muted">채점 로직 검증</span></div></div>
-    <div class="first-step"><span class="step-number">2</span><div><b>Live 대상 테스트</b><span class="muted">Run 설정 → Run 모니터 → Run 리포트</span></div></div>
-    <div class="first-step"><span class="step-number">3</span><div><b>DB 원인 분석</b><span class="muted">오분류 세션 추적</span></div></div>
-  </section>
-</div>
-
 <h3 class="section-heading" style="margin-top:28px">최근 작업</h3>
 <div class="continue-grid">
   {% if latest_summary %}
   <a class="card continue-card" href="{{ base_path }}/runs/{{ latest_summary.run_id }}">
     {% if latest_summary.status.value == 'PASSED' %}
     <span class="continue-icon" style="background:var(--pass-green-light);color:var(--pass-green)"><i data-lucide="circle-check"></i></span>
+    {% elif latest_summary.status.value == 'RUNNING' %}
+    <span class="continue-icon" style="background:var(--qa-blue-light);color:var(--qa-blue-text)"><i data-lucide="loader"></i></span>
     {% else %}
     <span class="continue-icon" style="background:var(--fail-red-light);color:var(--fail-red-text)"><i data-lucide="circle-alert"></i></span>
     {% endif %}
@@ -125,10 +185,14 @@
   <a class="card continue-card" href="{{ base_path }}/runs/new?from_run_id={{ latest_summary.run_id }}">
     <span class="continue-icon" style="background:var(--qa-blue-light);color:var(--qa-blue-text)"><i data-lucide="refresh-cw"></i></span>
     <span class="spacer"><b>{{ latest_summary.run_id[-11:] }} 동일 조건 재실행</b>
-      <span class="muted">VU {{ latest_summary.run_config.virtual_user_count }} · {{ latest_summary.run_config.duration_sec }}초{{ ' · 버스트' if latest_summary.run_config.is_open_burst }}</span></span><i data-lucide="chevron-right"></i>
+      <span class="muted">{% set latest_config = latest_summary.run_config %}VU {{ latest_config.virtual_user_count }}{% if latest_config.target_kind.value == 'live' %} · {{ ('최대 ' ~ latest_config.duration_sec ~ '초') if latest_config.duration_sec else '최대 시간 자동' }}{% endif %} · {{ latest_config.entry_title }}</span></span><i data-lucide="chevron-right"></i>
   </a>
   {% else %}
   <div class="card continue-card"><span class="muted">Run 기록 없음 · 첫 Run 이후 표시</span></div>
   {% endif %}
+</div>
+
+
+  </div>
 </div>
 {% endblock %}

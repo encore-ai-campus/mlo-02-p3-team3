@@ -1,13 +1,29 @@
+"""
+[홍석환] Kafka와 MongoDB 사이의 Spark 처리 진입점
+실행 모드에 따라 환경 점검 또는 스트리밍 적재를 시작하고 종료를 관리한다.
+"""
 import logging
 import signal
 import sys
 from functools import partial
 from pyspark.sql import SparkSession
-from settings import Settings
-from mongo_writer import write_batch
+from configuration.ingest import Settings
+from ingestion.mongo_writer import write_batch, refresh_anomaly_state
 
 
 def main():
+    if sys.argv[1:] in (['flow'], ['network']):
+        mode = sys.argv[1]
+        if mode == 'flow':
+            from user_flow.runtime import run
+        else:
+            from network_metrics.runtime import run
+        try:
+            run()
+            return 0
+        except Exception as exc:
+            print(f'{mode} failed error_class={type(exc).__name__}', flush=True)
+            return 1
     spark = None
     query = None
     stopping = False
@@ -40,7 +56,7 @@ def main():
                  .getOrCreate())
         print(f'pipeline ready mode={mode}', flush=True)
         if mode == 'check':
-            from check import check
+            from tools.check import check
             check(spark, config)
         elif not stopping:
             source = (spark.readStream.format('kafka')
@@ -60,7 +76,9 @@ def main():
             if stopping:
                 query.stop()
             else:
-                query.awaitTermination()
+                while not query.awaitTermination(15):
+                    if not stopping:
+                        refresh_anomaly_state(config)
     except Exception as exc:
         if not stopping:
             # Full Spark/PyMongo exceptions can contain records or credentials.

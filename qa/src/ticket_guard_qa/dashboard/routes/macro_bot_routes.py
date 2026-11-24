@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from ticket_guard_qa.answer_key.answer_key_repository import AnswerKeyRepository
 from ticket_guard_qa.answer_key.expected_verdicts import plan_virtual_users
@@ -18,7 +18,7 @@ from ticket_guard_qa.dashboard.dependencies import (
     render_screen,
 )
 from ticket_guard_qa.domain.detection_targets import DETECTION_TARGETS, DetectionTarget
-from ticket_guard_qa.domain.enums import ActorType, RunStatus, SessionStep, VerdictStage
+from ticket_guard_qa.domain.enums import ActorType, RunStatus, SessionStep, TargetKind, VerdictStage
 from ticket_guard_qa.domain.models import ActorProgress, CriterionResult, RunSummary, SessionBehavior, SessionKey
 from ticket_guard_qa.macro_bots.behavior_fields import (
     BEHAVIOR_PRESETS,
@@ -29,9 +29,20 @@ from ticket_guard_qa.macro_bots.behavior_fields import (
     parse_behavior_form,
 )
 from ticket_guard_qa.macro_bots.behavior_sampling import build_entry_histogram
-from ticket_guard_qa.macro_bots.bot_catalog import BotTypeInfo, find_bot_type_by_slug
+from ticket_guard_qa.macro_bots.browser_capture import (
+    CAPTURE_FOLDER_NAME,
+    CAPTURE_IMAGE_SUFFIXES,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    CaptureFrame,
+    build_mock_capture_frames,
+    load_capture_frames,
+)
+from ticket_guard_qa.dashboard.bot_list_view import BotListItem, build_bot_list_view
+from ticket_guard_qa.dashboard.suite_result_view import describe_missing_verdict
+from ticket_guard_qa.macro_bots.bot_catalog import BROWSER_TRAFFIC, BotTypeInfo, find_bot_type_by_slug, list_bot_types
 from ticket_guard_qa.macro_bots.bot_profile_store import BotProfileLockedError, BotProfileStore
-from ticket_guard_qa.macro_bots.bot_profiles import BotProfile
+from ticket_guard_qa.macro_bots.bot_profiles import BotProfile, BotProfileRegistry
 from ticket_guard_qa.macro_bots.bot_trial_run import TRIAL_SESSION_COUNT, TrialRunResult, run_trial_sessions
 from ticket_guard_qa.macro_bots.rule_hit_preview import predict_rule_hits
 from ticket_guard_qa.scoring.detection_breakdown import (
@@ -41,11 +52,15 @@ from ticket_guard_qa.scoring.detection_breakdown import (
 )
 from ticket_guard_qa.system_targets.fake_system import build_fake_system_target
 from ticket_guard_qa.test_runs.run_service import RunService
-from ticket_guard_qa.test_suites.verdict_accuracy import PLANNED_PROGRESS_KEY, VERDICT_ACCURACY_SUITE_NAME
+from ticket_guard_qa.test_runs.run_estimate import TRAFFIC_SUITE_NAMES
+from ticket_guard_qa.test_suites.verdict_accuracy import VERDICT_ACCURACY_SUITE_NAME
+from ticket_guard_qa.traffic_generators.session_funnel import ACTOR_PROGRESS_DETAIL_KEY, PLANNED_PROGRESS_KEY
 
 BOT_SCREEN_CONTEXT = {"active_tab": "qa", "active_subtab": "bots"}
 SESSION_STEP_TITLES = {
     SessionStep.ENTERED: "진입",
+    SessionStep.QUEUE_PASSED: "대기열",
+    SessionStep.CAPTCHA_PASSED: "보안문자",
     SessionStep.SEAT_SELECTED: "좌석",
     SessionStep.CONFIRMED: "확정",
     SessionStep.VERDICT_RECEIVED: "판정",
@@ -55,12 +70,6 @@ ENTRY_BUCKET_COUNT = 12  # 마지막 칸 = 5.5초 이후 전부
 LISTED_SESSION_COUNT_PER_TYPE = 5  # B4 종류별로 보여 줄 놓친 · 오탐 세션 수
 
 router = APIRouter()
-
-
-@dataclass(frozen=True)
-class BotCard:
-    profile: BotProfile
-    detection_row: ActorDetectionRow | None  # None = 아직 판정 정확도 시험 결과 없음
 
 
 @dataclass(frozen=True)
@@ -96,9 +105,9 @@ def show_bot_list(
 ) -> HTMLResponse:
     latest_summary = run_service.run_repository.find_latest_finished_summary_with_suite(VERDICT_ACCURACY_SUITE_NAME)
     rows = build_actor_detection_rows_from_details(read_verdict_details(latest_summary)) if latest_summary else {}
-    cards = [BotCard(profile, rows.get(profile.actor_type)) for profile in store.load_current_registry().list_profiles()]
+    items = [BotListItem(profile, rows.get(profile.actor_type)) for profile in store.load_current_registry().list_profiles()]
     return render_screen(request, "screen_b1_bot_list.html", {
-        **BOT_SCREEN_CONTEXT, "cards": cards, "latest_summary": latest_summary, "field_groups": group_field_specs(),
+        **BOT_SCREEN_CONTEXT, "view": build_bot_list_view(items, request.query_params), "latest_summary": latest_summary,
     })
 
 
@@ -123,7 +132,8 @@ def render_bot_settings(
         "field_groups": group_field_specs(),
         "pending_groups": PENDING_BEHAVIOR_GROUPS,
         "presets": [(preset, behavior_to_dict(preset.behavior)) for preset in BEHAVIOR_PRESETS],
-        "rule_previews": predict_rule_hits(shown_behavior),
+        "rule_previews": predict_rule_hits(shown_behavior, request.app.state.settings.rule_set_version),
+        "rule_set_version": request.app.state.settings.rule_set_version,
         "trial_result": trial_result,
         "trial_session_count": TRIAL_SESSION_COUNT,
         "version_history": store.list_version_history(type_info.actor_type),
@@ -171,8 +181,17 @@ async def save_bot_version(request: Request, bot_id: str, store: BotProfileStore
     return redirect_to_page(request, f"/bots/{type_info.slug}/edit?saved_version={saved_profile.version_number}")
 
 
+def find_saved_funnel_progress(summary: RunSummary) -> ActorProgress:
+    """끝난 트래픽 Suite가 저장한 퍼널 · 예매 흐름 → 이벤트 전달 → 판정 정확도 순 · 이전 기록 = 없음"""
+    for suite_name in TRAFFIC_SUITE_NAMES:
+        result = summary.find_suite_result(suite_name)
+        if result and result.details.get(ACTOR_PROGRESS_DETAIL_KEY):
+            return result.details[ACTOR_PROGRESS_DETAIL_KEY]
+    return {}
+
+
 def build_initial_actor_progress(summary: RunSummary, verdict_details: dict[str, Any]) -> ActorProgress:
-    """화면 처음 그릴 때 · 실행 중 = 계획 인원만 · 끝남 = 저장된 표 기준"""
+    """화면 처음 그릴 때 · 실행 중 = 계획 인원만 · 끝남 = 저장된 퍼널 + 판정 수신"""
     planned_users = plan_virtual_users(
         summary.run_config.traffic_mix, summary.run_config.virtual_user_count, summary.run_config.random_seed
     )
@@ -181,9 +200,12 @@ def build_initial_actor_progress(summary: RunSummary, verdict_details: dict[str,
     for user in planned_users:
         actor_progress = progress.setdefault(user.actor_type.value, {PLANNED_PROGRESS_KEY: 0})
         actor_progress[PLANNED_PROGRESS_KEY] += 1
+    for actor_value, saved_counts in find_saved_funnel_progress(summary).items():
+        if actor_value in progress:
+            progress[actor_value].update({step: count for step, count in saved_counts.items() if step != PLANNED_PROGRESS_KEY})
     for actor_type, row in rows.items():
         if actor_type.value in progress:
-            progress[actor_type.value][SessionStep.ENTERED.value] = row.session_count
+            progress[actor_type.value].setdefault(SessionStep.ENTERED.value, row.session_count)
             progress[actor_type.value][SessionStep.VERDICT_RECEIVED.value] = row.session_count
     return progress
 
@@ -204,15 +226,47 @@ def show_bot_live(
         **BOT_SCREEN_CONTEXT,
         "summary": summary,
         "is_running": summary.status is RunStatus.RUNNING,
-        "has_verdict_suite": VERDICT_ACCURACY_SUITE_NAME in run_config.suite_names,
+        "has_traffic_suite": any(suite_name in TRAFFIC_SUITE_NAMES for suite_name in run_config.suite_names),
+        "has_detection_report": bool(read_verdict_details(summary)),
         "actor_progress": build_initial_actor_progress(summary, read_verdict_details(summary)),
         "planned_progress_key": PLANNED_PROGRESS_KEY,
         "session_step_titles": SESSION_STEP_TITLES,
         "entry_histogram": {actor_type.value: counts for actor_type, counts in entry_histogram.items() if any(counts)},
         "entry_bucket_ms": ENTRY_BUCKET_MS,
         "bot_versions": registry.version_number_by_actor_type(),
+        "capture_frames": read_capture_frames(request, summary, registry),
+        "captured_browser_type": find_captured_browser_type(summary),
+        "is_mock_capture": run_config.target_kind is TargetKind.FAKE,
+        "capture_screen_size": (SCREEN_WIDTH, SCREEN_HEIGHT),
     })
 
+
+def find_captured_browser_type(summary: RunSummary) -> BotTypeInfo | None:
+    """캡처 대상 · 이번 Run 트래픽에 들어간 브라우저 트래픽 유형 중 첫 번째"""
+    traffic_mix = summary.run_config.traffic_mix
+    return next((info for info in list_bot_types()
+                 if info.traffic_channel == BROWSER_TRAFFIC and traffic_mix.percent_of(info.actor_type)), None)
+
+
+def read_capture_frames(request: Request, summary: RunSummary, registry: BotProfileRegistry) -> list[CaptureFrame]:
+    """Mock = 브라우저 유형 행동 값으로 만든 프레임 · Live = 브라우저 세션이 저장한 화면 · 브라우저 유형 0%면 없음"""
+    captured_type = find_captured_browser_type(summary)
+    if captured_type is None:
+        return []
+    if summary.run_config.target_kind is TargetKind.FAKE:
+        return build_mock_capture_frames(registry.get_profile(captured_type.actor_type).behavior, summary.run_config.random_seed)
+    return load_capture_frames(request.app.state.settings.report_output_dir, summary.run_id)
+
+
+
+@router.get("/runs/{run_id}/captures/{file_name}")
+def show_capture_image(request: Request, run_id: str, file_name: str) -> FileResponse:
+    """Live 브라우저 봇 스크린샷 · Run 캡처 폴더 안 파일만"""
+    capture_dir = (request.app.state.settings.report_output_dir / CAPTURE_FOLDER_NAME / run_id).resolve()
+    image_path = (capture_dir / file_name).resolve()
+    if image_path.parent != capture_dir or image_path.suffix.lower() not in CAPTURE_IMAGE_SUFFIXES or not image_path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(image_path)
 
 def group_session_keys_by_actor_type(
     session_keys: list[SessionKey], answer_key: dict[SessionKey, ActorType]
@@ -241,6 +295,7 @@ def show_detection_result(
         **BOT_SCREEN_CONTEXT,
         "summary": summary,
         "verdict_details": verdict_details,
+        "missing_verdict_reason": describe_missing_verdict(summary),
         "rows": build_actor_detection_rows_from_details(verdict_details) if verdict_details else {},
         "target_cards": [
             DetectionTargetCard(target, result_by_criterion_id.get(target.criterion_id, CriterionResult(target.criterion_id, None, None)))
