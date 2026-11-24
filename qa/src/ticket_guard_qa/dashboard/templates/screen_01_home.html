@@ -19,18 +19,20 @@
   body:has(.home-layout) { overflow: hidden; }
   .page:has(> .home-layout) { max-width: none; margin-left: 350px; height: 100dvh; overflow-y: auto; padding: 24px; }
   .home-layout { min-height: calc(100dvh - 48px); }
-  .home-sidebar { position: fixed; inset: 0 auto 0 0; width: 350px; padding: 0 16px 16px; background: var(--card-background); border-right: 1px solid var(--line-color); overflow-y: auto; }
+  .home-sidebar { position: fixed; inset: 0 auto 0 0; width: 350px; padding: 0 16px 16px; background: var(--card-background); border-right: 1px solid var(--line-color); overflow-y: auto; z-index: 50; }
   .home-sidebar > .brand-group { min-height: 76px; height: 76px; gap: 10px; }
-  .home-toolbar { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 18px; }
+  .home-toolbar { position: fixed; inset: 0 0 auto 350px; min-height: 76px; display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 16px; padding: 12px 24px; background: var(--card-background); border-bottom: 1px solid var(--line-color); z-index: 50; }
   .home-sidebar, .home-main { min-width: 0; }
-  .home-main { display: flex; flex-direction: column; min-height: calc(100dvh - 48px); }
+  .home-main { display: flex; flex-direction: column; min-height: calc(100dvh - 48px); padding-top: 70px; }
   .home-main > .hero { grid-template-columns: minmax(0, 1fr); align-content: center; flex: 1; min-height: 360px; }
   .home-main .hero-search { max-width: none; }
   .hero-search input { min-width: 0; }
   .home-sidebar > .choice-grid { display: grid; grid-template-columns: minmax(0, 1fr) !important; gap: 20px; }
   @media (max-width: 1000px) {
     body:has(.home-layout) { overflow: auto; }
-    .page:has(> .home-layout) { margin-left: 0; height: auto; overflow: visible; padding: 16px; }
+    .page:has(> .home-layout) { margin-left: 0; height: auto; overflow: visible; padding: 92px 16px 16px; }
+    .home-toolbar { left: 0; padding-inline: 16px; }
+    .home-main { padding-top: 0; }
     .home-sidebar { position: static; width: auto; padding: 0 0 20px; background: transparent; border-right: 0; overflow: visible; }
     .home-sidebar > .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     .home-main > .hero { padding: 28px; }
@@ -130,6 +132,7 @@
     <div class="home-toolbar">
       <span class="target-chip"><span class="status-dot {{ '' if target_status.is_connected else 'is-down' }}"></span>{{ target_status.label }} · {{ '연결 정상' if target_status.is_connected else '연결 끊김' }}</span>
       <span class="admin-user"><i data-lucide="user-round"></i>{{ admin_user }}</span>
+      <button type="button" class="console-logout" data-console-logout>로그아웃</button>
     </div>
 <section class="hero">
   <div>

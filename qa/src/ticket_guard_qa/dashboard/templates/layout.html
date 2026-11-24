@@ -11,6 +11,8 @@
   {% set custom_bot_types = bot_type_catalog() | selectattr('is_custom') | list %}
   {% if custom_bot_types %}<style>:root { {% for info in custom_bot_types %}--{{ info.color_token }}: {{ info.color_hex }}; {% endfor %}}</style>{% endif %}
   {% block head %}{% endblock %}
+  <link rel="stylesheet" href="/static/console-account.css?v=1">
+  <script src="/static/console-account.js?v=1" defer></script>
 </head>
 <body>
   {% block header %}
@@ -37,6 +39,7 @@
         {{ target_status.label }} · {{ '연결 정상' if target_status.is_connected else '연결 끊김' }}
       </span>
       <span class="admin-user"><i data-lucide="user-round"></i>{{ admin_user }}</span>
+      <button type="button" class="console-logout" data-console-logout>로그아웃</button>
     </div>
   </header>
   {% endblock %}
