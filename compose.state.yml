@@ -1,0 +1,46 @@
+# Add to the team compose command. Isolated application state, not QA/raw/metrics.
+services:
+  web:
+    depends_on:
+      state-init:
+        condition: service_completed_successfully
+    networks: [default, state-backend]
+  mongo-state:
+    image: mongo:8.0.34
+    entrypoint: [bash, /opt/state/start.sh]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${STATE_MONGO_ROOT_USERNAME:?Set STATE_MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${STATE_MONGO_ROOT_PASSWORD:?Set STATE_MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo-state-data:/data/db
+      - mongo-state-config:/data/configdb
+      - ./mongo/state-start.sh:/opt/state/start.sh:ro
+    networks: [state-backend]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, "quit(db.adminCommand({ping:1}).ok === 1 ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  state-init:
+    image: mongo:8.0.34
+    entrypoint: [mongosh, "mongodb://mongo-state:27017/admin?directConnection=true", --quiet, /opt/state/init.js]
+    environment:
+      STATE_MONGO_ROOT_USERNAME: ${STATE_MONGO_ROOT_USERNAME:?Set STATE_MONGO_ROOT_USERNAME}
+      STATE_MONGO_ROOT_PASSWORD: ${STATE_MONGO_ROOT_PASSWORD:?Set STATE_MONGO_ROOT_PASSWORD}
+      WEB_STATE_MONGO_USERNAME: ${WEB_STATE_MONGO_USERNAME:?Set WEB_STATE_MONGO_USERNAME}
+      WEB_STATE_MONGO_PASSWORD: ${WEB_STATE_MONGO_PASSWORD:?Set WEB_STATE_MONGO_PASSWORD}
+      PIPELINE_STATE_MONGO_USERNAME: ${PIPELINE_STATE_MONGO_USERNAME:?Set PIPELINE_STATE_MONGO_USERNAME}
+      PIPELINE_STATE_MONGO_PASSWORD: ${PIPELINE_STATE_MONGO_PASSWORD:?Set PIPELINE_STATE_MONGO_PASSWORD}
+    volumes:
+      - ./mongo/state-init.js:/opt/state/init.js:ro
+    networks: [state-backend]
+    depends_on:
+      mongo-state:
+        condition: service_healthy
+    restart: "no"
+networks:
+  state-backend:
+volumes:
+  mongo-state-data:
+  mongo-state-config:

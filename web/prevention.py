@@ -2,7 +2,7 @@
 import json
 import logging
 import time
-import sqlite3
+from pymongo.errors import PyMongoError
 import copy
 from contextvars import ContextVar
 from functools import wraps
@@ -150,6 +150,9 @@ class Policy:
 def transaction(method):
     @wraps(method)
     def wrapped(self, *args, **kwargs):
+        if getattr(self, 'persistent', False):
+            with self.lock:
+                return method(self, *args, **kwargs)
         if active.get() is not None:
             return method(self, *args, **kwargs)
         store = Store()
@@ -166,7 +169,7 @@ def transaction(method):
                         finally:
                             active.reset(token)
                 except Exception as exc:
-                    if not hasattr(exc, 'code'):
+                    if not (hasattr(exc, 'code') and hasattr(exc, 'status')):
                         changed = self.attempts.get(user)
                         if changed and changed.get('booking_id') and changed.get('booking_id') != (attempt_before or {}).get('booking_id'):
                             self.bookings.pop(changed['booking_id'], None)
@@ -176,7 +179,8 @@ def transaction(method):
                             self.attempts[user] = attempt_before
                         self.sold, self.remaining = sold_before, remaining_before
                     raise
-        except (OSError, sqlite3.Error):
+        except (OSError, PyMongoError) as storage_error:
+            logger.warning('policy_storage_failed errorClass=%s code=%s', type(storage_error).__name__, getattr(storage_error, 'code', None))
             from .services import FlowError
             raise FlowError('예매 보호 저장소를 확인할 수 없어요. 잠시 후 다시 시도해 주세요.', 'POLICY_UNAVAILABLE', 503) from None
         finally:
@@ -202,7 +206,8 @@ def login_attempt(username, authenticate):
                 policy.event('prevention_evaluated', 'login_repeated_failure', observed=0, loginSucceeded=True)
                 return True, False
             return False, policy.count('login_repeated_failure')
-    except (OSError, sqlite3.Error):
+    except (OSError, PyMongoError) as storage_error:
+        logger.warning('policy_storage_failed errorClass=%s code=%s', type(storage_error).__name__, getattr(storage_error, 'code', None))
         from .services import FlowError
         raise FlowError('로그인 보호 저장소를 확인할 수 없어요.', 'POLICY_UNAVAILABLE', 503) from None
     finally:

@@ -43,7 +43,7 @@ def snapshot(a):
     rank, wait = repo.queue_status(a)
     return dict(id=a['id'], stage=a['stage'], redirect=stage_url(a),
                 rank=rank, wait=wait,
-                wrong=a['wrong'], sequence=a['sequence'], sold=sorted(repo.sold), remaining=repo.remaining)
+                wrong=a['wrong'], sequence=a['sequence'], sold=sorted(repo.sold_for(a['show_id'])), remaining=repo.remaining_for(a['show_id']))
 
 
 @never_cache
@@ -78,8 +78,8 @@ def page(request, screen, identifier=None):
                     emit(user,'booking_access_rejected',a,result='rejected',errorCode='INVALID_STEP',details={'action':'page_'+screen})
                     return redirect(stage_url(a))
                 context.update(show=SHOWS[a['show_id']], attempt_id=a['id'], sequence=a['sequence'],
-                               rank=repo.queue_status(a)[0], queue_wait=repo.queue_status(a)[1], wrong=a['wrong'], remaining=repo.remaining,
-                               rows=[dict(label=r, seats=[dict(id=f'{r}{c}', number=c, sold=f'{r}{c}' in repo.sold)
+                               rank=repo.queue_status(a)[0], queue_wait=repo.queue_status(a)[1], wrong=a['wrong'], remaining=repo.remaining_for(a['show_id']),
+                               rows=[dict(label=r, seats=[dict(id=f'{r}{c}', number=c, sold=f'{r}{c}' in repo.sold_for(a['show_id']))
                                      for c in range(1, 11)]) for r in 'ABCDEFGHIJ'])
             elif screen == 'complete':
                 b = repo.booking(user, identifier)
@@ -193,7 +193,7 @@ def action(request):
                 a = repo.current(user, False)
                 if a and a['stage'] not in ('complete', 'cancelled', 'expired'):
                     a['stage'], a['captcha'] = 'cancelled', ''
-                    emit(user,'queue_cancel',a,details={'reason':'logout','elapsedMs':round((time.monotonic()-a['entered'])*1000,2)})
+                    emit(user,'queue_cancel',a,details={'reason':'logout','elapsedMs':round((time.time()-a['entered'])*1000,2)})
             request.session.flush()
             return JsonResponse({'redirect': '/login/'})
         if command == 'start':
@@ -237,7 +237,7 @@ def action(request):
         body = dict(error=e.message, code=e.code, redirect=e.redirect, **getattr(e, 'extra', {}))
         if e.code in ('SEAT_SOLD', 'INSUFFICIENT_STOCK'):
             with repo.lock:
-                body.update(sold=sorted(repo.sold), remaining=repo.remaining)
+                body.update(sold=sorted(repo.sold_for(a['show_id'])), remaining=repo.remaining_for(a['show_id']))
         return JsonResponse(body, status=e.status)
 
 

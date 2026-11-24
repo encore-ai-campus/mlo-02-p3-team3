@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
@@ -10,8 +11,10 @@ from .services import MockRepository
                    BOOKING_ADMISSION_INTERVAL_SECONDS=5)
 class AdmissionTests(SimpleTestCase):
     def setUp(self):
-        self.clock = patch('web.services.time.monotonic', return_value=100)
-        self.now = self.clock.start()
+        # Patch only the application clock, never the driver's global time module.
+        self.clock = patch('web.services.time', wraps=time)
+        self.now = self.clock.start().time
+        self.now.return_value = 100
         self.addCleanup(self.clock.stop)
         self.repo = MockRepository()
 

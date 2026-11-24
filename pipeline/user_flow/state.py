@@ -1,122 +1,163 @@
-"""단일 로컬 Spark 실행용 복구 상태. 원본 대신 검증된 최소 관측과 청크만 보존한다."""
+"""Transactional MongoDB recovery state; separate from raw, metrics and QA DBs."""
 import hashlib
 import json
-import sqlite3
-from pathlib import Path
+import os
+from pymongo import MongoClient
 from user_flow.events import chunk_part, decode, project
 
 
 class State:
-    def __init__(self, path, max_events=250000, max_chunks=4096, *, projector=project, skip_expired=False):
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path, timeout=10)
-        self.db.execute('PRAGMA journal_mode=WAL')
-        self.db.executescript('''
-          CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, time REAL, payload TEXT, batch INTEGER);
-          CREATE INDEX IF NOT EXISTS events_time ON events(time);
-          CREATE TABLE IF NOT EXISTS chunks(record TEXT, idx INTEGER, meta TEXT, data BLOB, seen REAL,
-             PRIMARY KEY(record,idx));
-          CREATE TABLE IF NOT EXISTS batches(id INTEGER PRIMARY KEY, complete INTEGER, ranges TEXT);
-          CREATE TABLE IF NOT EXISTS assembled(record TEXT PRIMARY KEY, meta TEXT, seen REAL);
-          CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
-        ''')
-        self.db.commit()
-        self.max_events = max_events; self.max_chunks = max_chunks
-        self.projector = projector
-        self.skip_expired = skip_expired
+    def __init__(self, namespace, max_events=250000, max_chunks=4096, *, projector=project, skip_expired=False):
+        uri = os.environ.get('PIPELINE_STATE_MONGO_URI')
+        if not uri:
+            raise ValueError('PIPELINE_STATE_MONGO_URI is required')
+        self.client = MongoClient(uri, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000, socketTimeoutMS=15000)
+        self.db = self.client.get_default_database()
+        self.namespace = hashlib.sha256(str(namespace).encode()).hexdigest()
+        self.max_events, self.max_chunks = max_events, max_chunks
+        self.projector, self.skip_expired = projector, skip_expired
+        self.db.events.create_index([('namespace', 1), ('time', 1), ('event_id', 1)])
+        self.db.chunks.create_index([('namespace', 1), ('record', 1), ('index', 1)], unique=True)
+        self.db.batches.create_index([('namespace', 1), ('complete', 1), ('batch', 1)])
+        self.db.assembled.create_index([('namespace', 1), ('seen', 1)])
+        self.db.guards.update_one({'_id': self.namespace}, {'$setOnInsert': {'revision': 0}}, upsert=True)
+
+    def _key(self, identity):
+        return self.namespace + ':' + str(identity)
+
+    def _filter(self, **values):
+        return dict(namespace=self.namespace, **values)
+
+    def _transaction(self, callback):
+        from pymongo.read_concern import ReadConcern
+        from pymongo.write_concern import WriteConcern
+        with self.client.start_session() as session:
+            def operation(s):
+                self.db.guards.update_one({'_id': self.namespace}, {'$inc': {'revision': 1}}, session=s)
+                return callback(s)
+            return session.with_transaction(operation, read_concern=ReadConcern('snapshot'), write_concern=WriteConcern('majority'))
 
     def close(self):
-        self.db.close()
+        self.client.close()
 
     def begin(self, batch):
-        self.db.execute('INSERT OR IGNORE INTO batches VALUES (?,0,?)', (batch, '[]'))
-        self.db.commit()
+        self.db.batches.update_one({'_id': self._key(batch)}, {'$setOnInsert': self._filter(batch=batch, complete=False, ranges=[])}, upsert=True)
 
     def feed(self, raw, batch, now, oldest, future_seconds=30, *, ingested_at=None):
-        e = decode(raw)
-        if e['eventType'] == 'capture_chunk':
-            d, data = chunk_part(e)
-            meta = json.dumps({k: d[k] for k in ('recordId', 'count', 'totalBytes', 'sha256')}, sort_keys=True)
-            completed = self.db.execute('SELECT meta FROM assembled WHERE record=?', (d['recordId'],)).fetchone()
-            if completed:
-                if completed[0] != meta:
-                    raise ValueError('완료된 청크 메타데이터 충돌')
-                return None
-            prior = self.db.execute('SELECT idx,meta,data FROM chunks WHERE record=?', (d['recordId'],)).fetchall()
-            if any(m != meta or (i == d['index'] and bytes(v) != data) for i, m, v in prior):
-                raise ValueError('청크 충돌')
-            self.db.execute('INSERT OR IGNORE INTO chunks VALUES (?,?,?,?,?)', (d['recordId'], d['index'], meta, data, now))
-            if ingested_at is not None:
-                self.db.execute('CREATE TABLE IF NOT EXISTS chunk_ingestion (record TEXT PRIMARY KEY, latest REAL)')
-                self.db.execute('''INSERT INTO chunk_ingestion VALUES (?,?) ON CONFLICT(record)
-                    DO UPDATE SET latest=max(latest, excluded.latest)''', (d['recordId'], ingested_at))
-            count = self.db.execute('SELECT count(*) FROM chunks').fetchone()[0]
-            if count > self.max_chunks:
-                raise ValueError('청크 상태 용량 초과')
-            parts = self.db.execute('SELECT data FROM chunks WHERE record=? ORDER BY idx', (d['recordId'],)).fetchall()
-            if len(parts) < d['count']:
-                self.db.commit(); return None
-            joined = b''.join(bytes(p[0]) for p in parts)
-            if len(joined) != d['totalBytes'] or hashlib.sha256(joined).hexdigest() != d['sha256']:
-                raise ValueError('청크 무결성 오류')
-            e = decode(joined)
-            if e['eventId'] != d['recordId'] or e['eventType'] == 'capture_chunk':
-                raise ValueError('청크 식별자 오류')
-            self.db.execute('DELETE FROM chunks WHERE record=?', (d['recordId'],))
-            self.db.execute('INSERT INTO assembled VALUES (?,?,?)', (d['recordId'], meta, now))
-            if ingested_at is not None:
-                ingested_at = self.db.execute('SELECT latest FROM chunk_ingestion WHERE record=?', (d['recordId'],)).fetchone()[0]
-                self.db.execute('DELETE FROM chunk_ingestion WHERE record=?', (d['recordId'],))
-        p = self.projector(e)
-        if p is None or (self.skip_expired and p['time'] < oldest):
-            self.db.commit()
-            return None
-        if p['time'] > now + future_seconds:
-            raise ValueError('미래 시각 허용 범위 초과')
-        if p['time'] < oldest:
-            raise ValueError('상태 보존 범위를 넘은 이벤트: 별도 재계산 필요')
-        if ingested_at is not None:
-            p['ingested_at'] = ingested_at
-        previous = self.db.execute('SELECT payload FROM events WHERE id=?', (p['id'],)).fetchone()
-        if previous and json.loads(previous[0])['fingerprint'] != p['fingerprint']:
-            raise ValueError('동일 이벤트 식별자의 내용 충돌')
-        self.db.execute('INSERT OR IGNORE INTO events VALUES (?,?,?,?)', (p['id'], p['time'], json.dumps(p), batch))
-        if self.db.execute('SELECT count(*) FROM events').fetchone()[0] > self.max_events:
-            raise ValueError('계산 상태 용량 초과')
-        self.db.commit()
-        return p
+        def operation(s):
+            e = decode(raw)
+            ingestion = ingested_at
+            completed_chunk = None
+            if e['eventType'] == 'capture_chunk':
+                d, data = chunk_part(e)
+                record = d['recordId']
+                meta = {k: d[k] for k in ('recordId', 'count', 'totalBytes', 'sha256')}
+                completed = self.db.assembled.find_one({'_id': self._key(record)}, session=s)
+                if completed:
+                    if completed['meta'] != meta:
+                        raise ValueError('Completed chunk metadata conflict')
+                    return None
+                prior = list(self.db.chunks.find(self._filter(record=record), session=s))
+                if any(row['meta'] != meta or (row['index'] == d['index'] and bytes(row['data']) != data) for row in prior):
+                    raise ValueError('Chunk conflict')
+                self.db.chunks.update_one({'_id': self._key(record + ':' + str(d['index']))},
+                    {'$setOnInsert': self._filter(record=record, index=d['index'], meta=meta, data=data, seen=now)}, upsert=True, session=s)
+                if ingestion is not None:
+                    self.db.chunk_ingestion.update_one({'_id': self._key(record)},
+                        {'$max': {'latest': ingestion}, '$setOnInsert': self._filter()}, upsert=True, session=s)
+                if self.db.chunks.count_documents(self._filter(), session=s) > self.max_chunks:
+                    raise ValueError('Chunk capacity exceeded')
+                parts = list(self.db.chunks.find(self._filter(record=record), session=s).sort('index', 1))
+                if len(parts) < d['count']:
+                    return None
+                joined = b''.join(bytes(row['data']) for row in parts)
+                if len(joined) != d['totalBytes'] or hashlib.sha256(joined).hexdigest() != d['sha256']:
+                    raise ValueError('Chunk integrity error')
+                e = decode(joined)
+                if e['eventId'] != record or e['eventType'] == 'capture_chunk':
+                    raise ValueError('Chunk identity error')
+                completed_chunk = (record, meta)
+                received = self.db.chunk_ingestion.find_one({'_id': self._key(record)}, session=s)
+                if received:
+                    ingestion = received['latest']
+            p = self.projector(e)
+            if p is not None and not (self.skip_expired and p['time'] < oldest):
+                if p['time'] > now + future_seconds:
+                    raise ValueError('Future event outside allowed range')
+                if p['time'] < oldest:
+                    raise ValueError('Event outside retention; recomputation required')
+                if ingestion is not None:
+                    p['ingested_at'] = ingestion
+                previous = self.db.events.find_one({'_id': self._key(p['id'])}, session=s)
+                if previous and previous['payload']['fingerprint'] != p['fingerprint']:
+                    raise ValueError('Conflicting event identity')
+                self.db.events.update_one({'_id': self._key(p['id'])}, {'$setOnInsert': self._filter(
+                    event_id=p['id'], time=p['time'], payload=p, batch=batch)}, upsert=True, session=s)
+                if self.db.events.count_documents(self._filter(), session=s) > self.max_events:
+                    raise ValueError('Event capacity exceeded')
+            else:
+                p = None
+            if completed_chunk:
+                record, meta = completed_chunk
+                self.db.assembled.insert_one(dict(_id=self._key(record), **self._filter(meta=meta, seen=now)), session=s)
+                self.db.chunks.delete_many(self._filter(record=record), session=s)
+                self.db.chunk_ingestion.delete_one({'_id': self._key(record)}, session=s)
+            return p
+        return self._transaction(operation)
 
     def finish(self, batch, ranges):
-        self.db.execute('UPDATE batches SET complete=1,ranges=? WHERE id=?', (json.dumps(ranges), batch))
-        previous = self.db.execute("SELECT value FROM meta WHERE key='ranges'").fetchone()
-        merged = {(r['topic'], r['partition']): r for r in json.loads(previous[0])} if previous else {}
-        for r in ranges:
-            old = merged.setdefault((r['topic'], r['partition']), dict(r))
-            old['start'] = min(old['start'], r['start']); old['end'] = max(old['end'], r['end'])
-        self.db.execute("INSERT OR REPLACE INTO meta VALUES ('ranges',?)", (json.dumps(list(merged.values())),))
-        self.db.commit()
+        def operation(s):
+            row = self.db.meta.find_one({'_id': self._key('ranges')}, session=s)
+            merged = {(r['topic'], r['partition']): r for r in row['value']} if row else {}
+            for r in ranges:
+                old = merged.setdefault((r['topic'], r['partition']), dict(r))
+                old['start'] = min(old['start'], r['start'])
+                old['end'] = max(old['end'], r['end'])
+            self.db.meta.replace_one({'_id': self._key('ranges')}, dict(_id=self._key('ranges'),
+                **self._filter(key='ranges', value=list(merged.values()))), upsert=True, session=s)
+            self.db.batches.update_one({'_id': self._key(batch)}, {'$set': {'complete': True, 'ranges': ranges}}, session=s)
+        self._transaction(operation)
 
     def ready(self):
-        return not self.db.execute('SELECT 1 FROM batches WHERE complete=0 LIMIT 1').fetchone() and not self.db.execute('SELECT 1 FROM chunks LIMIT 1').fetchone()
+        return not self.db.batches.find_one(self._filter(complete=False)) and not self.db.chunks.find_one(self._filter())
+
+    def has_completed(self):
+        return bool(self.db.batches.find_one(self._filter(complete=True)))
 
     def observations(self):
-        return [json.loads(row[0]) for row in self.db.execute('SELECT payload FROM events ORDER BY time,id')]
+        return [row['payload'] for row in self.db.events.find(self._filter()).sort([('time', 1), ('event_id', 1)])]
 
     def ranges(self):
-        row = self.db.execute("SELECT value FROM meta WHERE key='ranges'").fetchone()
-        return json.loads(row[0]) if row else []
+        return self.get_meta('ranges', [])
+
+    def get_meta(self, key, default=None):
+        row = self.db.meta.find_one({'_id': self._key(key)})
+        return row['value'] if row else default
+
+    def set_meta(self, key, value, *, insert_only=False, maximum=False):
+        operator = '$setOnInsert' if insert_only else '$max' if maximum else '$set'
+        update = {operator: {'value': value}}
+        if insert_only:
+            update[operator].update(self._filter(key=key))
+        else:
+            update['$setOnInsert'] = self._filter(key=key)
+        self.db.meta.update_one({'_id': self._key(key)}, update, upsert=True)
+
+    def meta_keys(self, prefix):
+        return [row['key'] for row in self.db.meta.find(self._filter()) if row['key'].startswith(prefix)]
 
     def prune(self, now, retention, grace, presence):
-        # 진행 중 단계를 잃지 않도록 삭제 경계 이전의 대상별 마지막 관측은 유지한다.
-        boundary = now - retention - grace
-        self.db.execute('''DELETE FROM events WHERE time<?
-            AND coalesce(json_extract(payload,'$.actor'),'') NOT IN (
-              SELECT json_extract(payload,'$.actor') FROM events WHERE time>=?
-              AND json_extract(payload,'$.actor') IS NOT NULL)''', (boundary, now - presence - grace))
-        self.db.execute('DELETE FROM batches WHERE complete=1 AND id < (SELECT max(id)-10000 FROM batches)')
-        self.db.execute('DELETE FROM assembled WHERE seen<?', (boundary,))
-        self.db.commit()
+        def operation(s):
+            boundary = now - retention - grace
+            actors = self.db.events.distinct('payload.actor', self._filter(time={'$gte': now-presence-grace}), session=s)
+            actors = [a for a in actors if a is not None]
+            self.db.events.delete_many(self._filter(time={'$lt': boundary}, **{'payload.actor': {'$nin': actors}}), session=s)
+            latest = self.db.batches.find_one(self._filter(), sort=[('batch', -1)], session=s)
+            if latest:
+                self.db.batches.delete_many(self._filter(complete=True, batch={'$lt': latest['batch']-10000}), session=s)
+            self.db.assembled.delete_many(self._filter(seen={'$lt': boundary}), session=s)
+        self._transaction(operation)
 
     def pending_age(self, now):
-        first = self.db.execute('SELECT min(seen) FROM chunks').fetchone()[0]
-        return now - first if first is not None else 0
+        first = self.db.chunks.find_one(self._filter(), sort=[('seen', 1)])
+        return now-first['seen'] if first else 0

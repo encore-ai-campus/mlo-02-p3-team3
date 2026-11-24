@@ -4,6 +4,10 @@
 -->
 # Ticket Guard: phase 1 boundaries and required next steps
 
+> 현재 구현 갱신: 예매·대기열·회차별 재고·로그인 보호·서버 세션은 MongoDB로 전환했다.
+> 아래 phase 문서에는 초기 목표 설계도 포함되어 있다. 실제 컬렉션·동시성·세션 계약은
+> [MongoDB 업무 상태](mongodb-runtime.md)를 기준으로 확인한다.
+
 ## Data paths
 
 ```text
@@ -57,9 +61,9 @@ Booking history is separate from events and has no event-log TTL. If transaction
 
 ## Admission, multiple tabs and requests
 
-Move active attempt ownership, heartbeat expiry, queue sequence and captcha count to shared authoritative server storage. Define atomic claim/cancel, server-generated capabilities, TTL and fencing so a late request cannot resurrect an expired admission. A Redis addition is optional and requires a design decision; do not add it silently or replace mandatory MongoDB/Kafka/Spark.
+Active attempt ownership, heartbeat expiry, queue sequence and CAPTCHA counts are stored in the web MongoDB. Global admission uses a guarded replica-set transaction; inventory is separated by canonical schedule. Request-time expiry prevents late requests from resuming an expired attempt. MongoDB is the authoritative domain store.
 
-Current single-process service uses a lock and monotonic time. For unconfirmed attempts it rejects sequences <= last accepted sequence; for already confirmed attempts it returns the stored result before sequence processing. Client ignores old confirm responses. Transactions/fencing are required to retain this policy across workers. Browser draft seats are presentation state only.
+The production service uses MongoDB transactions across workers and UTC epoch timestamps; process locks only protect transaction-local views. For unconfirmed attempts it rejects sequences <= last accepted sequence; for already confirmed attempts it returns the stored result before sequence processing. Client ignores old confirm responses. The shared MongoDB transaction retains this policy across workers. Browser draft seats are presentation state only.
 
 ## Integration acceptance checklist
 

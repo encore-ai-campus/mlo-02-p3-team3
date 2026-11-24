@@ -29,8 +29,8 @@ class Processor:
     def __init__(self, config, raw_database, target_database, clock=time.time):
         self.config = config; self.raw = raw_database; self.target = target_database; self.clock = clock
         self.lock = threading.RLock()
-        self.path = Path(config.checkpoint) / 'derived-state.sqlite'
-        self.reference_path = Path(config.checkpoint) / 'reference-state.sqlite'
+        self.path = Path(config.checkpoint) / 'derived-state'
+        self.reference_path = Path(config.checkpoint) / 'reference-state'
         self.failed = False
 
     def state(self):
@@ -86,8 +86,7 @@ class Processor:
                     r['start'] = min(r['start'], row.offset); r['end'] = max(r['end'], row.offset + 1)
                 state.finish(batch_id, list(ranges.values()))
                 reference.finish(batch_id, list(ranges.values()))
-                state.db.execute("INSERT OR IGNORE INTO meta VALUES ('coverageStart',?)", (json.dumps(now),))
-                state.db.commit()
+                state.set_meta('coverageStart', now, insert_only=True)
                 self.failed = False
                 self._publish(state)
                 if state.ready() and reference.ready():
@@ -128,7 +127,7 @@ class Processor:
             self.target.flow_health.replace_one({'_id': 'pipeline'}, {'_id': 'pipeline', 'status': 'waiting_chunks',
                 'checkedAt': iso(now), 'pendingSeconds': state.pending_age(now)}, upsert=True)
             return
-        if not state.db.execute('SELECT 1 FROM batches WHERE complete=1 LIMIT 1').fetchone():
+        if not state.has_completed():
             return
         state.prune(now, self.config.retention, self.config.grace, self.config.presence)
         rows = state.observations()
@@ -154,7 +153,7 @@ class Processor:
         # 관측된 차원만 제공한다. all 외에 완전 일치 차원을 제공하며 임의 조합은 생성하지 않는다.
         scopes = {'all': rows}
         dimensions = {(r['simulation'], r['show'], r['schedule']) for r in rows}
-        for (key,) in state.db.execute("SELECT key FROM meta WHERE key LIKE 'history:%'"):
+        for key in state.meta_keys('history:'):
             prior_scope = key[len('history:'):]
             if prior_scope != 'all':
                 dimensions.add(tuple(json.loads(prior_scope)))
@@ -173,12 +172,10 @@ class Processor:
                 raise VerificationPending('필터별 원본 재계산 지표 불일치')
             metrics['calculatedAt'] = iso(calculated_at)
             metrics['latestReceivedAt'] = iso(max(r['received'] for r in values)) if values else None
-            coverage = state.db.execute("SELECT value FROM meta WHERE key='coverageStart'").fetchone()
-            coverage_start = json.loads(coverage[0]) if coverage else now
+            coverage_start = state.get_meta('coverageStart', now)
             metrics['liveCoverageStart'] = iso(coverage_start)
             key = 'history:' + scope
-            prior = state.db.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()
-            history = json.loads(prior[0]) if prior else []
+            history = state.get_meta(key, [])
             at = int(now // 5) * 5
             history = [h for h in history if now - self.config.retention <= h['epoch'] and h['epoch'] != at]
             history.append({'epoch': at, 'at': iso(at), 'asOf': iso(now), 'current': metrics['current'], 'observed': True})
@@ -200,8 +197,7 @@ class Processor:
             prepared.append((scope, metrics, key, history))
         for scope, metrics, key, history in prepared:
             publish(self.target, metrics, state.ranges(), self.clock(), scope, self.config.retention, 30)
-            state.db.execute('INSERT OR REPLACE INTO meta VALUES (?,?)', (key, json.dumps(history)))
-            state.db.commit()
+            state.set_meta(key, history)
         self.target.flow_health.replace_one({'_id': 'pipeline'}, {'_id': 'pipeline', 'status': 'verified',
             'checkedAt': iso(self.clock()), 'processingSeconds': self.clock() - now}, upsert=True)
         cleanup_unpublished(self.target, self.clock())

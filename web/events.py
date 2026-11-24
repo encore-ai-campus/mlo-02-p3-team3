@@ -261,9 +261,20 @@ def build_event(user,event_type,attempt=None,**fields):
 def emit(user,event_type,attempt=None,**fields):
     try:
         event = build_event(user,event_type,attempt,**fields)
-        publisher.publish(event)
+        from .prevention import active
+        session = active.get()
+        if session is not None:
+            # Workflow changes and their evidence become durable together.
+            # Publishing is deferred until after the MongoDB transaction commits.
+            session.enqueue(event)
+        else:
+            publisher.publish(event)
         return event
     except Exception as exc:
+        from .prevention import active
+        if active.get() is not None:
+            # A durable workflow must not commit if its outbox write failed.
+            raise
         publisher.failed+=1
         logger.error('event_emit_failed eventType=%s errorClass=%s',event_type,type(exc).__name__)
         return None

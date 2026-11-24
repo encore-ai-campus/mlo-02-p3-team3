@@ -176,22 +176,24 @@ def test_retention_capacity_and_missing_fields_do_not_become_zero(monkeypatch):
     assert database.anomaly_health.find_one()['status'] == 'blocked'
 
 
-def test_partition_preserves_clean_and_quarantine_without_raw_write(monkeypatch):
+def test_partition_preserves_clean_and_quarantine_without_raw_write(monkeypatch, mongo_database):
     import ingestion.mongo_writer as writer
-    client = mongomock.MongoClient()
-    monkeypatch.setattr(writer, 'client_for', lambda config: client)
+    import os
+    from pymongo import MongoClient
+    database = mongo_database
+    monkeypatch.setattr(writer, 'client_for', lambda config: MongoClient(os.environ['PIPELINE_STATE_MONGO_URI']))
     def row(value, offset):
         return SimpleNamespace(topic='events', partition=0, offset=offset, key=None, value=value,
             timestamp=datetime.now(timezone.utc), timestampType=0)
     records = [row(json.dumps(event('a')).encode(), 0), row(b'invalid', 1)]
-    config = SimpleNamespace(database='test', timeout_ms=3000, retries=1, bulk_size=100)
+    config = SimpleNamespace(database=database.name, timeout_ms=3000, retries=1, bulk_size=100)
     write_partition(records, config)
     write_partition(records, config)
-    assert client.test.clean_events.count_documents({}) == 1
-    assert client.test.quarantine_events.count_documents({}) == 1
-    assert client.test.anomaly_observations.count_documents({}) == 1
-    assert client.test.clean_events.find_one()['isAnomaly'] is None
-    assert 'raw_events' not in client.test.list_collection_names()
+    assert database.clean_events.count_documents({}) == 1
+    assert database.quarantine_events.count_documents({}) == 1
+    assert database.anomaly_observations.count_documents({}) == 1
+    assert database.clean_events.find_one()['isAnomaly'] is None
+    assert 'raw_events' not in database.list_collection_names()
 
 
 @pytest.mark.parametrize('name,value', [('FAST_SECONDS','nan'), ('RETRY_SECONDS','-1'), ('ACCOUNT_LIMIT','1.5'), ('OVERLAP_ENABLED','yes')])

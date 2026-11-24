@@ -6,6 +6,7 @@ services:
     init: true
     restart: "no"
     environment:
+      PIPELINE_STATE_MONGO_URI: ${PIPELINE_STATE_MONGO_URI:?Set PIPELINE_STATE_MONGO_URI}
       SPARK_KAFKA_BOOTSTRAP_SERVERS: ${SPARK_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       KAFKA_EVENTS_TOPIC: ${KAFKA_EVENTS_TOPIC:-ticketguard.events.v1}
       RAW_SOURCE_ID: ${RAW_SOURCE_ID:?Set RAW_SOURCE_ID}
@@ -13,10 +14,13 @@ services:
       NETWORK_TARGET_MONGO_URI: ${NETWORK_TARGET_MONGO_URI:?Set existing ticketguard write connection}
       NETWORK_HEADERS_THRESHOLD_MS: ${NETWORK_HEADERS_THRESHOLD_MS:-}
       NETWORK_GRACE_SECONDS: ${NETWORK_GRACE_SECONDS:-300}
-    networks: [kafka, raw, metrics]
+    networks: [kafka, raw, metrics, state]
     volumes: [network-state:/checkpoints]
     stop_grace_period: 30s
 networks:
+  state:
+    external: true
+    name: ${STATE_MONGO_NETWORK:-ticket-guard_state-backend}
   kafka:
     external: true
     name: ${SPARK_KAFKA_NETWORK:-ticket-guard_default}

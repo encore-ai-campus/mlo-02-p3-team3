@@ -7,18 +7,19 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Dedicated web policy/ledger storage. Never point this at a QA database.
-TICKETING_STATE_PATH = os.environ.get('TICKETING_STATE_PATH') or str(BASE_DIR / '.ticketguard-state' / 'web.sqlite3')
+WEB_STATE_MONGO_URI = os.environ.get('WEB_STATE_MONGO_URI', '')
 TEST_RUNNER = 'web.test_runner.IsolatedStateRunner'
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'local-demo-only-change-before-deployment-ticket-guard')
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,testserver').split(',')
 ROOT_URLCONF = 'config.urls'
 INSTALLED_APPS = ['django.contrib.staticfiles', 'web']
-MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', 'django.contrib.sessions.middleware.SessionMiddleware', 'django.middleware.common.CommonMiddleware', 'django.middleware.csrf.CsrfViewMiddleware']
+MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', 'web.storage_middleware.MongoSessionMiddleware', 'django.middleware.common.CommonMiddleware', 'django.middleware.csrf.CsrfViewMiddleware']
 MIDDLEWARE.insert(2, 'web.middleware.RequestTelemetryMiddleware')
+MIDDLEWARE.append('web.storage_middleware.StorageFailureMiddleware')
 TEMPLATES = [{'BACKEND': 'django.template.backends.django.DjangoTemplates', 'DIRS': [BASE_DIR / 'templates'], 'APP_DIRS': True, 'OPTIONS': {'context_processors': ['django.template.context_processors.request', 'django.template.context_processors.static']}}]
-DATABASES = {}  # Phase 1 deliberately has no relational database.
-SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
+DATABASES = {}  # Persistence uses explicit MongoDB repositories.
+SESSION_ENGINE = 'web.mongo_sessions'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_AGE = 3600

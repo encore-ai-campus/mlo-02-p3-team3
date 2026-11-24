@@ -1,3 +1,4 @@
+import time
 import json
 from unittest.mock import patch
 from django.test import SimpleTestCase, override_settings
@@ -7,6 +8,11 @@ from .login_guard import login_guard
 @override_settings(EVENT_PUBLISHER='mock', LOGIN_MAX_FAILURES=5, LOGIN_LOCK_SECONDS=300)
 class LoginLimitTests(SimpleTestCase):
     def setUp(self):
+        self.epoch = time.time()
+        # Freeze only the browser guard's clock, leaving MongoDB timers real.
+        clock = patch('web.login_guard.time', wraps=time)
+        clock.start()
+        self.addCleanup(clock.stop)
         login_guard.reset()
 
     def login(self, username='ticketguard', password='wrong'):
@@ -27,13 +33,13 @@ class LoginLimitTests(SimpleTestCase):
         self.assertNotIn('retryAfter', locked.json())  # no remaining time is exposed
 
     def test_locked_account_rejects_correct_password_until_lock_expires(self):
-        # Browser guard uses monotonic time; durable account locks use wall time.
+        # Both shared browser protection and account locks use UTC wall time.
         # Advance both clocks while preserving the original 429 -> 200 assertions.
-        with patch('web.login_guard.time.monotonic', return_value=1000.0), patch('web.prevention.time.time', return_value=1000.0):
+        with patch('web.login_guard.time.time', return_value=self.epoch), patch('web.prevention.time.time', return_value=self.epoch):
             for _ in range(5):
                 self.login()
             self.assertEqual(self.login(password='ticketguard-demo').status_code, 429)
-        with patch('web.login_guard.time.monotonic', return_value=1301.0), patch('web.prevention.time.time', return_value=1301.0):
+        with patch('web.login_guard.time.time', return_value=self.epoch+301), patch('web.prevention.time.time', return_value=self.epoch+301):
             self.assertEqual(self.login(password='ticketguard-demo').status_code, 200)
 
     def test_count_is_per_browser_across_usernames(self):
@@ -62,10 +68,10 @@ class LoginLimitTests(SimpleTestCase):
         self.assertIn('tg_login', response.cookies)
 
     def test_browser_window_reset_does_not_erase_account_failures(self):
-        with patch('web.login_guard.time.monotonic', return_value=1000.0):
+        with patch('web.login_guard.time.time', return_value=self.epoch):
             for _ in range(4):
                 self.login()
-        with patch('web.login_guard.time.monotonic', return_value=1400.0):
+        with patch('web.login_guard.time.time', return_value=self.epoch+400):
             response = self.login()
             # Preserve the old browser window reset, and independently verify the
             # newly required lifetime account counter and actual restriction.

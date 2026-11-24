@@ -1,0 +1,122 @@
+# [홍석환] 운영과 분리된 Kafka·원본·지표 DB 통합 시험
+# 공개 포트나 기존 볼륨 없이 임시 저장소와 시험 전용 자격 증명만 사용한다.
+services:
+  state:
+    image: mongo:8.0.34
+    command: [mongod, --replSet, isolated-state, --bind_ip_all]
+    tmpfs: [/data/db, /data/configdb]
+  state-init:
+    image: mongo:8.0.34
+    entrypoint: [mongosh, "mongodb://state:27017/?directConnection=true", --quiet, /init-state.js]
+    volumes:
+      - ./init_state.js:/init-state.js:ro
+    depends_on:
+      state: {condition: service_started}
+  kafka:
+    image: apache/kafka:4.1.2
+    hostname: kafka
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: '1'
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1'
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    tmpfs: [/var/lib/kafka/data]
+    healthcheck:
+      test: [CMD, /opt/kafka/bin/kafka-broker-api-versions.sh, --bootstrap-server, localhost:9092]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+  topic:
+    image: apache/kafka:4.1.2
+    command: [/opt/kafka/bin/kafka-topics.sh, --bootstrap-server, kafka:9092, --create, --if-not-exists, --topic, isolated.events, --partitions, '2', --replication-factor, '1']
+    depends_on:
+      kafka: {condition: service_healthy}
+  raw:
+    image: mongo:8.0.34
+    command: [mongod, --auth, --bind_ip_all, --port, '27020']
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: isolated_root
+      MONGO_INITDB_ROOT_PASSWORD: isolated-root-password
+      MONGO_INITDB_DATABASE: ticketguard_raw
+      RAW_MONGO_WRITER_USERNAME: isolated_writer
+      RAW_MONGO_WRITER_PASSWORD: isolated-writer-password
+      RAW_MONGO_READER_USERNAME: isolated_reader
+      RAW_MONGO_READER_PASSWORD: isolated-reader-password
+    volumes:
+      - ../../raw_consumer/mongo:/opt/raw:ro
+      - ../../raw_consumer/mongo/init.js:/docker-entrypoint-initdb.d/10-raw.js:ro
+    tmpfs: [/data/db, /data/configdb]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --port, '27020', /opt/raw/healthcheck.js]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  metrics:
+    image: mongo:8.0.34
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: isolated_root
+      MONGO_INITDB_ROOT_PASSWORD: isolated-root-password
+      FLOW_WRITER_USERNAME: flow_writer
+      FLOW_WRITER_PASSWORD: isolated-flow-writer
+      FLOW_READER_USERNAME: flow_reader
+      FLOW_READER_PASSWORD: isolated-flow-reader
+      FLOW_APPLY_SETUP: '1'
+    volumes:
+      - ../database/flow_permissions.js:/docker-entrypoint-initdb.d/10-flow.js:ro
+    tmpfs: [/data/db, /data/configdb]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, 'quit(db.adminCommand({ping:1}).ok ? 0 : 1)']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  flow:
+    image: ticket-guard-user-flow:dev
+    command: [flow]
+    environment:
+      SPARK_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPARK_KAFKA_GROUP_ID: ticketguard-spark-consumer
+      KAFKA_EVENTS_TOPIC: isolated.events
+      RAW_SOURCE_ID: isolated
+      FLOW_RAW_MONGO_URI: mongodb://isolated_reader:isolated-reader-password@raw:27020/ticketguard_raw?authSource=ticketguard_raw
+      FLOW_TARGET_MONGO_URI: mongodb://flow_writer:isolated-flow-writer@metrics:27017/ticketguard_flow?authSource=ticketguard_flow
+      PIPELINE_STATE_MONGO_URI: mongodb://state:27017/ticketguard_pipeline_state?replicaSet=isolated-state
+      FLOW_CHECKPOINT_DIR: /checkpoints/isolated
+      FLOW_PRESENCE_SECONDS: '30'
+      FLOW_READ_TIMEOUT_MS: '3000'
+    tmpfs: ['/checkpoints:uid=185,gid=0,mode=0770']
+    depends_on:
+      kafka: {condition: service_healthy}
+      topic: {condition: service_completed_successfully}
+      state-init: {condition: service_completed_successfully}
+      raw: {condition: service_healthy}
+      metrics: {condition: service_healthy}
+  verify:
+    image: ticket-guard-raw-raw-consumer:latest
+    user: '0:0'
+    command: [python, /checks/verify_stream.py]
+    environment:
+      RAW_SOURCE_ID: isolated
+      RAW_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      RAW_KAFKA_TOPIC: isolated.events
+      RAW_KAFKA_GROUP_ID: ticketguard-raw-db-v1
+      RAW_ROUTING_FINGERPRINT: 54e2a7c73316ed633ef5a445ff9dc0b87b44cd302b8af93f8c9cce586f6f8b1b
+      RAW_MONGO_HOST: raw
+      RAW_MONGO_DATABASE: ticketguard_raw
+      RAW_MONGO_WRITER_USERNAME: isolated_writer
+      RAW_MONGO_WRITER_PASSWORD: isolated-writer-password
+    volumes:
+      - ../../raw_consumer:/app:ro
+      - .:/checks:ro
+    depends_on:
+      kafka: {condition: service_healthy}
+      raw: {condition: service_healthy}
+      metrics: {condition: service_healthy}

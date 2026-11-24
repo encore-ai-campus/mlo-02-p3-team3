@@ -10,7 +10,8 @@ from .services import repo
 @override_settings(EVENT_PUBLISHER='mock', CAPTURE_ENABLED=False)
 class ObservationTests(SimpleTestCase):
     def setUp(self):
-        repo.reset()
+        with override_settings(QA_RESET_ENABLED=True):
+            repo.reset()
         publisher.receipts.clear()
         publisher.records.clear()
         self.client = Client()
@@ -50,11 +51,13 @@ class ObservationTests(SimpleTestCase):
     def test_existing_captcha_limit_has_one_correlated_action(self):
         attempt=repo.start('observation-user','blue-hour','page')
         repo.challenge('observation-user','page',attempt['id'])
-        attempt['wrong']=4
+        with repo.lock:
+            repo.attempts['observation-user']['wrong']=4
         response=self.post(dict(action='verify',pageId='page',attemptId=attempt['id'],answer='wrong'))
         self.assertEqual(response.json()['code'],'CAPTCHA_LIMIT')
         limits=[e for e in self.events() if e['eventType']=='captcha_limit_reached']
         self.assertEqual(len(limits),1)
         self.assertEqual(limits[0]['details']['wrongCount'],5)
         self.assertTrue(limits[0]['details']['observationRequestId'])
-        self.assertEqual(attempt['stage'],'cancelled')
+        with repo.lock:
+            self.assertEqual(repo.attempts['observation-user']['stage'],'cancelled')
