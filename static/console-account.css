@@ -3,3 +3,42 @@
 .console-logout:hover { background: #f2f5fa; }
 .console-logout:focus-visible { outline: 3px solid #82a9ff; outline-offset: 3px; }
 .console-logout:disabled { opacity: .6; cursor: wait; }
+/* 홈·QA·DB 상단의 높이와 계정 영역 규격. */
+header.top-bar.console-header, .console-header.home-toolbar {
+  box-sizing: border-box; height: 76px; min-height: 76px;
+  padding: 0 16px; flex-wrap: nowrap; border-bottom: 1px solid #e3e8f0;
+  background: #fff;
+}
+.console-header .console-account-menu, .console-header.console-account-menu {
+  display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap;
+  gap: 12px; flex-shrink: 0; min-width: 0;
+}
+.console-header .console-account-menu { height: 75px; margin-left: auto; }
+header.top-bar.console-header > .main-tabs {
+  flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+header.top-bar.console-header { scrollbar-width: none; }
+header.top-bar.console-header::-webkit-scrollbar,
+header.top-bar.console-header > .main-tabs::-webkit-scrollbar { display: none; }
+header.top-bar.console-header > .main-tabs a { flex-shrink: 0; white-space: nowrap; }
+.console-header .console-account-menu .target-chip, .console-header.console-account-menu .target-chip {
+  box-sizing: border-box; display: inline-flex !important; align-items: center; justify-content: center;
+  flex-shrink: 0; gap: 8px; width: 176px; height: 36px; padding: 0 12px;
+  border: 1px solid #e3e8f0; border-radius: 999px; background: #fff;
+  font-size: 13px; font-weight: 600; line-height: 20px; white-space: nowrap; overflow: hidden;
+}
+.console-header .console-account-menu .admin-user, .console-header.console-account-menu .admin-user {
+  display: inline-flex; align-items: center; flex-shrink: 0; gap: 6px;
+  width: 128px; max-width: 128px; height: 36px; overflow: hidden;
+  font-size: 13px; font-weight: 600; line-height: 20px; white-space: nowrap;
+}
+.console-account-menu .admin-user svg { width: 22px; height: 22px; flex-shrink: 0; stroke-width: 1.8; }
+.console-account-menu .console-logout {
+  box-sizing: border-box; width: 88px; height: 36px; padding: 0 12px;
+  font-size: 13px; font-weight: 600; line-height: 20px;
+}
+@media (max-width: 760px) {
+  .console-header .console-account-menu, .console-header.console-account-menu { gap: 8px; }
+  .console-header .console-account-menu .target-chip, .console-header.console-account-menu .target-chip { width: 140px; }
+  .console-header .console-account-menu .admin-user, .console-header.console-account-menu .admin-user { width: 80px; max-width: 80px; }
+}

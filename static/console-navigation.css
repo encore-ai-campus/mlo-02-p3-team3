@@ -1,0 +1,29 @@
+/* QA 하위 메뉴와 DB 관점 메뉴의 공통 표시 규칙. */
+nav.console-navigation.sub-tabs, .monitor-preview nav.console-navigation.mp-tabs {
+  position: sticky; top: 76px; z-index: 30; display: flex; align-items: center;
+  gap: 10px; min-height: 68px; margin: 0; padding: 12px 32px;
+  background: #f4f7fc; border-bottom: 1px solid #e3e8f0;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+nav.console-navigation::-webkit-scrollbar { display: none; }
+.console-navigation > a, .console-navigation > a.mp-tab {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  gap: 8px; min-height: 42px; padding: 10px 16px;
+  border: 1px solid #dfe6f1; border-radius: 24px; background: #fff;
+  color: #52647d; font-size: 14px; font-weight: 600; line-height: 20px;
+  white-space: nowrap; text-decoration: none;
+}
+.console-navigation > a:hover, .console-navigation > a.mp-tab:hover {
+  border-color: #a9bff4; background: #fff; color: #1d4ed8;
+}
+.console-navigation > a.is-active, .console-navigation > a.mp-tab.active {
+  background: #e8f0fe; color: #1d4ed8; border-color: #dce6ff;
+}
+.console-navigation > a svg, .console-navigation > a.mp-tab svg {
+  width: 18px; height: 18px; flex-shrink: 0; fill: none;
+  stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.console-navigation > a:focus-visible { outline: 3px solid #82a9ff; outline-offset: -3px; }
+@media (max-width: 760px) {
+  nav.console-navigation.sub-tabs, .monitor-preview nav.console-navigation.mp-tabs { padding-inline: 16px; }
+}
