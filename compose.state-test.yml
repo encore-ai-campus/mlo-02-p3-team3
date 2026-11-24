@@ -5,10 +5,3 @@ services:
     command: [mongod, --replSet, conversion-test, --port, '27029', --bind_ip_all]
     ports: ["127.0.0.1:27029:27029"]
     tmpfs: [/data/db, /data/configdb]
-    healthcheck:
-      # Check the listener, not primary election: Python initializes the set next.
-      test: [CMD, mongosh, --quiet, --port, '27029', --eval, 'quit(db.adminCommand({ping:1}).ok === 1 ? 0 : 1)']
-      interval: 2s
-      timeout: 5s
-      retries: 30
-      start_period: 5s
