@@ -11,12 +11,13 @@
   {% set custom_bot_types = bot_type_catalog() | selectattr('is_custom') | list %}
   {% if custom_bot_types %}<style>:root { {% for info in custom_bot_types %}--{{ info.color_token }}: {{ info.color_hex }}; {% endfor %}}</style>{% endif %}
   {% block head %}{% endblock %}
-  <link rel="stylesheet" href="/static/console-account.css?v=1">
+  <link rel="stylesheet" href="/static/console-account.css?v=2">
+  <link rel="stylesheet" href="/static/console-navigation.css?v=1">
   <script src="/static/console-account.js?v=1" defer></script>
 </head>
 <body>
   {% block header %}
-  <header class="top-bar">
+  <header class="top-bar console-header">
     <div class="brand-group">
     <a class="brand" href="{{ base_path }}/" aria-label="티켓가드 관리자 콘솔 홈">
       <span class="brand-mark">{% include "brand_mark.svg" %}</span>
@@ -33,7 +34,7 @@
       <a href="{{ base_path }}/runs/new" class="{{ 'is-active' if active_tab == 'qa' }}"><i data-lucide="flask-conical"></i>QA 대시보드</a>
       <a href="{{ base_path }}/db" class="{{ 'is-active-db' if active_tab == 'db' }}"><i data-lucide="database"></i>DB 대시보드</a>
     </nav>
-    <div class="top-bar-right">
+    <div class="top-bar-right console-account-menu">
       <span class="target-chip">
         <span class="status-dot {{ '' if target_status.is_connected else 'is-down' }}"></span>
         {{ target_status.label }} · {{ '연결 정상' if target_status.is_connected else '연결 끊김' }}
@@ -44,7 +45,7 @@
   </header>
   {% endblock %}
   {% if active_tab == 'qa' %}
-  <nav class="sub-tabs">
+  <nav class="sub-tabs console-navigation" aria-label="QA 대시보드 메뉴">
     <a href="{{ base_path }}/runs/new" class="{{ 'is-active' if active_subtab not in ('bots', 'cases', 'results') }}"><i data-lucide="play"></i>테스트 실행</a>
     <a href="{{ base_path }}/runs" class="{{ 'is-active' if active_subtab == 'results' }}"><i data-lucide="clipboard-list"></i>테스트 결과</a>
     <a href="{{ base_path }}/bots" class="{{ 'is-active' if active_subtab == 'bots' }}"><i data-lucide="bot"></i>매크로 봇 시뮬레이션</a>
