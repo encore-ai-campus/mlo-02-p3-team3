@@ -53,7 +53,7 @@ def test_chunked_request_uses_the_latest_original_ingestion(tmp_path):
                                             sha256=hashlib.sha256(encoded).hexdigest(), encoding='base64-json-utf8',
                                             data=base64.b64encode(chunks[index]).decode()))).encode()
 
-    path = tmp_path / 'network.sqlite'
+    path = tmp_path / 'network-state'
     state = State(path, projector=project, skip_expired=True)
     state.begin(1)
     assert state.feed(wrap(1), 1, 4900, 4500, ingested_at=4850) is None

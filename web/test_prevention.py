@@ -1,7 +1,7 @@
 """Isolated policy, lifetime quota, concurrency, restart and outbox regressions."""
 import json
 import tempfile
-import sqlite3
+from pymongo.errors import OperationFailure
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -23,7 +23,7 @@ class PreventionTests(SimpleTestCase):
         root.mkdir(exist_ok=True)
         self.directory = tempfile.TemporaryDirectory(dir=root)
         self.addCleanup(self.directory.cleanup)
-        self.setting = override_settings(TICKETING_STATE_PATH=str(Path(self.directory.name)/'state.sqlite'))
+        self.setting = override_settings(WEB_STATE_MONGO_URI=settings.WEB_STATE_MONGO_URI)
         self.setting.enable()
         self.addCleanup(self.setting.disable)
         login_guard.reset()
@@ -37,7 +37,7 @@ class PreventionTests(SimpleTestCase):
 
     def events(self):
         with Store().transaction() as session:
-            return [json.loads(row[0]) for row in session.db.execute('SELECT payload FROM outbox')]
+            return [row['payload'] for row in session.db.outbox.find(session=session.session)]
 
     def test_account_login_without_window_and_success_reset(self):
         target = scope('account')
@@ -224,7 +224,7 @@ class PreventionTests(SimpleTestCase):
         original=Session.enqueue
         def enqueue(session,event):
             if event['eventType']=='booking_confirm_success':
-                raise sqlite3.OperationalError('isolated disk failure')
+                raise OperationFailure('isolated storage failure')
             return original(session,event)
         with patch.object(Session,'enqueue',enqueue):
             with self.assertRaises(FlowError) as error:

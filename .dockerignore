@@ -15,3 +15,5 @@ docs
 .coverage
 htmlcov
 .ticketguard-state
+
+/tmp/

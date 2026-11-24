@@ -1,0 +1,7 @@
+name: ticketguard-state-test
+services:
+  mongo-test:
+    image: mongo:8.0.34
+    command: [mongod, --replSet, conversion-test, --port, '27029', --bind_ip_all]
+    ports: ["127.0.0.1:27029:27029"]
+    tmpfs: [/data/db, /data/configdb]

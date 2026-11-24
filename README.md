@@ -16,12 +16,14 @@
 
 ## 실행
 
+먼저 [MongoDB 상태 저장 설정](docs/mongodb-state.md)에 따라 .env에 웹/분석 전용 MongoDB 연결과 계정을 추가합니다.
+
 Docker Desktop에서 Linux containers를 실행한 뒤 PowerShell에서:
 
 ```powershell
 cd C:\workspace\Ticket_Guard
-docker compose --env-file .env up -d --build
-docker compose --env-file .env ps
+docker compose --env-file .env -f compose.yml -f compose.state.yml up -d --build
+docker compose --env-file .env -f compose.yml -f compose.state.yml ps
 ```
 
 접속: http://localhost:8000
@@ -33,11 +35,11 @@ docker compose --env-file .env ps
 
 두 계정은 예매 내역과 입장 권한이 분리되고 공연 재고는 공유됩니다. 실제 계정 체계가 아닌 개발용 로그인입니다. 외부에 배포하지 마세요.
 
-신규 환경에서 `.env`가 없을 때만 `.env.example`을 `.env`로 복사하고 수정한 뒤 `docker compose --env-file .env up -d`로 재생성합니다. `.env`는 Git에서 제외됩니다. `.env.example`의 비밀번호는 공개된 데모 값입니다.
+신규 환경에서 `.env`가 없을 때만 `.env.example`을 `.env`로 복사하고 수정한 뒤 `docker compose --env-file .env -f compose.yml -f compose.state.yml up -d`로 재생성합니다. `.env`는 Git에서 제외됩니다. `.env.example`의 CHANGE_ME는 반드시 별도 비밀번호로 바꾸고 URI에도 반영합니다. 기존 팀 환경변수는 유지합니다.
 
 ```powershell
 Copy-Item .env.example .env
-docker compose --env-file .env up -d
+docker compose --env-file .env -f compose.yml -f compose.state.yml up -d
 docker compose --env-file .env logs --tail 50 web
 ```
 
@@ -45,7 +47,7 @@ docker compose --env-file .env logs --tail 50 web
 
 ### QA 대시보드 실행 (관리자 · Live Run)
 
-관리자 로그인과 QA 대시보드(`/qa/`)는 팀 입구 `compose.gateway.yml`과 QA DB `qa/compose.qa-db.yml`을 함께 붙여 실행할 때만 켜집니다. `docker compose --env-file .env up -d`만으로 띄우면 관리자 로그인이 꺼져 있어 "아이디 또는 비밀번호를 확인해 주세요"가 표시됩니다.
+관리자 로그인과 QA 대시보드(`/qa/`)는 팀 입구 `compose.gateway.yml`과 QA DB `qa/compose.qa-db.yml`을 함께 붙여 실행할 때만 켜집니다. `docker compose --env-file .env -f compose.yml -f compose.state.yml up -d`만으로 띄우면 관리자 로그인이 꺼져 있어 "아이디 또는 비밀번호를 확인해 주세요"가 표시됩니다.
 
 모든 명령은 저장소 맨 위 폴더(PowerShell)에서 실행. `-f` 4개를 붙여야 관리자 로그인 · QA 대시보드(`/qa/`)가 켜짐.
 
@@ -56,24 +58,24 @@ docker compose --env-file .env logs --tail 50 web
 docker compose --env-file .env -p ticket-guard-workspace-db -f compose.yml -f mongo/compose.local.yml --profile mongo up -d --no-deps --wait mongo
 
 # 기본 웹·QA·관리자 대시보드 실행
-docker compose --env-file .env -f compose.yml -f compose.gateway.yml -f qa/compose.qa-db.yml up -d --build --wait
+docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml up -d --build --wait
 
 # 실행 상태 확인
-docker compose --env-file .env -f compose.yml -f compose.gateway.yml -f qa/compose.qa-db.yml ps -a
+docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml ps -a
 ```
 
 **2. 최신화 (git pull 뒤)**
 
 | 증상 | 원인 | 확인 명령 |
 |---|---|---|
-| 관리자 로그인 실패 | `.env` 관리자 두 줄 누락 · `compose.gateway.yml` 누락 | `docker compose --env-file .env -f compose.yml -f compose.gateway.yml exec web printenv DEMO_ADMIN_USERNAME` · 출력 없으면 누락 |
-| 로그인 후 `/qa/` 502 | QA 대시보드 미기동 · `qa/compose.qa-db.yml` 누락 · `QA_MONGO_*` 누락 | `docker compose --env-file .env -f compose.yml -f compose.gateway.yml -f qa/compose.qa-db.yml logs --tail 50 qa-dashboard qa-mongo` |
+| 관리자 로그인 실패 | `.env` 관리자 두 줄 누락 · `compose.gateway.yml` 누락 | `docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml exec web printenv DEMO_ADMIN_USERNAME` · 출력 없으면 누락 |
+| 로그인 후 `/qa/` 502 | QA 대시보드 미기동 · `qa/compose.qa-db.yml` 누락 · `QA_MONGO_*` 누락 | `docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml logs --tail 50 qa-dashboard qa-mongo` |
 | `/qa/` 접속 시 로그인 화면으로 이동 | 고객 계정 또는 로그아웃 상태 · 관리자 전용이라 정상 차단 | 관리자 계정으로 다시 로그인 |
 QA 대시보드는 코드를 이미지 안에 복사해서 실행 → pull 뒤 다시 빌드해야 반영.
 
 ```powershell
 # QA 코드만 바뀌었을 때 · 예매 웹 데이터 유지
-docker compose -f compose.yml -f compose.gateway.yml -f qa/compose.qa-db.yml -f qa/compose.qa-live.yml up -d --build --no-deps qa-dashboard
+docker compose -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml -f qa/compose.qa-live.yml up -d --build --no-deps qa-dashboard
 # 예매 웹 등 다른 코드도 바뀌었을 때 · 1단계 전체 실행 명령 다시 실행
 ```
 
@@ -90,7 +92,7 @@ http://localhost:8000/login/ → 관리자 계정 로그인 → QA 대시보드�
 
 - 지정석: A~J × 1~10, 최대 4석. 자유석: 잔여 수량 이내 1~4명.
 - 선택만으로 재고를 점유하지 않습니다. 확정 요청에서 서버가 가격·재고·입장 권한을 확인합니다.
-- 보안문자 정답은 서버 메모리에만 존재하고 PNG로 표시합니다. 오답 5회 시 대기열부터 다시 진행합니다.
+- 보안문자는 PNG로 표시하고 MongoDB에는 시도별 HMAC 검증값만 저장합니다. 오답 5회 시 대기열부터 다시 진행합니다.
 - 현재 탭을 유지하며 새로고침할 수 있습니다. 상단 메뉴로 나가면 취소 확인을 제공합니다. 닫힌 탭은 마지막 heartbeat부터 60초 후 권한이 만료됩니다.
 - 다른 탭에서 같은 계정으로 예매를 시작하면 기존 탭을 유지합니다. BroadcastChannel로 복제 탭 식별자 중복을 줄이지만 실제 다중 브라우저의 세션·접속 제어는 후속 서버 설계 대상입니다.
 - 확정 결과 재요청은 같은 예매를 반환합니다. 미확정의 오래된 sequence는 거부합니다.
@@ -128,24 +130,24 @@ docker compose --env-file .env exec -e EVENT_PUBLISHER=mock -T web python manage
 docker compose --env-file .env restart web
 ```
 
-CSS·JS·템플릿 변경은 브라우저 새로고침으로 확인합니다. 의존성 변경 시 `docker compose --env-file .env up -d --build`로 재빌드합니다.
+CSS·JS·템플릿 변경은 브라우저 새로고침으로 확인합니다. 의존성 변경 시 `docker compose --env-file .env -f compose.yml -f compose.state.yml up -d --build`로 재빌드합니다.
 
 ## 모의 저장소의 한계와 초기화
 
-- 예매·재고·대기열·보안문자·오픈시간·이벤트는 모두 서버 프로세스 메모리입니다.
+- 예매·회차별 재고·대기열·보안문자 검증값·오픈시간과 로그인 보호 상태는 MongoDB에 저장합니다. 업무 이벤트는 같은 트랜잭션의 outbox를 통해 Kafka로 전달합니다.
 - **서버 재시작 시 위 데이터가 전부 초기화됩니다.** 완료된 예매도 재시작 뒤에는 조회할 수 없습니다.
 - 초기화 명령은 `docker compose --env-file .env restart web`입니다. 디스크나 실제 DB의 데이터를 삭제하지 않습니다.
 - 프로세스 내부 RLock으로 확정을 직렬화합니다. 여러 프로세스·컨테이너 사이 정합성을 보장하지 않습니다.
-- Django 기본 DB 인증 대신 개발 계정 검증과 서명 쿠키 세션을 사용합니다. 관계형 DB/SQLite는 추가하지 않았습니다.
-- 서명 쿠키는 암호화되지 않으며 사용자 식별자만 넣습니다. 로그아웃된 쿠키의 서버 측 폐기나 실서비스 인증을 보장하지 않습니다. 실제 인증과 공유 세션은 2단계 이후 교체해야 합니다.
+- 개발 계정은 환경변수로 검증하고 로그인 세션은 MongoDB에 저장합니다. 웹 정책·구매 원장은 MongoDB에 저장합니다. 설정과 실행 방법은 docs/mongodb-state.md를 참고하세요.
+- 세션 쿠키에는 임의 식별자만 넣고 DB에는 식별자 해시와 세션 내용을 보관합니다. 로그아웃은 서버 문서를 폐기합니다. 실제 회원 계정 인증 공급자는 별도 구현 대상입니다.
 - 브라우저 이벤트의 이탈 수집은 best effort입니다. 브라우저 종료 시 유실될 수 있습니다.
-- 개발 로그 뷰어는 메모리에 최근 1,000건을 보관합니다. Kafka 전달 완료는 별도 callback/receipt로 구분하며, receipt는 최대 2,000건/15분입니다. Kafka 데이터는 named volume에 유지됩니다. 프로세스 종료 전 미전달 이벤트의 영속 재시도와 MongoDB TTL은 아직 구현하지 않았습니다.
+- 개발 로그 뷰어는 메모리에 최근 1,000건을 보관합니다. Kafka 전달 완료는 별도 callback/receipt로 구분하며, receipt는 최대 2,000건/15분입니다. Kafka 데이터는 named volume에 유지됩니다. 업무 이벤트의 미전달 outbox는 MongoDB에 남고 재시도 시 같은 ID를 사용합니다. 요청 후 drain 또는 drain_prevention_outbox 명령으로 재전송합니다. 세션·브라우저 보호 문서는 조회 시 만료 검사와 TTL 정리를 함께 사용합니다.
 
 ## 구조
 
 ```text
 config/                 Django 설정, URL, ASGI
-web/services.py         예매 서비스, MockRepository, 모의 공연 데이터
+web/services.py         예매 업무, MongoRepository(운영), MockRepository(테스트), 공연 카탈로그
 web/events.py           EventPublisher 계약, MockEventPublisher, 이벤트 생성
 web/views.py            요청 검증·화면 렌더링·API
 web/tests.py            서비스·HTTP 회귀 테스트
@@ -171,7 +173,7 @@ docs/architecture.md    필수 후속 데이터 파이프라인 설계
 PC 포트는 각각 `mongo/compose.local.yml`, `compose.raw.local.yml`,
 `qa/compose.qa-db.local.yml`을 추가할 때만 `127.0.0.1`에 공개됩니다.
 시스템 DB는 관리자 앱 전용 저장소가 아니라 파이프라인 데이터를 조회하는 대상입니다.
-현재 예매·재고 서비스는 메모리 저장소이므로 DB에 영속 저장된다고 가정하지 않습니다.
+예매·재고·대기열·보호 상태·세션은 웹 전용 MongoDB가 기준 저장소입니다. 저장 구조와 적용 방법은 [MongoDB 업무 상태](docs/mongodb-runtime.md)를 참고하세요.
 
 | 계정 설정 | 생성 위치 / 권한 | 용도 |
 |---|---|---|
@@ -242,6 +244,7 @@ $rawArgs = @(
 $teamArgs = @(
     "--env-file", ".env",
     "-f", "compose.yml",
+    "-f", "compose.state.yml",
     "-f", "compose.gateway.yml",
     "-f", "qa/compose.qa-db.yml",
     "-f", "qa/compose.qa-db.local.yml"
@@ -432,7 +435,7 @@ docker compose @systemDbArgs down --volumes --remove-orphans
 
 ## GitHub
 
-기존 remote `https://github.com/seoloo/Ticket_Guard.git`을 유지합니다. 원격 push와 PR 생성은 수행하지 않습니다. 팀원은 저장소를 clone한 뒤 같은 Compose 명령으로 실행할 수 있습니다. 소스·이미지 자산은 공유되지만 실행 중 메모리 데이터는 공유되지 않습니다.
+기존 remote `https://github.com/seoloo/Ticket_Guard.git`을 유지합니다. 원격 push와 PR 생성은 수행하지 않습니다. 팀원은 저장소를 clone한 뒤 같은 Compose 명령으로 실행할 수 있습니다. 소스·이미지 자산을 공유하며, 여러 웹 프로세스의 업무 상태는 같은 웹 전용 MongoDB에 연결할 때 공유됩니다.
 
 ## 필수 후속 작업
 

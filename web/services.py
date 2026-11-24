@@ -1,7 +1,6 @@
 """
 [홍석환] 예매 시뮬레이션 업무 상태 관리
-대기열·보안문자·재고·예매 확정과 시나리오 동작을 메모리에서 관리한다.
-단일 프로세스 잠금을 사용하므로 다중 작업자 운영용 저장소로 사용하지 않는다.
+실행 저장소는 MongoDB이며, MockRepository는 명시적 테스트용 업무 로직 픽스처다.
 """
 import secrets
 import math
@@ -11,6 +10,7 @@ from datetime import datetime, timezone
 from threading import RLock
 from uuid import uuid4
 from django.conf import settings
+from django.utils.crypto import salted_hmac
 from .events import emit
 from .poster_catalog import WINTER_SHOWS
 from . import prevention
@@ -56,6 +56,9 @@ class FlowError(Exception):
         self.message, self.code, self.status, self.redirect = message, code, status, redirect
 
 
+INITIAL_SOLD = {'A5', 'B2', 'B8', 'D3', 'D9', 'F4', 'F8', 'H1', 'H10', 'I4'}
+
+
 class MockRepository:
     def __init__(self):
         self.lock = RLock()
@@ -69,7 +72,7 @@ class MockRepository:
     def _set_initial_state(self):
         self.attempts = {}
         self.bookings = {}
-        self.sold = {'A5', 'B2', 'B8', 'D3', 'D9', 'F4', 'F8', 'H1', 'H10', 'I4'}
+        self.sold = INITIAL_SOLD.copy()
         self.remaining = 28
         self.queue_counter = 0
         self.admission_window = None
@@ -77,12 +80,31 @@ class MockRepository:
         self.opens = {}
         self.scenarios = {}
 
+    def active_users(self):
+        return list(self.attempts)
+
+    def active_attempts(self):
+        return self.attempts.values()
+
+    def sold_for(self, show_id):
+        return self.sold
+
+    def remaining_for(self, show_id):
+        return self.remaining
+
+    def sell(self, show_id, seats, quantity):
+        if SHOWS[show_id]['kind'] == 'reserved': self.sold.update(seats)
+        else: self.remaining -= quantity
+
+    def set_remaining(self, show_id, quantity):
+        self.remaining = quantity
+
     def current(self, user, required=True):
         a = self.attempts.get(user)
         if a and a['stage'] not in ('complete', 'expired', 'cancelled'):
-            if time.monotonic() - a['heartbeat'] > settings.ATTEMPT_TIMEOUT_SECONDS:
+            if time.time() - a['heartbeat'] > settings.ATTEMPT_TIMEOUT_SECONDS:
                 a['stage'], a['captcha'] = 'expired', ''
-                emit(user, 'connection_timeout', a, result='failure', errorCode='EXPIRED', details={'reason':'heartbeat_expired','elapsedMs':round((time.monotonic()-a['heartbeat'])*1000,2)})
+                emit(user, 'connection_timeout', a, result='failure', errorCode='EXPIRED', details={'reason':'heartbeat_expired','elapsedMs':round((time.time()-a['heartbeat'])*1000,2)})
         if required and (not a or a['stage'] in ('expired', 'cancelled')):
             show_id = a['show_id'] if a else 'blue-hour'
             raise FlowError('입장 권한이 만료되었어요. 대기열에 다시 입장해 주세요.', 'EXPIRED', 409, '/detail/' + show_id + '/')
@@ -94,13 +116,13 @@ class MockRepository:
     def advance_queue(self):
         """Global FIFO admission: at most one batch per interval, no saved slots."""
         with self.lock:
-            now = time.monotonic()
+            now = time.time()
             interval = settings.BOOKING_ADMISSION_INTERVAL_SECONDS
             if self.admission_window is None or now >= self.admission_window + interval:
                 self.admission_window = now
                 self.admission_count = 0
             waiting = []
-            for user in list(self.attempts):
+            for user in self.active_users():
                 a = self.current(user, False)
                 if a and a['stage'] == 'queue' and a.get('policy_restricted_until', 0) <= time.time():
                     waiting.append((user, a))
@@ -116,12 +138,12 @@ class MockRepository:
             if a['stage'] != 'queue':
                 return 0, 0
             rank = sum(other['stage'] == 'queue' and other.get('policy_restricted_until', 0) <= time.time() and other['rank'] <= a['rank']
-                       for other in self.attempts.values())
+                       for other in self.active_attempts())
             available = settings.BOOKING_ADMISSION_BATCH_SIZE - self.admission_count
             if rank <= available:
                 return rank, 0
             interval = settings.BOOKING_ADMISSION_INTERVAL_SECONDS
-            wait = max(0, self.admission_window + interval - time.monotonic())
+            wait = max(0, self.admission_window + interval - time.time())
             wait += ((rank - available - 1) // settings.BOOKING_ADMISSION_BATCH_SIZE) * interval
             return rank, math.ceil(wait)
 
@@ -147,7 +169,7 @@ class MockRepository:
             self.advance_queue()
             self.queue_counter += 1
             a = dict(id=str(uuid4()), show_id=show_id, page_id=page_id, stage='queue',
-                     entered=time.monotonic(), heartbeat=time.monotonic(), rank=self.queue_counter,
+                     entered=time.time(), heartbeat=time.time(), rank=self.queue_counter,
                      wrong=0, captcha='', sequence=0, booking_id=None, scenario=self.scenarios.get((user,show_id)))
             a['is_simulation'] = prevention.simulated_account(user)
             self.attempts[user] = a
@@ -189,7 +211,7 @@ class MockRepository:
     def tick(self, user, page_id, attempt_id):
         with self.lock:
             a = self.owned(user, page_id, attempt_id)
-            a['heartbeat'] = time.monotonic()
+            a['heartbeat'] = time.time()
             self.advance_queue()
             return a
 
@@ -200,9 +222,10 @@ class MockRepository:
             if a['stage'] != 'captcha':
                 raise FlowError('보안 확인 단계에서만 사용할 수 있어요.')
             # QA 테스트 훅 · 고정 정답 (Issue #6)
-            a['captcha'] = settings.QA_CAPTCHA_FIXED_ANSWER or ''.join(secrets.choice('ABCDEFGHJKMNPQRSTUVWXYZ23456789') for _ in range(5))
+            answer = settings.QA_CAPTCHA_FIXED_ANSWER or ''.join(secrets.choice('ABCDEFGHJKMNPQRSTUVWXYZ23456789') for _ in range(5))
+            a['captcha'] = salted_hmac('ticketguard-captcha:' + a['id'], answer, algorithm='sha256').hexdigest()
             if reason=='user_refresh': emit(user,'captcha_refresh',a,details={'reason':'user_refresh'})
-            return a['captcha']
+            return answer
 
     @prevention.transaction
     def verify(self, user, page_id, attempt_id, answer):
@@ -210,7 +233,7 @@ class MockRepository:
             a = self.owned(user, page_id, attempt_id)
             if a['stage'] != 'captcha':
                 raise FlowError('보안 확인 단계가 아니에요.')
-            if not a['captcha'] or not secrets.compare_digest(answer.strip().upper(), a['captcha']):
+            if not a['captcha'] or not secrets.compare_digest(salted_hmac('ticketguard-captcha:' + a['id'], answer.strip().upper(), algorithm='sha256').hexdigest(), a['captcha']):
                 a['wrong'] += 1
                 counts={'wrongCount':a['wrong'],'remainingAttempts':max(0,5-a['wrong'])}
                 emit(user, 'captcha_wrong', a, result='failure', errorCode='CAPTCHA_WRONG',details=counts)
@@ -220,7 +243,7 @@ class MockRepository:
                     raise FlowError('입력 가능 횟수를 초과했어요. 대기열에 다시 입장해 주세요.', 'CAPTCHA_LIMIT', 409, '/detail/' + a['show_id'] + '/')
                 raise FlowError(f"입력한 문자가 일치하지 않아요 · 남은 기회 {5-a['wrong']}회", 'CAPTCHA_WRONG')
             a['stage'], a['captcha'] = 'select', ''
-            a['heartbeat'] = time.monotonic()
+            a['heartbeat'] = time.time()
             emit(user, 'captcha_success', a)
             return a
 
@@ -232,12 +255,12 @@ class MockRepository:
                 a['stage'], a['captcha'] = 'cancelled', ''
                 policy = prevention.booking_policy(self, user, a['show_id'], a)
                 policy.session.put('entry:' + policy.target, {'attempt': a['id'], 'status': 'cancelled'})
-                emit(user, 'queue_cancel', a, details={'reason':reason,'elapsedMs':round((time.monotonic()-a['entered'])*1000,2)})
+                emit(user, 'queue_cancel', a, details={'reason':reason,'elapsedMs':round((time.time()-a['entered'])*1000,2)})
             return a
 
     @prevention.transaction
     def confirm(self, user, page_id, attempt_id, sequence, seats, quantity):
-        started=time.monotonic()
+        started=time.time()
         with self.lock:
             durable = prevention.active.get().replay(attempt_id) if isinstance(attempt_id, str) else None
             if durable and durable.get('user') == user and durable.get('page_id') == page_id:
@@ -287,15 +310,15 @@ class MockRepository:
                         selection_error = ('quantity_range' if not 1 <= len(seats) <= 4 else
                                            'duplicate_seat' if len(set(seats)) != len(seats) else 'invalid_seat')
                         raise FlowError('좌석은 1~4석까지 선택할 수 있어요.', 'SELECTION_LIMIT')
-                    if self.sold.intersection(seats):
+                    if self.sold_for(show['id']).intersection(seats):
                         raise FlowError('선택한 좌석이 먼저 판매되었어요. 다른 좌석을 선택해 주세요.', 'SEAT_SOLD', 409)
                     quantity = len(seats)
                 else:
                     if type(quantity) is not int or not 1 <= quantity <= 4:
                         selection_error = 'quantity_range'
                         raise FlowError('관람 인원은 1~4명까지 선택할 수 있어요.', 'SELECTION_LIMIT')
-                    if quantity > self.remaining:
-                        raise FlowError(f'잔여 수량이 {self.remaining}명으로 변경되었어요. 인원을 수정해 주세요.', 'INSUFFICIENT_STOCK', 409)
+                    if quantity > self.remaining_for(show['id']):
+                        raise FlowError(f"잔여 수량이 {self.remaining_for(show['id'])}명으로 변경되었어요. 인원을 수정해 주세요.", 'INSUFFICIENT_STOCK', 409)
                     seats = []
                 policy.event('prevention_evaluated', 'selection_repeat', observed=0, selectionValid=True)
                 policy.quota(quantity)
@@ -307,10 +330,7 @@ class MockRepository:
                          booking_attempt_id=a['id'], scenario=a.get('scenario'))
                 policy.session.purchase(policy.target, a['id'], b)
                 policy.session.put('entry:' + policy.target, {'attempt': a['id'], 'status': 'complete'})
-                if show['kind'] == 'reserved':
-                    self.sold.update(seats)
-                else:
-                    self.remaining -= quantity
+                self.sell(show['id'], seats, quantity)
                 self.bookings[booking_id] = b
                 a['booking_id'], a['stage'] = booking_id, 'complete'
                 from .events import build_event
@@ -335,14 +355,14 @@ class MockRepository:
                                  excluded=True, selectionError=e.code)
                 e.logged=True
                 emit(user, 'booking_confirm_fail', a, requestSequence=sequence, result='failure', errorCode=e.code,
-                     details={'seatType':SHOWS[a['show_id']]['kind'],'durationMs':round((time.monotonic()-started)*1000,2),
+                     details={'seatType':SHOWS[a['show_id']]['kind'],'durationMs':round((time.time()-started)*1000,2),
                               'selectionError':selection_error})
                 raise
 
     @staticmethod
     def booking_details(booking,started):
         return {'bookingId':booking['id'],'seatType':SHOWS[booking['show_id']]['kind'],'quantity':booking['quantity'],
-                'totalAmount':booking['total'],'durationMs':round((time.monotonic()-started)*1000,2)}
+                'totalAmount':booking['total'],'durationMs':round((time.time()-started)*1000,2)}
 
     def booking(self, user, identifier):
         b = self.bookings.get(identifier)
@@ -365,18 +385,18 @@ class MockRepository:
             a = self.owned(user, page_id, attempt_id)
             if name == 'admit' and a['stage'] == 'queue':
                 a['stage'] = 'captcha'
-                emit(user,'queue_admitted',a,details={'elapsedMs':round((time.monotonic()-a['entered'])*1000,2)})
+                emit(user,'queue_admitted',a,details={'elapsedMs':round((time.time()-a['entered'])*1000,2)})
             elif name == 'expire' and a['stage'] != 'complete':
-                a['heartbeat'] = time.monotonic() - settings.ATTEMPT_TIMEOUT_SECONDS - 1
+                a['heartbeat'] = time.time() - settings.ATTEMPT_TIMEOUT_SECONDS - 1
             elif name == 'four_wrong' and a['stage'] == 'captcha':
                 a['wrong'] = 4
             elif name == 'collision' and a['stage'] == 'select' and a['show_id'] == 'blue-hour':
                 valid = {f'{r}{c}' for r in 'ABCDEFGHIJ' for c in range(1, 11)}
                 if not isinstance(seats, list) or not seats or any(not isinstance(s, str) or s not in valid for s in seats):
                     raise FlowError('충돌을 확인할 좌석을 먼저 선택해 주세요.')
-                self.sold.add(seats[-1])
+                self.sell(a['show_id'], [seats[-1]], 1)
             elif name == 'shortage' and a['stage'] == 'select' and a['show_id'] == 'open-air':
-                self.remaining = 1
+                self.set_remaining(a['show_id'], 1)
             elif name in ('disconnect','verification_outage','repeat_confirm','old_confirm'):
                 pass
             else:
@@ -390,4 +410,14 @@ class MockRepository:
         return self.scenarios.get((user,show_id))
 
 
-repo = MockRepository()
+from .booking_store import MongoBookingMixin, durable
+
+
+class MongoRepository(MongoBookingMixin, MockRepository):
+    """Production workflow: every public operation uses authoritative MongoDB state."""
+
+
+for _method in ('current', 'opens_at', 'advance_queue', 'queue_status', 'booking', 'scenario', 'scenario_context'):
+    setattr(MongoRepository, _method, durable(getattr(MockRepository, _method)))
+
+repo = MongoRepository()

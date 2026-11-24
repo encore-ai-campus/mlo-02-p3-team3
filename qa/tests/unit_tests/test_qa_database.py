@@ -1,4 +1,4 @@
-"""QA DB 연결 · MongoDB 주소만 · 예전 SQLite 주소는 안내와 함께 거절"""
+"""QA DB 연결 · MongoDB 주소만 · 지원하지 않는 주소는 안내와 함께 거절"""
 from datetime import datetime, timezone
 
 import pytest
@@ -9,9 +9,9 @@ from ticket_guard_qa.qa_database.database import QaDatabaseConfigError, as_utc, 
 from ticket_guard_qa.test_runs.run_repository import RunRepository
 
 
-def test_sqlite_url_is_rejected_with_compose_hint():
+def test_unsupported_url_is_rejected_with_compose_hint():
     with pytest.raises(QaDatabaseConfigError, match="compose.qa-db.yml"):
-        connect_qa_database("sqlite:////qa/qa_data/qa.db")
+        connect_qa_database("unsupported://invalid")
 
 
 def test_unfinished_run_is_marked_error_on_restart(qa_database):

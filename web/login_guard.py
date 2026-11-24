@@ -1,15 +1,11 @@
-"""Login failure limit per browser: LOGIN_MAX_FAILURES wrong attempts from one
-browser (any usernames) lock login in that browser for LOGIN_LOCK_SECONDS.
-
-The browser is identified by a signed random cookie (tg_login). Clearing cookies
-starts over; that is accepted for this demo. Single-process memory like
-MockRepository, so a server restart clears it.
-"""
+"""Shared MongoDB browser login protection; timestamps are UTC epoch seconds."""
+import hashlib
 import time
+from datetime import datetime, timezone
 from functools import wraps
-from threading import RLock
 from uuid import UUID, uuid4
 from django.conf import settings
+from .prevention_store import Store
 
 COOKIE = 'tg_login'
 COOKIE_SALT = 'login-guard'
@@ -17,58 +13,50 @@ COOKIE_MAX_AGE = 30 * 24 * 3600
 
 
 class LoginGuard:
-    MAX_TRACKED = 10000
-
-    def __init__(self):
-        self.lock = RLock()
-        self.reset()
+    @staticmethod
+    def identity(client):
+        return hashlib.sha256(client.encode()).hexdigest()
 
     def reset(self):
-        with self.lock:
-            self.entries = {}
+        with Store().transaction() as session:
+            session.db.browser_guards.delete_many({}, session=session.session)
+
+    @property
+    def entries(self):
+        with Store().transaction() as session:
+            return {row['_id']: row for row in session.db.browser_guards.find(session=session.session)}
 
     def is_locked(self, client):
-        """True while locked. An expired lock starts the count over."""
-        with self.lock:
-            now = time.monotonic()
-            entry = self.entries.get(client)
-            if not entry or not entry['locked_until']:
+        with Store().transaction() as session:
+            key = self.identity(client)
+            row = session.db.browser_guards.find_one({'_id': key}, session=session.session)
+            if not row or not row['locked_until']:
                 return False
-            if entry['locked_until'] > now:
+            if row['locked_until'] > time.time():
                 return True
-            del self.entries[client]
+            session.db.browser_guards.delete_one({'_id': key}, session=session.session)
             return False
 
     def fail(self, client):
-        """Count one failure. Returns (failures, locked_now)."""
-        with self.lock:
-            now = time.monotonic()
-            entry = self.entries.get(client)
-            # Failures far apart do not add up: the window equals the lock time.
-            if entry and now - entry['updated'] > settings.LOGIN_LOCK_SECONDS:
-                entry = None
-            if entry is None:
-                self._make_room(now)
-                entry = self.entries[client] = {'failures': 0, 'locked_until': 0, 'updated': now}
-            entry['failures'] += 1
-            entry['updated'] = now
-            if entry['failures'] >= settings.LOGIN_MAX_FAILURES:
-                entry['locked_until'] = now + settings.LOGIN_LOCK_SECONDS
-                return entry['failures'], True
-            return entry['failures'], False
+        with Store().transaction() as session:
+            now = time.time()
+            key = self.identity(client)
+            row = session.db.browser_guards.find_one({'_id': key}, session=session.session)
+            if row and row['locked_until'] > now:
+                return row['failures'], True
+            if row is None or now - row['updated'] > settings.LOGIN_LOCK_SECONDS:
+                row = dict(_id=key, failures=0, locked_until=0)
+            row['failures'] += 1
+            row['updated'] = now
+            if row['failures'] >= settings.LOGIN_MAX_FAILURES:
+                row['locked_until'] = now + settings.LOGIN_LOCK_SECONDS
+            row['expires_at'] = datetime.fromtimestamp(max(now + settings.LOGIN_LOCK_SECONDS, row['locked_until']), timezone.utc)
+            session.db.browser_guards.replace_one({'_id': key}, row, upsert=True, session=session.session)
+            return row['failures'], bool(row['locked_until'] > now)
 
     def succeed(self, client):
-        with self.lock:
-            self.entries.pop(client, None)
-
-    def _make_room(self, now):
-        if len(self.entries) < self.MAX_TRACKED:
-            return
-        for key, entry in list(self.entries.items()):
-            if entry['locked_until'] <= now and now - entry['updated'] > settings.LOGIN_LOCK_SECONDS:
-                del self.entries[key]
-        if len(self.entries) >= self.MAX_TRACKED:
-            del self.entries[min(self.entries, key=lambda k: self.entries[k]['updated'])]
+        with Store().transaction() as session:
+            session.db.browser_guards.delete_one({'_id': self.identity(client)}, session=session.session)
 
 
 login_guard = LoginGuard()

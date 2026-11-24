@@ -26,7 +26,7 @@ class NetworkProcessor:
     def _states(self, stack):
         return tuple(stack.enter_context(closing(State(
             self.checkpoint / name, projector=project, skip_expired=True)))
-            for name in ('network-state.sqlite', 'network-reference.sqlite'))
+            for name in ('network-state', 'network-reference'))
 
     def _verified(self, records):
         deadline = time.monotonic() + 10
@@ -55,9 +55,7 @@ class NetworkProcessor:
                         for item, value in ((state, bytes(row.value)), (reference, original)):
                             observation = item.feed(value, batch_id, now, oldest, ingested_at=ingested_at.timestamp())
                             if observation is not None:
-                                item.db.execute("""INSERT INTO meta VALUES ('latestRequestIngestedAt', ?)
-                                    ON CONFLICT(key) DO UPDATE SET value=max(CAST(value AS REAL), CAST(excluded.value AS REAL))""",
-                                                (str(observation['ingested_at']),))
+                                item.set_meta('latestRequestIngestedAt', observation['ingested_at'], maximum=True)
                         key = (row.topic, row.partition)
                         span = ranges.setdefault(key, dict(topic=row.topic, partition=row.partition,
                                                           start=row.offset, end=row.offset + 1))
@@ -88,8 +86,8 @@ class NetworkProcessor:
         for item in (state, reference):
             item.prune(now, WINDOW_SECONDS + BUCKET_SECONDS, self.grace, 0)
             result = calculate(item.observations(), now, self.threshold)
-            latest = item.db.execute("SELECT value FROM meta WHERE key='latestRequestIngestedAt'").fetchone()
-            result['latestRequestIngestedAt'] = iso(float(latest[0])) if latest else None
+            latest = item.get_meta('latestRequestIngestedAt')
+            result['latestRequestIngestedAt'] = iso(latest) if latest is not None else None
             results.append(result)
         if results[0] != results[1]:
             raise VerificationPending('Network aggregates do not match the original')
