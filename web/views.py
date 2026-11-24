@@ -23,6 +23,8 @@ from .telemetry import TELEMETRY_EVENTS, sanitize
 from .qa_test_hooks import is_test_account_login
 from .login_guard import login_guard, login_client, issue_login_cookie
 from .prevention import login_attempt
+from .accounts import AccountError, authenticate_account, canonical_username, create_account, record_signup_event, reserved_username
+from pymongo.errors import PyMongoError
 
 ADMIN_HOME_URL = '/qa/'  # 팀 입구(nginx)가 QA 대시보드로 넘김
 
@@ -152,10 +154,26 @@ def action(request):
     try:
         data = read_body(request)
         command = data.get('action')
+        if command == 'signup':
+            try:
+                record_signup_event('signup_requested')
+                if request.session.get('user'):
+                    raise AccountError('로그아웃 후 회원가입을 진행해 주세요.', 'ALREADY_LOGGED_IN', 409)
+                create_account(data.get('username'), data.get('password'))
+            except AccountError as error:
+                record_signup_event('signup_fail', error_code=error.code)
+                return JsonResponse({'error': error.message, 'code': error.code}, status=error.status)
+            except PyMongoError:
+                emit(None, 'signup_fail', result='failure', errorCode='STORAGE_UNAVAILABLE')
+                return JsonResponse({'error': '계정 저장소에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.',
+                                     'code': 'STORAGE_UNAVAILABLE'}, status=503)
+            return JsonResponse({'redirect': '/login/?registered=1'}, status=201)
         if command == 'login':
             username, password = data.get('username', ''), data.get('password', '')
             if not isinstance(username, str) or not isinstance(password, str):
                 raise FlowError('아이디와 비밀번호를 확인해 주세요.')
+            if not reserved_username(canonical_username(username)):
+                username = canonical_username(username)
             # Counted per browser, whatever usernames are tried. Locked = refused even with the right password.
             client = login_client(request)
             if login_guard.is_locked(client):
@@ -166,7 +184,8 @@ def action(request):
             is_admin = is_admin_login(username, password)
             authenticated, account_locked = login_attempt(username, lambda:
                 is_admin or (username in (settings.DEMO_USERNAME, settings.DEMO_SECOND_USERNAME)
-                and secrets.compare_digest(password, settings.DEMO_PASSWORD)) or is_test_account_login(username, password))
+                and secrets.compare_digest(password, settings.DEMO_PASSWORD)) or is_test_account_login(username, password)
+                or authenticate_account(username, password))
             if not authenticated:
                 failures, locked_now = login_guard.fail(client)
                 emit(None, 'login_fail', result='failure', errorCode='INVALID_CREDENTIALS',

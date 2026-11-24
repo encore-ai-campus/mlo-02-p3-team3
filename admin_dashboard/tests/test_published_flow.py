@@ -125,16 +125,33 @@ def test_scope_contract_and_exact_combination(monkeypatch):
 
 
 def test_actual_page_uses_db_data_never_sample(admin_settings,monkeypatch):
+    from ticket_guard_admin.network_status.reader import NetworkReadError
+    from ticket_guard_admin.anomaly.reader import AnomalyReadError
+    from ticket_guard_admin.early_monitor.reader import ObservationReadError
+
     reader,client=configured_reader(monkeypatch)
     admin_settings.mongo_uri=reader.uri
     def reject(): pytest.fail('실제 화면에서 샘플 데이터 호출')
     monkeypatch.setattr('ticket_guard_admin.pages.build_monitoring_preview',reject)
+    # 이 검사는 흐름 게시물만 제공한다. 다른 조회의 실패를 실제 DB 접속 없이 고정한다.
+    for name,error in (
+        ('read_network', NetworkReadError('network publication unavailable')),
+        ('read_anomaly', AnomalyReadError('anomaly publication unavailable')),
+        ('read_early', ObservationReadError('early publication unavailable')),
+    ):
+        def unavailable(*args, _error=error, **kwargs):
+            raise _error
+        monkeypatch.setattr('ticket_guard_admin.user_flow.pages.' + name, unavailable)
     response=TestClient(create_admin_dashboard_app(admin_settings),headers={'X-Admin-User':'manager'}).get('/')
     assert response.status_code==200 and response.headers['cache-control']=='no-store'
     assert 'monitor-live-data' in response.text and 'monitor-preview-data' not in response.text
     assert '샘플 데이터' not in response.text and '50.0' in response.text
     assert '5.5초' in response.text and '브라우저 세션' in response.text
-    assert '지표 미연결' in response.text and '구성 검토 중' in response.text
+    assert response.context['network_error'] is True
+    assert response.context['anomaly']['error'] == 'anomaly publication unavailable'
+    assert response.context['anomaly']['attempts'] is None
+    assert '지표 조회 실패' in response.text
+    assert 'early publication unavailable' in response.text
     assert 'href="/admin/db"' in response.text
 
 

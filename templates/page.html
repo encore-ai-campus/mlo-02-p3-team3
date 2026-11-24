@@ -29,6 +29,7 @@
         환영해요
       </h2>
       <p class="muted">로그인하고 다음 무대를 만나보세요.</p>
+      {% if request.GET.registered == "1" %}<p class="demo-note" role="status">회원가입이 완료됐어요. 가입한 아이디로 로그인해 주세요.</p>{% endif %}
       <form id="login-form" method="post" action="/login/">{% csrf_token %}
         <label for="username">아이디</label><input id="username"
                                                 name="username"
@@ -86,15 +87,15 @@
       <h2>회원가입</h2>
       <p class="muted">아이디와 비밀번호를 입력해 주세요.</p>
       <form id="signup-form" method="post" action="/signup/">{% csrf_token %}
-        <label for="signup-username">아이디</label>
-        <input id="signup-username" name="username" autocomplete="username" placeholder="아이디를 입력해 주세요" maxlength="100" required />
+        <label for="signup-username">아이디 · 영문·숫자·밑줄·하이픈 3~32자</label>
+        <input id="signup-username" name="username" autocomplete="username" placeholder="아이디를 입력해 주세요" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9_-]{2,31}" required />
         <label for="signup-password">비밀번호</label>
         <div class="password-wrap">
-          <input id="signup-password" type="password" name="password" autocomplete="new-password" placeholder="비밀번호를 입력해 주세요" maxlength="200" required />
+          <input id="signup-password" type="password" name="password" autocomplete="new-password" placeholder="8자 이상 입력해 주세요" minlength="8" maxlength="128" required />
           <button type="button" id="toggle-signup-password" aria-label="비밀번호 표시" aria-pressed="false">보기</button>
         </div>
         <p id="signup-error" class="field-error" role="alert" hidden></p>
-        <p class="signup-note">가입 기능은 서버 계정 저장 단계에서 연결됩니다.</p>
+        <p class="signup-note">아이디는 영문 소문자로 저장됩니다. 가입 후 로그인해 주세요.</p>
         <button class="button full" type="submit">회원가입 <span aria-hidden="true">→</span></button>
         <nav class="login-links" aria-label="계정 메뉴"><a href="/login/">로그인으로 돌아가기</a></nav>
       </form>
