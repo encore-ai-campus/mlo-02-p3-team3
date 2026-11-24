@@ -13,6 +13,7 @@
   {% block head %}{% endblock %}
 </head>
 <body>
+  {% block header %}
   <header class="top-bar">
     <div class="brand-group">
     <a class="brand" href="{{ base_path }}/" aria-label="티켓가드 관리자 콘솔 홈">
@@ -38,6 +39,7 @@
       <span class="admin-user"><i data-lucide="user-round"></i>{{ admin_user }}</span>
     </div>
   </header>
+  {% endblock %}
   {% if active_tab == 'qa' %}
   <nav class="sub-tabs">
     <a href="{{ base_path }}/runs/new" class="{{ 'is-active' if active_subtab not in ('bots', 'cases', 'results') }}"><i data-lucide="play"></i>테스트 실행</a>

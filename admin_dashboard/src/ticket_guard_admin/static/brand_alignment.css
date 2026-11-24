@@ -1,0 +1,3 @@
+/* 홈 사이드바의 브랜드 좌표와 관리자 화면의 브랜드 좌표를 통일한다. */
+.top-bar, .monitor-preview .top-bar { padding-inline: 16px; }
+.top-bar > .brand-group { height: 76px; align-self: flex-start; }
