@@ -13,6 +13,7 @@ CLIENT_EVENTS |= TELEMETRY_EVENTS - {'server_request'}
 SERVER_EVENTS = {'login_success', 'login_fail', 'queue_enter', 'queue_register', 'queue_cancel', 'connection_timeout', 'captcha_success', 'captcha_wrong', 'booking_confirm_request', 'booking_confirm_success', 'booking_confirm_fail', 'queue_admitted', 'booking_access_rejected', 'booking_not_open', 'captcha_limit_reached', 'captcha_refresh', 'booking_confirm_rejected', 'booking_confirm_replayed', 'scenario_executed'}
 SERVER_EVENTS.add('server_request')
 SERVER_EVENTS.add('ticketing_action_received')
+SERVER_EVENTS.update({'signup_requested', 'signup_success', 'signup_fail'})
 SERVER_EVENTS.update({'prevention_evaluated', 'prevention_detected', 'prevention_applied',
                       'prevention_rejected', 'prevention_released'})
 PAGES = {'login', 'shows', 'detail', 'queue', 'captcha', 'select', 'complete', 'history', 'signup'}

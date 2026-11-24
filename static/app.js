@@ -137,11 +137,19 @@
       e.currentTarget.setAttribute('aria-pressed', String(visible));
     });
   });
-  // No account storage yet: never let the browser submit the form natively.
-  $('#signup-form')?.addEventListener('submit', e => {
+  $('#signup-form')?.addEventListener('submit', async e => {
     e.preventDefault();
-    $('#signup-password').value = '';
-    fieldError('#signup-error', '회원가입은 아직 준비 중이에요. 개발용 계정으로 로그인해 주세요.');
+    const button = e.currentTarget.querySelector('[type=submit]');
+    button.disabled = true;
+    $('#signup-error').hidden = true;
+    try {
+      const result = await api('signup', {username: $('#signup-username').value.trim(), password: $('#signup-password').value});
+      $('#signup-password').value = '';
+      go(result.redirect);
+    } catch (error) {
+      $('#signup-password').value = '';
+      fieldError('#signup-error', error.error);
+    } finally { button.disabled = false; }
   });
   $('#login-form')?.addEventListener('submit', async e => {
     e.preventDefault();
