@@ -11,6 +11,8 @@
 </svg>
 {%- endmacro %}
 <link rel="stylesheet" href="{{ base_path }}/admin-static/brand_alignment.css?v=1">
+<link rel="stylesheet" href="/static/console-account.css?v=1">
+<script src="/static/console-account.js?v=1" defer></script>
 <header class="top-bar">
   <div class="brand-group">
   <a class="brand" href="/qa/" aria-label="티켓가드 관리자 콘솔 홈">
@@ -29,5 +31,6 @@
     {% set status_label = header_status if header_status is defined else (('DB 연결 실패' if error else 'DB 연결 정상') if error is defined else '샘플 데이터') %}
     <span class="target-chip sample-status" title="{{ status_label }}"><i aria-hidden="true" class="status-dot {{ ('is-down' if header_error else 'is-preview' if header_tone != 'normal' else '') if header_status is defined else ('is-down' if error is defined and error else 'is-preview' if error is not defined else '') }}"></i><span class="status-label">{{ status_label }}</span></span>
     <span class="admin-user">{{ nav_icon('user') }}<span class="admin-user-name" title="{{ admin_user }}">{{ admin_user }}</span></span>
+    <button type="button" class="console-logout" data-console-logout>로그아웃</button>
   </div>
 </header>

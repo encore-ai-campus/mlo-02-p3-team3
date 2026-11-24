@@ -1,0 +1,5 @@
+/* QA·DB 콘솔 공통 계정 동작. */
+.console-logout { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 7px 12px; border: 1px solid var(--line-color, #dfe6f1); border-radius: 8px; background: #fff; color: var(--strong-text-color, #374151); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.console-logout:hover { background: #f2f5fa; }
+.console-logout:focus-visible { outline: 3px solid #82a9ff; outline-offset: 3px; }
+.console-logout:disabled { opacity: .6; cursor: wait; }
