@@ -15,7 +15,6 @@ class SessionStore(SessionBase):
     @property
     def collection(self):
         collection = Store().db.web_sessions
-        collection.create_index('expires_at', expireAfterSeconds=0)
         return collection
 
     def load(self):

@@ -36,15 +36,13 @@ def render_fixture():
     client=mongomock.MongoClient('mongodb://localhost/isolated_flow',tz_aware=True)
     client.isolated_flow.flow_read_current.insert_one(current)
     client.isolated_flow.flow_read_series.insert_one(series)
-    with patch('ticket_guard_admin.user_flow.reader.MongoClient',return_value=client), patch('ticket_guard_admin.pages.build_monitoring_preview',side_effect=AssertionError('샘플 호출 금지')):
+    with patch('ticket_guard_admin.user_flow.reader.MongoClient',return_value=client), patch('ticket_guard_admin.monitoring_preview_data.build_monitoring_preview',side_effect=AssertionError('샘플 호출 금지')):
         app=create_admin_dashboard_app(AdminSettings(mongo_uri='mongodb://unused/isolated_flow',base_path='/admin',_env_file=None))
         response=TestClient(app,headers={'X-Admin-User':'isolated-check'}).get('/')
     assert response.status_code==200 and 'monitor-live-data' in response.text
     assert 'data-flow-state=' not in response.text
     output=Path(__file__).resolve().parents[2]/'.venv/published-fixture.html'
     output.write_text(response.text,encoding='utf-8')
-    preview=TestClient(app,headers={'X-Admin-User':'isolated-check'}).get('/preview')
-    output.with_name('preview-fixture.html').write_text(preview.text,encoding='utf-8')
     print('격리된 실제 화면 자료 생성 완료: '+str(output))
 
 

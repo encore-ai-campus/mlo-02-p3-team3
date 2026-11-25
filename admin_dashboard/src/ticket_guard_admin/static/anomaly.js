@@ -53,8 +53,6 @@
     const mode=button.dataset.anMode;document.querySelectorAll('[data-an-panel]').forEach(panel=>panel.hidden=panel.dataset.anPanel!==mode);
     document.querySelectorAll('[data-an-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
     const url=new URL(location.href);if(mode==='post')url.searchParams.set('anomaly_mode','post');else url.searchParams.delete('anomaly_mode');history.replaceState(null,'',url);chart();
-    const form=document.querySelector('.mp-live-toolbar form');
-    if(form){let field=form.querySelector('[name="anomaly_mode"]');if(!field){field=document.createElement('input');field.type='hidden';field.name='anomaly_mode';form.append(field);}field.value=mode;}
   }));
   if(new URL(location.href).searchParams.get('anomaly_mode')==='post')document.querySelector('[data-an-mode="post"]').click();
   if(events.length)events[0].click();if(accounts.length)accounts[0].click();

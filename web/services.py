@@ -450,7 +450,14 @@ class MongoRepository(MongoBookingMixin, MockRepository):
     """Production workflow: every public operation uses authoritative MongoDB state."""
 
 
-for _method in ('current', 'opens_at', 'advance_queue', 'queue_status', 'booking', 'scenario', 'scenario_context'):
+for _method in ('current', 'opens_at', 'booking', 'scenario', 'scenario_context'):
     setattr(MongoRepository, _method, durable(getattr(MockRepository, _method)))
 
 repo = MongoRepository()
+
+# Mongo-specific bounded admission and aggregate rank implementations.
+MongoRepository.advance_queue = durable(MongoBookingMixin.advance_queue)
+MongoRepository.queue_status = durable(MongoBookingMixin.queue_status)
+MongoRepository.sold_for = durable(MongoBookingMixin.sold_for)
+MongoRepository.remaining_for = durable(MongoBookingMixin.remaining_for)
+MongoRepository.history = durable(MongoBookingMixin.history)

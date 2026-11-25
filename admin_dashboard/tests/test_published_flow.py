@@ -132,7 +132,7 @@ def test_actual_page_uses_db_data_never_sample(admin_settings,monkeypatch):
     reader,client=configured_reader(monkeypatch)
     admin_settings.mongo_uri=reader.uri
     def reject(): pytest.fail('실제 화면에서 샘플 데이터 호출')
-    monkeypatch.setattr('ticket_guard_admin.pages.build_monitoring_preview',reject)
+    monkeypatch.setattr('ticket_guard_admin.monitoring_preview_data.build_monitoring_preview',reject)
     # 이 검사는 흐름 게시물만 제공한다. 다른 조회의 실패를 실제 DB 접속 없이 고정한다.
     for name,error in (
         ('read_network', NetworkReadError('network publication unavailable')),
@@ -152,7 +152,8 @@ def test_actual_page_uses_db_data_never_sample(admin_settings,monkeypatch):
     assert response.context['anomaly']['attempts'] is None
     assert '지표 조회 실패' in response.text
     assert 'early publication unavailable' in response.text
-    assert 'href="/admin/db"' in response.text
+    assert 'href="/admin/db"' not in response.text
+    assert 'href="/admin/preview"' not in response.text
 
 
 def test_zero_denominator_remains_unavailable(admin_settings,monkeypatch):
@@ -212,4 +213,6 @@ def test_zero_presence_and_selected_scope_render_without_sample_labels(admin_set
     assert '실행·검증 실패 여부는 조회하지 않습니다' in response.text
     assert 'monitor_user_flow' not in response.text  # 템플릿은 서버에서 포함된다.
     assert '/admin/admin-static/monitor_navigation.js' in response.text
-    assert 'value="[true,&#34;show&#34;,&#34;schedule&#34;]" selected' in response.text
+    assert 'mp-live-toolbar' not in response.text
+    assert response.context['scope'] == scope
+    assert response.context['flow']['current'] == 0

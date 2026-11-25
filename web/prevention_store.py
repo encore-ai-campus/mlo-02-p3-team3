@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from django.conf import settings
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, DuplicateKeyError, OperationFailure
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
@@ -27,22 +27,46 @@ class Store:
         self.client = connection(uri)
         self.db = self.client.get_default_database()
 
-    def _prepare(self):
+    def prepare(self):
         # Collection/index creation is outside the data transaction.
+        names=set(self.db.list_collection_names())
+        for name in ('accounts','account_events','booking_inventory','booking_runtime','booking_opens',
+                     'booking_scenarios','state','adjustments'):
+            if name not in names:
+                from pymongo.errors import CollectionInvalid
+                try:self.db.create_collection(name)
+                except CollectionInvalid:pass  # another initializer completed it
+                except OperationFailure as exc:
+                    if exc.code!=48:raise
         self.db.purchases.create_index('booking', unique=True)
         self.db.purchases.create_index('scope')
         self.db.outbox.create_index('created')
         self.db.browser_guards.create_index('expires_at', expireAfterSeconds=0)
         self.db.transaction_guard.update_one({'_id': 'ledger'}, {'$setOnInsert': {'revision': 0}}, upsert=True)
+        self.db.transaction_guard.update_one({'_id': 'outbox_dispatch'}, {'$setOnInsert': {'lease_until': 0}}, upsert=True)
+        self._prepare_booking()
+        self.db.web_sessions.create_index('expires_at', expireAfterSeconds=0)
 
     def _prepare_booking(self):
         self.db.booking_attempts.create_index('value.id', unique=True)
         self.db.booking_attempts.create_index([('value.stage', 1), ('value.rank', 1)])
         self.db.bookings.create_index([('value.user', 1), ('value.created_at', -1)])
+        self.db.booking_attempts.create_index([('value.stage', 1), ('value.rank', 1), ('_id', 1)])
+        self.db.booking_attempts.create_index([('value.stage', 1), ('value.heartbeat', 1)])
+
+    def check_ready(self):
+        from .state_indexes import check_ready
+        return check_ready(self.db)
+
+    def atomic(self, callback):
+        """Replay-safe DB-only callback, used for account audit/outbox transactions."""
+        with self.client.start_session() as session:
+            return session.with_transaction(lambda s:callback(Session(self.db,s)),
+                read_concern=ReadConcern('snapshot'),write_concern=WriteConcern('majority'))
 
     @contextmanager
-    def transaction(self):
-        self._prepare()
+    def transaction(self, guard='ledger'):
+        guards = sorted(set(guard if isinstance(guard, (list, tuple)) else [guard])) if guard else []
         # The first write serializes transactions across processes, replacing the
         # old database-wide writer serialization. Retry BEFORE yielding only:
         # callers can mutate in-memory inventory and must never be replayed.
@@ -52,11 +76,12 @@ class Store:
                 mongo_session.start_transaction(read_concern=ReadConcern('snapshot'),
                                                 write_concern=WriteConcern('majority'))
                 try:
-                    self.db.transaction_guard.update_one({'_id': 'ledger'}, {'$inc': {'revision': 1}}, session=mongo_session)
+                    for key in guards:
+                        self.db.transaction_guard.update_one({'_id': key}, {'$inc': {'revision': 1}}, upsert=True, session=mongo_session)
                     break
                 except PyMongoError as exc:
                     mongo_session.abort_transaction()
-                    if not exc.has_error_label('TransientTransactionError') or time.monotonic() >= deadline:
+                    if not (exc.has_error_label('TransientTransactionError') or isinstance(exc,DuplicateKeyError)) or time.monotonic() >= deadline:
                         raise
                     time.sleep(.02)
             try:
@@ -83,14 +108,8 @@ class Store:
                     raise
 
     def drain(self, limit=100):
-        from .events import publisher
-        delivered = []
-        for row in self.db.outbox.find().sort([('created', 1), ('_id', 1)]).limit(limit):
-            if publisher.publish(row['payload'])['state'] == 'delivered':
-                delivered.append(row['_id'])
-        if delivered:
-            self.db.outbox.delete_many({'_id': {'$in': delivered}})
-        return len(delivered)
+        from .outbox import Worker
+        return Worker(self).drain(limit)
 
 
 class Session:

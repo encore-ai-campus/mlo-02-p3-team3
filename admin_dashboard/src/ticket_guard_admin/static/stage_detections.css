@@ -2,9 +2,8 @@
 .sd-monitor { margin:24px 0; padding:24px; background:#fff; border:1px solid #dbe3f1; border-radius:18px; color:#132038; }
 .sd-monitor .sd-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .sd-monitor .sd-heading h2 { margin:0; font-size:22px; letter-spacing:-.5px; }
-.sd-monitor .sd-heading p,.sd-monitor .sd-controls,.sd-monitor .sd-footnote { font-size:12px; color:#60718a; line-height:1.7; }
+.sd-monitor .sd-heading p,.sd-monitor .sd-controls,.sd-monitor { font-size:12px; color:#60718a; line-height:1.7; }
 .sd-monitor .sd-badge { padding:6px 11px; border-radius:18px; background:#edf3ff; color:#2456bd; font-size:12px; white-space:nowrap; }
-.sd-monitor .sd-status { margin:12px 0; font-size:13px; color:#526782; }
 .sd-monitor .sd-controls { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
 .sd-monitor .sd-controls select { max-width:100%; padding:7px; border:1px solid #dbe3f1; border-radius:8px; background:#fff; }
 .sd-monitor .sd-flow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px; align-items:start; }
@@ -26,7 +25,6 @@
 .sd-monitor .sd-count { display:flex; flex-direction:column; align-items:flex-end; gap:3px; font-size:27px; font-weight:700; line-height:1.2; color:#174fc4; font-variant-numeric:tabular-nums; }
 .sd-monitor .sd-count small { font-size:11px; font-weight:400; color:#60718a; }
 .sd-monitor .sd-state { grid-column:1/-1; color:#60718a; font-size:11px; }
-.sd-monitor .sd-footnote { margin:18px 0 0; }
 .sd-monitor .sd-detail { margin-top:22px; padding-top:20px; border-top:1px solid #dbe3f1; }
 .sd-monitor .sd-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .sd-monitor .sd-detail-heading h3 { margin:0; font-size:16px; }
@@ -37,7 +35,6 @@
 .sd-monitor .sd-evidence-scroll table { width:100%; min-width:650px; border-collapse:collapse; font-size:12px; }
 .sd-monitor .sd-evidence-scroll th,.sd-monitor .sd-evidence-scroll td { padding:10px; text-align:left; border-bottom:1px solid #e7edf6; overflow-wrap:anywhere; }
 .sd-monitor .sd-evidence-scroll th { color:#526782; background:#f7f9fd; font-weight:500; }
-.sd-monitor [data-sd-note] { font-size:12px; color:#60718a; line-height:1.7; }
 @media(max-width:1000px) { .sd-monitor { padding:18px; }.sd-monitor .sd-flow { gap:14px; }.sd-monitor .sd-connector { width:14px; }.sd-monitor .sd-node { padding:12px; }.sd-monitor .sd-node h3 { font-size:15px; }.sd-monitor .sd-metric { padding:11px; gap:6px; }.sd-monitor .sd-name { font-size:12px; }.sd-monitor .sd-count { font-size:24px; } }
 @media(max-width:700px) { .sd-monitor { padding:16px; }.sd-monitor .sd-heading { align-items:flex-start; flex-direction:column; }.sd-monitor .sd-heading h2 { font-size:21px; }.sd-monitor .sd-flow { grid-template-columns:1fr; gap:22px; }.sd-monitor .sd-node { min-height:72px; }.sd-monitor .sd-node h3 { font-size:16px; }.sd-monitor .sd-connector { display:none; }.sd-monitor .sd-items { grid-template-columns:repeat(2,minmax(0,1fr)); }.sd-monitor .sd-name { font-size:13px; }.sd-monitor .sd-metric { min-height:90px; }.sd-monitor .sd-count { font-size:23px; }.sd-monitor .sd-count small { max-width:70px; text-align:right; }.sd-monitor .sd-controls form { width:100%; }.sd-monitor .sd-controls select { width:100%; }.sd-monitor .sd-detail-heading { align-items:flex-start; flex-direction:column; } }
 @media(prefers-reduced-motion:reduce) { .sd-monitor * { scroll-behavior:auto; } }

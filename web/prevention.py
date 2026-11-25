@@ -152,8 +152,7 @@ def transaction(method):
     @wraps(method)
     def wrapped(self, *args, **kwargs):
         if getattr(self, 'persistent', False):
-            with self.lock:
-                return method(self, *args, **kwargs)
+            return self.execute(method, *args, **kwargs)
         if active.get() is not None:
             return method(self, *args, **kwargs)
         store = Store()
@@ -189,11 +188,6 @@ def transaction(method):
             logger.warning('policy_storage_failed errorClass=%s code=%s', type(storage_error).__name__, getattr(storage_error, 'code', None))
             from .services import FlowError
             raise FlowError('예매 보호 저장소를 확인할 수 없어요. 잠시 후 다시 시도해 주세요.', 'POLICY_UNAVAILABLE', 503) from None
-        finally:
-            try:
-                store.drain()
-            except Exception:
-                logger.warning('prevention_outbox_pending')
     return wrapped
 
 
@@ -201,7 +195,7 @@ def login_attempt(username, authenticate):
     """Only an actual authentication failure increments the durable account count."""
     store = Store()
     try:
-        with store.transaction() as session:
+        with store.transaction(guard='login:' + username) as session:
             simulated = simulated_account(username)
             policy = Policy(session, scope(username, simulation=simulated))
             policy.check()
@@ -216,11 +210,6 @@ def login_attempt(username, authenticate):
         logger.warning('policy_storage_failed errorClass=%s code=%s', type(storage_error).__name__, getattr(storage_error, 'code', None))
         from .services import FlowError
         raise FlowError('로그인 보호 저장소를 확인할 수 없어요.', 'POLICY_UNAVAILABLE', 503) from None
-    finally:
-        try:
-            store.drain()
-        except Exception:
-            logger.warning('prevention_outbox_pending')
 
 
 def booking_policy(repo, user, show_id, attempt=None):

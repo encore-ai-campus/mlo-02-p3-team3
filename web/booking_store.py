@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import time
+import math
 from collections.abc import MutableMapping
 from contextlib import contextmanager
 from threading import RLock, local
@@ -66,8 +67,12 @@ class Documents(MutableMapping):
 class RepositoryLock:
     def __init__(self, repository):
         self.repository = repository
-        self.mutex = RLock()
         self.contexts = local()
+
+    @property
+    def mutex(self):
+        if not hasattr(self.contexts, 'mutex'): self.contexts.mutex = RLock()
+        return self.contexts.mutex
 
     def __enter__(self):
         context = self.repository.unit_of_work()
@@ -86,6 +91,7 @@ class MongoBookingMixin:
 
     def __init__(self):
         # Connecting never resets server state. Imports also perform no DB I/O.
+        self._local = local()
         self.lock = RepositoryLock(self)
         self.depth = 0
 
@@ -99,8 +105,7 @@ class MongoBookingMixin:
                 return
             store = Store()
             try:
-                store._prepare_booking()
-                with store.transaction() as session:
+                with store.transaction(guard=getattr(self._local, 'guard', 'ledger')) as session:
                     from .booking_schedule import transaction_time
                     token = prevention.active.set(session)
                     clock_token = transaction_time.set(time.time())
@@ -120,12 +125,39 @@ class MongoBookingMixin:
                         prevention.active.reset(token)
                         transaction_time.reset(clock_token)
             except PyMongoError as exc:
+                if exc.has_error_label('TransientTransactionError'): raise
                 from .services import FlowError
                 logger.warning('booking_storage_failed errorClass=%s code=%s', type(exc).__name__, getattr(exc, 'code', None))
                 raise FlowError('예매 저장소를 확인할 수 없어요.', 'POLICY_UNAVAILABLE', 503) from None
+
+    def execute(self, method, *args, **kwargs):
+        if self.depth: return method(self, *args, **kwargs)
+        name = method.__name__
+        user = args[0] if args else kwargs.get('user')
+        guard = 'ledger'
+        if name == 'queue_status': guard = None
+        elif name in ('sold_for','remaining_for'):
+            guard='inventory:'+user
+        elif name in ('current', 'opens_at', 'owned', 'challenge', 'verify', 'cancel', 'confirm', 'booking', 'history', 'scenario_context') and isinstance(user, str):
+            guard = 'account:' + user
+            if name == 'confirm':
+                try:row = Store().db.booking_attempts.find_one({'_id':user}, {'value.show_id':1})
+                except PyMongoError:
+                    from .services import FlowError
+                    raise FlowError('예매 저장소를 확인할 수 없어요.', 'POLICY_UNAVAILABLE', 503) from None
+                if row: guard = [guard, 'inventory:' + row['value']['show_id']]
+        deadline = time.monotonic() + 20
+        while True:
+            self._local.guard = guard
+            try:
+                with self.lock: return method(self, *args, **kwargs)
+            except PyMongoError as exc:
+                if not exc.has_error_label('TransientTransactionError') or time.monotonic() >= deadline:
+                    from .services import FlowError
+                    raise FlowError('예매 저장소를 확인할 수 없어요.', 'POLICY_UNAVAILABLE', 503) from None
+                time.sleep(.01)
             finally:
-                try: store.drain()
-                except Exception: logger.warning('booking_outbox_pending')
+                self._local.guard = 'ledger'
 
     def _load(self, session):
         self.attempts = Documents(session.db.booking_attempts, session.session)
@@ -182,12 +214,63 @@ class MongoBookingMixin:
     def set_remaining(self, show_id, quantity):
         self.inventory(show_id)['remaining'] = quantity
 
+    def _remember(self, rows):
+        for row in rows:
+            key=row['_id']
+            if key not in self.attempts.cache:
+                self.attempts.cache[key]=row['value']
+                self.attempts.original[key]=copy.deepcopy(row['value'])
+
     def active_users(self):
-        collection = self.attempts.collection
-        users = {row['_id'] for row in collection.find({'value.stage': {'$in': ['queue', 'captcha', 'select']}},
-                                                     {'_id': 1}, session=self.attempts.session)}
-        users |= {user for user, a in self.attempts.cache.items() if a['stage'] in ('queue', 'captcha', 'select')}
-        return users - self.attempts.deleted
+        rows=list(self.attempts.collection.find({'value.stage': {'$in': ['queue','captcha','select']}}, session=self.attempts.session))
+        self._remember(rows)
+        users={r['_id'] for r in rows}
+        users|={user for user,a in self.attempts.cache.items() if a['stage'] in ('queue','captcha','select')}
+        return users-self.attempts.deleted
+
+    def queue_status(self, a):
+        from django.conf import settings
+        if a['stage'] != 'queue': return 0,0
+        now=time.time()
+        excluded=list(self.attempts.cache.keys() | self.attempts.deleted)
+        query={'value.stage':'queue','value.rank':{'$lte':a['rank']},
+               '$or':[{'value.policy_restricted_until':{'$exists':False}}, {'value.policy_restricted_until':{'$lte':now}}]}
+        if excluded:query['_id']={'$nin':excluded}
+        rank=self.attempts.collection.count_documents(query, session=self.attempts.session)
+        rank+=sum(row['stage']=='queue' and row.get('policy_restricted_until',0)<=now and row['rank']<=a['rank']
+                  for key,row in self.attempts.cache.items() if key not in self.attempts.deleted)
+        available=settings.BOOKING_ADMISSION_BATCH_SIZE-self.admission_count
+        if rank<=available:return rank,0
+        interval=settings.BOOKING_ADMISSION_INTERVAL_SECONDS
+        wait=max(0,(self.admission_window or now)+interval-now)
+        wait+=((rank-available-1)//settings.BOOKING_ADMISSION_BATCH_SIZE)*interval
+        return rank,math.ceil(wait)
+
+    def advance_queue(self):
+        from django.conf import settings
+        from .events import emit
+        now=time.time();interval=settings.BOOKING_ADMISSION_INTERVAL_SECONDS
+        if self.admission_window is None or now>=self.admission_window+interval:
+            self.admission_window,self.admission_count=now,0
+        # Expiry retains per-attempt evidence, but only expired rows are loaded.
+        expired=list(self.attempts.collection.find({'value.stage':{'$in':['queue','captcha','select']},
+            'value.heartbeat':{'$lt':now-settings.ATTEMPT_TIMEOUT_SECONDS}},session=self.attempts.session))
+        self._remember(expired)
+        for row in expired:self.current(row['_id'],False)
+        for user in list(self.attempts.cache):self.current(user,False)
+        available=max(0,settings.BOOKING_ADMISSION_BATCH_SIZE-self.admission_count)
+        if not available:return
+        query={'value.stage':'queue','$or':[{'value.policy_restricted_until':{'$exists':False}},
+               {'value.policy_restricted_until':{'$lte':now}}]}
+        excluded=list(self.attempts.cache.keys() | self.attempts.deleted)
+        if excluded:query['_id']={'$nin':excluded}
+        rows=list(self.attempts.collection.find(query,session=self.attempts.session).sort([('value.rank',1),('_id',1)]).limit(available))
+        self._remember(rows)
+        waiting=[(u,a) for u,a in self.attempts.cache.items() if u not in self.attempts.deleted and a['stage']=='queue' and a.get('policy_restricted_until',0)<=now]
+        waiting.sort(key=lambda item:(item[1]['rank'],item[0]))
+        for user,a in waiting[:available]:
+            a['stage']='captcha';self.admission_count+=1
+            emit(user,'queue_admitted',a,details={'elapsedMs':round((now-a['entered'])*1000,2)})
 
     def active_attempts(self):
         return (self.attempts[user] for user in self.active_users())
@@ -214,6 +297,11 @@ def durable(method):
     from functools import wraps
     @wraps(method)
     def call(self, *args, **kwargs):
-        with self.lock:
-            return method(self, *args, **kwargs)
+        return self.execute(method, *args, **kwargs)
     return call
+
+# Each request/thread owns its unit-of-work view; the process-wide repository is stateless.
+def _local_property(name, default=None):
+    return property(lambda self: getattr(self._local,name,default), lambda self,value:setattr(self._local,name,value))
+for _name in ('depth','attempts','bookings','opens','scenarios','inventories','queue_counter','admission_window','admission_count','queue_before'):
+    setattr(MongoBookingMixin,_name,_local_property(_name,0 if _name=='depth' else None))

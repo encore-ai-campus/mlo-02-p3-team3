@@ -1,7 +1,6 @@
 <!-- 표시 대상 네 단계만 연결한다. 기존 페이지 요소·수집·정책은 유지한다. -->
 <section class="sd-monitor" data-stage-detection-root aria-labelledby="early-title">
   <div class="sd-heading"><div><h2 id="early-title">단계별 탐지 현황</h2><p>최근 1시간 · 하위 항목 선택 시 대상·근거 표시</p></div><span class="sd-badge">서버 사전 조치 · 확정 요청 과다는 관찰 전용</span></div>
-  <p class="sd-status" role="status">{{ early.notice }}</p>
   {% if early.previous_as_of %}<p>마지막 공개 기준 {{ early.previous_as_of }} KST · 이전 수치 공개 보류</p>{% endif %}
   <div class="sd-controls"><span>{{ early.period }} · 기준 {{ early.as_of }}</span>
   {% if not is_preview %}<form method="get" action="{{ base_path }}/#anomaly">
@@ -22,13 +21,10 @@
     </section>
     {% endfor %}
   </div>
-  <p class="sd-footnote">연결선은 표시 대상 단계의 진행 순서 · 항목별 단위와 중복 대상이 달라 합산하지 않음 · —는 조회·집계·근거 확인 불가 · 새 규칙은 서버 5분 제한, 확정 요청 과다는 관찰 전용</p>
   <section id="sd-common-detail" class="sd-detail" aria-labelledby="sd-detail-title">
     <div class="sd-detail-heading"><h3 id="sd-detail-title" data-sd-title>탐지 항목 선택</h3><span data-sd-detail-state>—</span></div>
-    <div class="sd-detail-summary" aria-live="polite"><p data-sd-description>위 하위 항목을 선택하면 대상과 근거를 확인할 수 있습니다.</p><p data-sd-count>탐지 수 — · 실제 조치 수 —</p><p data-sd-period>{{ early.period }}</p></div>
+    <div class="sd-detail-summary" aria-live="polite"><p data-sd-count>탐지 수 — · 실제 조치 수 —</p><p data-sd-period>{{ early.period }}</p></div>
     <div class="sd-evidence-scroll"><table><thead><tr><th>탐지 시각 KST</th><th>계정</th><th>예매 시도</th><th>사유</th><th>근거 이벤트</th><th>실제 조치 여부</th></tr></thead><tbody data-sd-rows><tr><td colspan="6">탐지 항목 선택</td></tr></tbody></table></div>
-    <p data-sd-note></p>
   </section>
-  <noscript><p class="sd-status">탐지 건수는 위에 표시됩니다. 항목 선택과 상세 표시는 JavaScript가 필요합니다.</p></noscript>
   <script type="application/json" data-sd-data>{{ detection_stages|tojson }}</script>
 </section>

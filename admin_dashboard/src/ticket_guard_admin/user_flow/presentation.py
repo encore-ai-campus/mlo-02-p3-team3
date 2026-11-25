@@ -5,7 +5,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from ticket_guard_admin.monitoring_preview_data import FLOW_STAGES
+from .stages import FLOW_STAGES
 
 from .contracts import moment
 

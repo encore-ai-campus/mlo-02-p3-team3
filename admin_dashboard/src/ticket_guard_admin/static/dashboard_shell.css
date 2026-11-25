@@ -56,10 +56,6 @@ body { background: #f4f7fc; color: var(--dashboard-ink); }
 .mp-main .mp-card h2, .mp-main .an-box h2 { color: #172a45; }
 .mp-main .mp-card-heading { margin-bottom: 18px; }
 .mp-main .mp-card-heading p { line-height: 1.6; }
-.mp-main .mp-live-toolbar { margin: 0 0 24px; padding: 14px 18px; border: 1px solid var(--dashboard-border); border-radius: 14px; background: #fff; }
-.mp-main .mp-live-toolbar select { min-height: 40px; font-size: 13px; }
-.mp-main .mp-live-toolbar .mp-text-button { min-height: 40px; padding: 8px 16px; border-radius: 9px; font-size: 13px; }
-.mp-main .mp-live-toolbar label { font-size: 13px; color: #52647d; }
 .mp-main .mp-notice, .mp-main .mp-live-meta { border-radius: 12px; font-size: 12px; line-height: 1.6; }
 .mp-main table thead { background: #f2f5fb; color: #52647e; }
 .mp-main table th, .mp-main table td { border-bottom-color: #e8edf5; }
@@ -88,7 +84,6 @@ body { background: #f4f7fc; color: var(--dashboard-ink); }
   .mp-main .an-symbol { width: 36px; height: 40px; border-radius: 12px; }
   .mp-main .an-symbol svg { width: 23px; height: 23px; }
   .mp-main .an-cards, .mp-main .mp-network-kpis { gap: 12px; }
-  .mp-main .mp-live-toolbar { padding: 12px; }
 }
 @media (max-width: 760px) {
   .top-bar, .monitor-preview .top-bar { gap: 14px; padding: 0 16px; }

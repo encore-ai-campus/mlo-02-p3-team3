@@ -33,7 +33,6 @@ const root=path.resolve(__dirname,'../..');
     assert.equal(await page.locator('[data-preview-view="anomaly"] #mp-subjects').count(),0);
     await page.goBack(); assert(page.url().endsWith('#network'));
     await page.route(base+'/admin/admin-static/*',route=>route.fulfill({path:path.join(root,'admin_dashboard/src/ticket_guard_admin/static',new URL(route.request().url()).pathname.split('/').pop())}));
-    await page.route(base+'/admin/preview',route=>route.fulfill({path:path.join(root,'.venv/preview-fixture.html'),contentType:'text/html; charset=utf-8'}));
     await page.route(base+'/admin/',route=>route.fulfill({path:path.join(root,'.venv/published-fixture.html'),contentType:'text/html; charset=utf-8'}));
     await page.goto('about:blank');
     await page.goto(base+'/admin/#flow'); await page.locator('.mp-stage').first().waitFor();
@@ -56,12 +55,11 @@ const root=path.resolve(__dirname,'../..');
     await page.screenshot({path:path.join(output,'isolated-published-mobile.png'),fullPage:true});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await page.unroute(base+'/admin/');
-    await page.goto(base+'/admin/preview#flow'); await page.locator('.mp-stage').first().waitFor();
-    assert.equal(await page.locator('.mp-stage').count(),6);
-    const legacy=await context.request.get(base+'/admin/db'); assert.equal(legacy.status(),200);
-    assert((await legacy.text()).includes('screen') || (await legacy.text()).includes('DB 조회 실패'));
+    for(const retired of ['/admin/db','/admin/preview']) {
+      assert.equal((await context.request.get(base+retired)).status(),404);
+    }
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({actualState,isolatedStages:7,desktop:1600,mobile:390,errors:errors.length,previewPreserved:true,
+    console.log(JSON.stringify({actualState,isolatedStages:7,desktop:1600,mobile:390,errors:errors.length,retiredPagesRemoved:true,
       fixtureNote:'정상 그래프는 메모리 공개 문서의 격리 렌더링이며 운영 DB에 적재하지 않음',screenshots:output}));
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error.message);process.exitCode=1;});

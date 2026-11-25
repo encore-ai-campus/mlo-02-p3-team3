@@ -2,8 +2,10 @@
 import hashlib
 import json
 import os
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
+from contextvars import ContextVar
 from user_flow.events import chunk_part, decode, project
+_counts=ContextVar('pipeline_transaction_counts')
 
 
 class State:
@@ -33,8 +35,16 @@ class State:
         from pymongo.write_concern import WriteConcern
         with self.client.start_session() as session:
             def operation(s):
-                self.db.guards.update_one({'_id': self.namespace}, {'$inc': {'revision': 1}}, session=s)
-                return callback(s)
+                guard=self.db.guards.find_one_and_update({'_id': self.namespace}, {'$inc': {'revision': 1}}, session=s,return_document=ReturnDocument.AFTER)
+                if 'counts' not in guard:
+                    # Lazy migration under the same namespace serialization guard.
+                    guard['counts']={
+                        name:self.db[name].count_documents(self._filter(),session=s)
+                        for name in ('events','chunks')}
+                    self.db.guards.update_one({'_id':self.namespace},{'$set':{'counts':guard['counts']}},session=s)
+                token=_counts.set(dict(guard['counts']))
+                try:return callback(s)
+                finally:_counts.reset(token)
             return session.with_transaction(operation, read_concern=ReadConcern('snapshot'), write_concern=WriteConcern('majority'))
 
     def close(self):
@@ -60,12 +70,13 @@ class State:
                 prior = list(self.db.chunks.find(self._filter(record=record), session=s))
                 if any(row['meta'] != meta or (row['index'] == d['index'] and bytes(row['data']) != data) for row in prior):
                     raise ValueError('Chunk conflict')
-                self.db.chunks.update_one({'_id': self._key(record + ':' + str(d['index']))},
+                inserted=self.db.chunks.update_one({'_id': self._key(record + ':' + str(d['index']))},
                     {'$setOnInsert': self._filter(record=record, index=d['index'], meta=meta, data=data, seen=now)}, upsert=True, session=s)
+                if inserted.upserted_id is not None:self._change_count('chunks',1,s)
                 if ingestion is not None:
                     self.db.chunk_ingestion.update_one({'_id': self._key(record)},
                         {'$max': {'latest': ingestion}, '$setOnInsert': self._filter()}, upsert=True, session=s)
-                if self.db.chunks.count_documents(self._filter(), session=s) > self.max_chunks:
+                if self._count('chunks',s) > self.max_chunks:
                     raise ValueError('Chunk capacity exceeded')
                 parts = list(self.db.chunks.find(self._filter(record=record), session=s).sort('index', 1))
                 if len(parts) < d['count']:
@@ -91,18 +102,35 @@ class State:
                 previous = self.db.events.find_one({'_id': self._key(p['id'])}, session=s)
                 if previous and previous['payload']['fingerprint'] != p['fingerprint']:
                     raise ValueError('Conflicting event identity')
-                self.db.events.update_one({'_id': self._key(p['id'])}, {'$setOnInsert': self._filter(
+                inserted=self.db.events.update_one({'_id': self._key(p['id'])}, {'$setOnInsert': self._filter(
                     event_id=p['id'], time=p['time'], payload=p, batch=batch)}, upsert=True, session=s)
-                if self.db.events.count_documents(self._filter(), session=s) > self.max_events:
+                if inserted.upserted_id is not None:self._change_count('events',1,s)
+                if self._count('events',s) > self.max_events:
                     raise ValueError('Event capacity exceeded')
             else:
                 p = None
             if completed_chunk:
                 record, meta = completed_chunk
                 self.db.assembled.insert_one(dict(_id=self._key(record), **self._filter(meta=meta, seen=now)), session=s)
-                self.db.chunks.delete_many(self._filter(record=record), session=s)
+                removed=self.db.chunks.delete_many(self._filter(record=record), session=s)
+                self._change_count('chunks',-removed.deleted_count,s)
                 self.db.chunk_ingestion.delete_one({'_id': self._key(record)}, session=s)
             return p
+        return self._transaction(operation)
+
+    def _count(self,name,session):
+        return _counts.get()[name]
+
+    def _change_count(self,name,delta,session):
+        self.db.guards.update_one({'_id':self.namespace},{'$inc':{'counts.'+name:delta}},session=session)
+        _counts.get()[name]+=delta
+
+    def reconcile_counts(self):
+        """Explicit repair for existing namespaces, serialized with feed/prune."""
+        def operation(s):
+            counts={name:self.db[name].count_documents(self._filter(),session=s) for name in ('events','chunks')}
+            self.db.guards.update_one({'_id':self.namespace},{'$set':{'counts':counts}},session=s)
+            return counts
         return self._transaction(operation)
 
     def finish(self, batch, ranges):
@@ -151,7 +179,8 @@ class State:
             boundary = now - retention - grace
             actors = self.db.events.distinct('payload.actor', self._filter(time={'$gte': now-presence-grace}), session=s)
             actors = [a for a in actors if a is not None]
-            self.db.events.delete_many(self._filter(time={'$lt': boundary}, **{'payload.actor': {'$nin': actors}}), session=s)
+            removed=self.db.events.delete_many(self._filter(time={'$lt': boundary}, **{'payload.actor': {'$nin': actors}}), session=s)
+            self._change_count('events',-removed.deleted_count,s)
             latest = self.db.batches.find_one(self._filter(), sort=[('batch', -1)], session=s)
             if latest:
                 self.db.batches.delete_many(self._filter(complete=True, batch={'$lt': latest['batch']-10000}), session=s)

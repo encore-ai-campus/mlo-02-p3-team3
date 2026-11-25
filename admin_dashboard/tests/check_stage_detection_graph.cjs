@@ -23,8 +23,8 @@ const data=stageKeys.map((stage,index)=>({key:stage,metrics:[{
   cases:index===1?[{time:'17:00:00',user:malicious,attempt:'attempt',reason:'reason',
                      evidence:['evidence'],action_status:'적용'}]:[]
 }]}));
-const selectors=['[data-sd-title]','[data-sd-detail-state]','[data-sd-description]',
-  '[data-sd-count]','[data-sd-period]','[data-sd-rows]','[data-sd-note]'];
+const selectors=['[data-sd-title]','[data-sd-detail-state]',
+  '[data-sd-count]','[data-sd-period]','[data-sd-rows]'];
 const nodes=Object.fromEntries(selectors.map(key=>[key,element()]));
 nodes['[data-sd-data]']={textContent:JSON.stringify(data)};
 const buttons=data.map(stage=>Object.assign(element('button'),{dataset:{sdMetric:stage.metrics[0].key}}));

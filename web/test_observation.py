@@ -25,6 +25,8 @@ class ObservationTests(SimpleTestCase):
         return self.client.post('/api/action/', json.dumps(data), content_type='application/json')
 
     def events(self):
+        from .prevention_store import Store
+        Store().drain()
         return [entry['event'] for entry in publisher.receipts.values()]
 
     def test_received_request_correlates_rejection_without_copying_body(self):

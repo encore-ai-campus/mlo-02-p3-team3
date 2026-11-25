@@ -26,6 +26,8 @@ class StateIsolation:
         os.environ['PIPELINE_STATE_MONGO_URI'] = test_uri(self.pipeline_database)
         self.state_settings = override_settings(WEB_STATE_MONGO_URI=self.state_uri)
         self.state_settings.enable()
+        from .prevention_store import Store
+        Store().prepare()
         super().startTest(test)
 
     def stopTest(self, test):

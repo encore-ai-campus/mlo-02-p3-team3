@@ -1,4 +1,4 @@
-.monitoring-live:has(.mp-network:not([hidden])) :is(.mp-live-toolbar,.mp-live-meta,.sample-status,.mp-flow-publication-note) { display:none; }
+.monitoring-live:has(.mp-network:not([hidden])) :is(.mp-live-meta,.sample-status) { display:none; }
 .mp-network-meta { display:flex; flex-wrap:wrap; gap:8px 20px; margin:0; color:#526782; font-size:12px; }
 .mp-network-meta div { display:flex; gap:7px; }
 .mp-network-meta dd { margin:0; font-weight:700; }
