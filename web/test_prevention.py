@@ -59,6 +59,7 @@ class PreventionTests(SimpleTestCase):
         self.assertEqual(response.status_code, 429)
         blocked = Client().post('/api/action/', json.dumps(dict(action='login', username='ticketguard', password='ticketguard-demo')), content_type='application/json')
         self.assertEqual(blocked.status_code, 429)
+        Store().drain()
         events = list(publisher.records)
         self.assertEqual(sum(e['eventType']=='prevention_detected' for e in events), 1)
         self.assertEqual(sum(e['eventType']=='prevention_applied' for e in events), 1)
@@ -137,6 +138,7 @@ class PreventionTests(SimpleTestCase):
             for _ in range(15):
                 a=repo.start('recovery','open-air','p')
                 a['heartbeat'] -= 1000
+        Store().drain()
         events=list(publisher.records)
         excluded=[e for e in events if e['eventType']=='prevention_evaluated' and e['details'].get('entryCause')=='connection_expired']
         self.assertTrue(excluded)
@@ -152,6 +154,7 @@ class PreventionTests(SimpleTestCase):
             for sequence, seats in enumerate([[],['E1','E1'],['Z99']]*3+[[]], 20):
                 with self.assertRaises(FlowError):
                     repo.confirm('u','p',a['id'],sequence,seats,1)
+        Store().drain()
         policy_events=[e for e in publisher.records if e['eventType']=='prevention_detected']
         self.assertEqual(len(policy_events),1)
         self.assertEqual(policy_events[0]['details']['ruleId'],'selection_repeat')
@@ -241,9 +244,9 @@ class PreventionTests(SimpleTestCase):
         self.operation(100,lambda p:p.detect('not_open_repeat',10))
         original=self.events()
         with patch.object(publisher,'publish',side_effect=RuntimeError('offline')):
-            with self.assertRaises(RuntimeError):
-                Store().drain()
+            self.assertEqual(Store().drain(),0)
         self.assertEqual(self.events(),original)
+        Store().db.outbox.update_many({}, {'$set': {'retry_after':0}})
         self.assertEqual(Store().drain(),2)
         self.assertEqual(self.events(),[])
         self.assertEqual({e['eventId'] for e in publisher.records},{e['eventId'] for e in original})
@@ -296,6 +299,8 @@ class PreventionTests(SimpleTestCase):
             a=self.ready(quota,user='quota-integration')
             with self.assertRaises(FlowError):
                 quota.confirm('quota-integration','p',a['id'],1,[],5)
+        while Store().drain():
+            pass
         values=[item for item in publisher.records if item['eventType'].startswith('prevention_')]
         self.assertEqual(len([item for item in values if item['eventType']=='prevention_detected']),5)
         database=mongomock.MongoClient('mongodb://localhost/target',tz_aware=True)

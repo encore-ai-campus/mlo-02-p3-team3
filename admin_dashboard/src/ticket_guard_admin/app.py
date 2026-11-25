@@ -5,7 +5,7 @@
 from fastapi import Depends, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
-from ticket_guard_admin.pages import ADMIN_DASHBOARD_DIR, render_live_dashboard
+from ticket_guard_admin.pages import ADMIN_DASHBOARD_DIR
 from ticket_guard_admin.dependencies import require_admin
 from ticket_guard_admin.settings import AdminSettings
 from ticket_guard_admin.user_flow.pages import render_published_dashboard
@@ -24,15 +24,5 @@ def create_admin_dashboard_app(settings: AdminSettings | None = None) -> FastAPI
     @app.get("/metrics", dependencies=[Depends(require_admin)])
     def metrics(request: Request):
         return render_published_dashboard(request, app.state.admin_settings.mongo_uri, fragment=True)
-
-    @app.get("/db", dependencies=[Depends(require_admin)])
-    def legacy_dashboard(request: Request):
-        return render_live_dashboard(request, app.state.admin_settings.mongo_uri)
-
-    @app.get("/preview", dependencies=[Depends(require_admin)])
-    def preview(request: Request, run_id: str | None = None):
-        from ticket_guard_admin.pages import render_db_preview
-
-        return render_db_preview(request, run_id)
 
     return app

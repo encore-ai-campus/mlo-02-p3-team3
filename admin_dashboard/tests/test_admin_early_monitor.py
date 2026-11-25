@@ -53,11 +53,7 @@ def test_missing_scope_or_inconsistent_counts_are_not_normal(monkeypatch):
 def test_actual_preview_auth_and_no_sample_fallback(admin_settings,monkeypatch):
     client=TestClient(create_admin_dashboard_app(admin_settings))
     assert client.get('/').status_code==403
-    assert client.get('/preview').status_code==403
     headers={'X-Admin-User':'manager'}
-    preview=client.get('/preview',headers=headers)
-    assert preview.status_code==200 and '단계별 탐지 현황' in preview.text
-    assert '시안용 샘플 데이터' in preview.text
     def fail(*a,**k): raise ObservationReadError('observation-offline')
     monkeypatch.setattr('ticket_guard_admin.user_flow.pages.read_early',fail)
     actual=client.get('/',headers=headers)

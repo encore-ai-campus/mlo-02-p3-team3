@@ -33,6 +33,15 @@ def health(request):
     return JsonResponse({'status':'ok','mode':'phase-2-kafka' if settings.EVENT_PUBLISHER=='kafka' else 'mock'})
 
 
+def ready(request):
+    from .prevention_store import Store
+    try:
+        missing=Store().check_ready()
+    except (PyMongoError, ValueError):
+        return JsonResponse({'status':'unavailable'},status=503)
+    return JsonResponse({'status':'unprepared' if missing else 'ready'},status=503 if missing else 200)
+
+
 def stage_url(a):
     if a['stage'] == 'complete':
         return '/complete/' + a['booking_id'] + '/'

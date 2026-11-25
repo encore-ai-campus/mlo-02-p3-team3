@@ -35,20 +35,10 @@ def _record(session, event):
     session.enqueue(event)
 
 
-def _deliver(store):
-    try:
-        store.drain()
-    except Exception:
-        # DB에 저장한 이벤트는 기존 outbox 재전송 명령으로 다시 전송한다.
-        logger.warning('account_outbox_pending')
-
-
 def record_signup_event(kind, user=None, *, error_code=None):
     event = build_event(user, kind, result='failure' if error_code else 'success', errorCode=error_code)
     store = Store()
-    with store.transaction() as session:
-        _record(session, event)
-    _deliver(store)
+    store.atomic(lambda session:_record(session,event))
 
 
 def create_account(username, password):
@@ -64,12 +54,12 @@ def create_account(username, password):
     event = build_event(username, 'signup_success')
     store = Store()
     try:
-        with store.transaction() as session:
+        def save(session):
             session.db.accounts.insert_one(account, session=session.session)
             _record(session, event)
+        store.atomic(save)
     except DuplicateKeyError:
         raise AccountError('이미 사용 중인 아이디예요. 다른 아이디를 입력해 주세요.', 'USERNAME_TAKEN', 409) from None
-    _deliver(store)
     return username
 
 

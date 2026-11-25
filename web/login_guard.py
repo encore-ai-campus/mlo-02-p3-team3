@@ -27,7 +27,7 @@ class LoginGuard:
             return {row['_id']: row for row in session.db.browser_guards.find(session=session.session)}
 
     def is_locked(self, client):
-        with Store().transaction() as session:
+        with Store().transaction(guard='browser:'+self.identity(client)) as session:
             key = self.identity(client)
             row = session.db.browser_guards.find_one({'_id': key}, session=session.session)
             if not row or not row['locked_until']:
@@ -38,7 +38,7 @@ class LoginGuard:
             return False
 
     def fail(self, client):
-        with Store().transaction() as session:
+        with Store().transaction(guard='browser:'+self.identity(client)) as session:
             now = time.time()
             key = self.identity(client)
             row = session.db.browser_guards.find_one({'_id': key}, session=session.session)
@@ -55,7 +55,7 @@ class LoginGuard:
             return row['failures'], bool(row['locked_until'] > now)
 
     def succeed(self, client):
-        with Store().transaction() as session:
+        with Store().transaction(guard='browser:'+self.identity(client)) as session:
             session.db.browser_guards.delete_one({'_id': self.identity(client)}, session=session.session)
 
 

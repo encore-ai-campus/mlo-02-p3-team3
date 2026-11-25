@@ -13,6 +13,7 @@ handler500 = 'web.error_views.server_error'
 
 urlpatterns = [
     path('health/', views.health),
+    path('ready/', views.ready),
     path('dev/errors/<int:status>/', error_views.preview),  # DEBUG에서만 에러 페이지 미리보기
     path('api/action/', views.action),
     path('api/events/', views.events),

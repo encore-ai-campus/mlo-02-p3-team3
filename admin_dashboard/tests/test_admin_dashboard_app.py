@@ -32,19 +32,6 @@ create_admin_dashboard_app(AdminSettings(mongo_uri="", _env_file=None))
     assert response.headers["cache-control"] == "no-store"
 
 
-def test_live_page_renders_actual_database_and_empty_data(monkeypatch):
-    result = build_dashboard([]) | {"database": "ticketguard", "counts": {"clean_events": 0, "quarantine_events": 0, "event_metrics": 0},
-                                    "matched": 0, "is_truncated": False, "limit": 5000, "reasons": [], "options": [], "loaded_at": "now"}
-    monkeypatch.setattr("ticket_guard_admin.pages.AdminMongoReader.read_dashboard", lambda *args, **kwargs: result)
-    app = create_admin_dashboard_app(AdminSettings(mongo_uri="mongodb://unused/ticketguard", _env_file=None))
-    response = TestClient(app).get("/db", headers={"X-Admin-User": "manager"})
-    assert response.status_code == 200
-    assert "ticketguard.clean_events" in response.text
-    assert "집계 불가" in response.text
-    assert 'href="/admin/admin-static/dashboard.css"' in response.text
-    assert "USR-2004" not in response.text
-
-
 def test_unpublished_flow_shows_metric_panels_without_numeric_values(monkeypatch):
     from ticket_guard_admin.user_flow.contracts import FlowError
 

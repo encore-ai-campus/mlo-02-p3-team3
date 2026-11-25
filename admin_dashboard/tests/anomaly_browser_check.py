@@ -39,31 +39,6 @@ def run():
         page.locator('.top-bar').screenshot(path=str(output/'header-qa.png'))
         page.locator('a.brand').click()
         assert page.url.rstrip('/')==base+'/qa', 'Brand logo must return to administrator home'
-        page.goto(base+'/admin/preview#anomaly', wait_until='networkidle')
-        db_header = page.evaluate(measure)
-        assert page.evaluate(badge_measure)==home_badge, 'DB badge/menu alignment differs from QA'
-        for key in ('logo','name','english','menu','icon'):
-            assert db_header[key]==home_header[key], f'DB header scale differs: {key}: {db_header[key]} vs {home_header[key]}'
-        assert page.locator('.brand-name').evaluate('(e)=>getComputedStyle(e).paddingTop')=='15px'
-        assert db_header['bar']['height']==home_header['bar']['height']==76
-        page.locator('.top-bar').screenshot(path=str(output/'header-db.png'))
-        panel = page.locator('[data-preview-view="anomaly"]')
-        assert panel.is_visible()
-        assert page.locator('[data-an-panel="pre"]').is_visible()
-        page.locator('[data-an-event="c"]').click()
-        assert 'C' in page.locator('#an-timeline-title').inner_text()
-        page.screenshot(path=str(output/'preview-pre-desktop.png'), full_page=True)
-        page.get_by_role('button', name='사후 처리', exact=True).click()
-        page.locator('[data-an-account="1"]').click()
-        assert 'B' in page.locator('#an-account-title').inner_text()
-        assert page.locator('[data-an-panel="post"]').is_visible()
-        assert 'TG-B1' in page.locator('#an-results').inner_text()
-        page.screenshot(path=str(output/'preview-post-desktop.png'), full_page=True)
-        page.reload(wait_until='networkidle')
-        assert page.locator('[data-an-panel="post"]').is_visible()
-        page.set_viewport_size(dict(width=390, height=844))
-        page.screenshot(path=str(output/'preview-post-mobile.png'), full_page=True)
-        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'Mobile horizontal overflow'
         page.goto(base+'/admin/#anomaly', wait_until='networkidle')
         assert page.locator('[data-preview-view="anomaly"]').is_visible()
         assert '시안용 샘플 데이터' not in page.locator('body').inner_text()
@@ -73,7 +48,7 @@ def run():
             page.goto(base+'/qa/', wait_until='networkidle')
             reference_badge=page.evaluate(badge_measure)
             for view in ('flow', 'network', 'anomaly'):
-                page.goto(base+'/admin/preview#'+view, wait_until='networkidle')
+                page.goto(base+'/admin/#'+view, wait_until='networkidle')
                 current_badge=page.evaluate(badge_measure)
                 assert current_badge==reference_badge, f'Badge/home spacing mismatch at {width} {view}: {current_badge} vs {reference_badge}'
                 assert page.locator(f'[data-preview-view="{view}"]').is_visible()
@@ -88,9 +63,8 @@ def run():
                 if width in (1820,390):
                     page.screenshot(path=str(output/f'shared-{view}-{width}.png'), full_page=True)
         page.set_viewport_size(dict(width=390,height=844))
-        page.goto(base+'/admin/db', wait_until='networkidle')
-        assert page.locator('.top-bar .sample-status').is_visible()
-        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+        for retired in ('/admin/db', '/admin/preview'):
+            assert context.request.get(base+retired).status == 404
         assert not errors, str(errors)
         print('BROWSER_CHECK_PASSED pre/post selection, reload, live/sample separation; shared shell 3 views x 6 widths and legacy page')
         print('Screenshots:', output)

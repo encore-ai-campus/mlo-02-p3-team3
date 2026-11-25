@@ -45,23 +45,3 @@ def test_anomaly_summary_is_based_on_sample_evidence_only():
     assert all(kind['count'] == counts[kind['id']] for kind in anomaly['kinds'])
     assert len({subject['id'] for subject in anomaly['subjects']}) == len(anomaly['subjects'])
     assert all('score' not in subject and 'groundTruth' not in subject for subject in anomaly['subjects'])
-
-
-def test_three_views_render_without_database_or_external_assets(admin_settings, monkeypatch):
-    def reject(*args, **kwargs):
-        pytest.fail('시안에서 실제 DB 조회 시도')
-    monkeypatch.setattr('ticket_guard_admin.mongo_reader.MongoClient', reject)
-    client = TestClient(create_admin_dashboard_app(admin_settings), headers={'X-Admin-User': 'preview-manager'})
-    page = client.get('/preview?run_id=%3Cscript%3E')
-    assert page.status_code == 200
-    assert all(f'data-preview-view="{view}"' in page.text for view in ('flow','network','anomaly'))
-    assert '시안용 샘플 데이터' in page.text and page.text.count('검토용 제안') >= 2
-    assert '확정 지표' in page.text and '실제 DB 연결 없음' in page.text
-    assert '&lt;script&gt;' in page.text
-    assert 'cdn.jsdelivr.net' not in page.text
-    for filename in ('monitor_common.css','monitor_flow.css','monitor_navigation.js','monitor_charts.js','monitor_flow.js','monitor_anomaly.js'):
-        response = client.get('/admin-static/' + filename)
-        assert response.status_code == 200
-        if filename.endswith('.js'):
-            assert 'setInterval(' not in response.text and 'fetch(' not in response.text
-    assert TestClient(create_admin_dashboard_app(admin_settings)).get('/preview').status_code == 403

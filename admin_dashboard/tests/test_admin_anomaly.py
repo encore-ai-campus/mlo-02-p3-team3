@@ -42,11 +42,6 @@ def test_read_publication_stale_blocked_and_scope(monkeypatch):
 
 def test_preview_two_modes_auth_and_live_does_not_substitute_sample(admin_settings):
     client = TestClient(create_admin_dashboard_app(admin_settings))
-    assert client.get('/preview').status_code == 403
-    preview = client.get('/preview?anomaly_mode=post', headers={'X-Admin-User':'manager'})
-    assert preview.status_code == 200
-    for text in ('사전 탐지','사후 처리','응답 전 중첩','단시간 복수 구매','한도 초과','계정별 구매 사례'):
-        assert text in preview.text
     live = client.get('/?anomaly_mode=post', headers={'X-Admin-User':'manager'})
     assert live.status_code == 200
     assert '시안용 샘플 데이터' not in live.text

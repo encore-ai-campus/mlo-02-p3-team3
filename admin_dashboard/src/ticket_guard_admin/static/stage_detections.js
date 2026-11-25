@@ -23,7 +23,6 @@
       });
       write('[data-sd-title]',`${metric.stage_label} · ${metric.label}`);
       write('[data-sd-detail-state]',metric.state);
-      write('[data-sd-description]',metric.description);
       write('[data-sd-period]',metric.period);
       const events=metric.event_count===null ? '' : ` · 기준 충족 관측 ${value(metric.event_count,'건')}`;
       write('[data-sd-count]',`탐지 ${value(metric.value,metric.unit)}${events} · 실제 조치 ${value(metric.action_count,'건')}`);
@@ -50,7 +49,6 @@
       if(metric.unknown_targets) notes.push(`대상 식별 부족 ${metric.unknown_targets}건 · 고유 시도 수에 임의 포함하지 않음`);
       if(metric.truncated) notes.push('목록은 최근 200개까지 · 탐지 수는 전체 관측 범위 집계');
       if(metric.action_count===null) notes.push('실제 조치 연결 근거 없음 · 미조치로 단정하지 않음');
-      write('[data-sd-note]',notes.join(' / '));
     }
     buttons.forEach(button => button.addEventListener('click',() => select(button.dataset.sdMetric)));
     const initial=Array.from(metrics.values()).find(metric => metric.value!==null && metric.value>0)

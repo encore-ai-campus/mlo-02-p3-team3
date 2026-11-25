@@ -73,7 +73,7 @@ class Layout(HTMLParser):
                 break
 
 
-@pytest.mark.parametrize('path',['/','/preview'])
+@pytest.mark.parametrize('path',['/'])
 def test_existing_sections_and_new_stage_cards_coexist_without_collapsing(admin_settings,path):
     response=TestClient(create_admin_dashboard_app(admin_settings)).get(path,headers={'X-Admin-User':'manager'})
     assert response.status_code==200
