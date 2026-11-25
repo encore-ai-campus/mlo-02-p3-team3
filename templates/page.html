@@ -581,8 +581,7 @@
         <span class="status-badge">✓ 예매 확정</span><span class="booking-number">{{ booking.id }}</span>
         <h2>{{ booking.show.title }}</h2>
         <p>
-          {{ booking.show.date }} ({{ booking.show.weekday }}) {{ booking.show.time }} · {{
-            booking.show.venue }}
+          {{ booking.show.date }} ({{ booking.show.weekday }}) {{ booking.show.time }} · {{ booking.show.venue }}
         </p>
         <p class="muted">
           {% for seat in booking.seats %}{{ seat }}{% if not forloop.last %} · {% endif %}{% empty %}자유석{% endfor %} · {{ booking.quantity }}명
