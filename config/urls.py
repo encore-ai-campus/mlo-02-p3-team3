@@ -15,6 +15,7 @@ urlpatterns = [
     path('health/', views.health),
     path('dev/errors/<int:status>/', error_views.preview),  # DEBUG에서만 에러 페이지 미리보기
     path('api/action/', views.action),
+    path('api/shows/<str:identifier>/availability/', views.availability),
     path('api/events/', views.events),
     path('api/capture/', capture),
     path('captcha.png', views.captcha),

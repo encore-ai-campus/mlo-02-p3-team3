@@ -107,8 +107,10 @@ class Session:
     def enqueue(self, event):
         self.db.outbox.insert_one({'_id': event['eventId'], 'payload': event, 'created': time.time()}, session=self.session)
 
-    def purchased(self, scope):
-        return sum(row['quantity'] - row['released'] for row in self.db.purchases.find({'scope': scope}, session=self.session))
+    def purchased(self, scope, cycle=None):
+        query = {'scope': scope}
+        if cycle is not None: query['payload.cycle'] = cycle
+        return sum(row['quantity'] - row['released'] for row in self.db.purchases.find(query, session=self.session))
 
     def replay(self, attempt):
         row = self.db.purchases.find_one({'_id': attempt}, session=self.session)
@@ -118,7 +120,7 @@ class Session:
         existing = self.replay(attempt)
         if existing:
             return existing
-        if self.purchased(scope) + booking['quantity'] > 4:
+        if self.purchased(scope, booking.get('cycle')) + booking['quantity'] > 4:
             raise ValueError('Purchase must be checked inside the same transaction')
         self.db.purchases.insert_one(dict(_id=attempt, scope=scope, booking=booking['id'],
             quantity=booking['quantity'], released=0, payload=booking), session=self.session)

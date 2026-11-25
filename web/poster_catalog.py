@@ -15,7 +15,7 @@ WINTER_SHOWS = {
         description='첫눈의 선율. 바이올린, 첼로, 피아노로 만나는 클래식 공연입니다.'),
     'november-last-night': dict(
         id='november-last-night', title='11월의 마지막 밤', english='NOVEMBER LAST NIGHT',
-        genre='콘서트', venue='온기 라이브클럽', date='2026.11.30', time='20:00',
+        genre='페스티벌', venue='온기 라이브클럽', date='2026.11.30', time='20:00',
         poster='03-november-indie.png',
         tagline='INDIE LIVE',
         description='11월의 마지막 밤, 온기 라이브클럽에서 열리는 인디 라이브 공연입니다.'),
