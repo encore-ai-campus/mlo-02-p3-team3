@@ -56,6 +56,7 @@ TicketGuard는 공연 예매 웹에서 발생하는 사용자 행동과 서버 �
 - 이상 신호 및 사전 모니터링 결과 처리
 - 일부 분석 경로의 원본 대조와 결과 검증
 - 배치·청크·재처리 상태 저장
+- 결과 버전과 공개 포인터를 이용한 조회 구조
 
 ### 관리자 대시보드
 
@@ -75,6 +76,7 @@ TicketGuard는 공연 예매 웹에서 발생하는 사용자 행동과 서버 �
 - 탐지 정확도·회귀·집계 지연 시험
 - 좌석 동시성·부하·장애 복구 시험
 - 시험 실행 결과와 보고서 관리
+- 승인된 종료 시험 결과의 선택적 내보내기
 
 ## 3. 시스템 구조
 
@@ -82,11 +84,11 @@ TicketGuard는 공연 예매 웹에서 발생하는 사용자 행동과 서버 �
 flowchart LR
     USER["예매 사용자 / QA 시험 트래픽"] --> WEB["Django 예매 웹"]
 
-    WEB --> WEBDB[("웹 상태 MongoDB")]
+    WEB --> WEBDB[("ticketguard_web_state<br/>계정·예매·세션·정책")]
     WEB --> KAFKA["Kafka 공통 이벤트 토픽"]
 
     KAFKA --> RAW["Raw Consumer"]
-    RAW --> RAWDB[("원본 MongoDB")]
+    RAW --> RAWDB[("ticketguard_raw<br/>원문·전송 메타데이터")]
 
     KAFKA --> INGEST["Spark ingest"]
     KAFKA --> FLOW["Spark flow / 사전 모니터링"]
@@ -95,18 +97,19 @@ flowchart LR
     RAWDB -. "원본 대조" .-> FLOW
     RAWDB -. "원본 대조" .-> NETWORK
 
-    INGEST --> SYSTEMDB[("정제·격리·이상·요청 지표")]
+    INGEST --> SYSTEMDB[("ticketguard<br/>정제·격리·이상·요청 지표")]
     NETWORK --> SYSTEMDB
-    FLOW --> FLOWDB[("사용자 흐름·사전 관측 지표")]
+    FLOW --> FLOWDB[("ticketguard_flow<br/>사용자 흐름·사전 관측")]
 
-    FLOW --> STATEDB[("파이프라인 복구 상태")]
+    FLOW --> STATEDB[("ticketguard_pipeline_state<br/>배치·청크·복구 상태")]
     NETWORK --> STATEDB
 
     SYSTEMDB --> ADMIN["관리자 대시보드"]
     FLOWDB --> ADMIN
 
     QA["독립 QA · 정답표 기반 채점"] --> USER
-    QA --> QADB[("QA 전용 MongoDB")]
+    QA --> QADB[("ticketguard_qa<br/>시험·정답표·봇 버전")]
+    QADB -. "승인된 종료 시험의 선택적 전달" .-> ARCHIVE[("ticketguard_qa_archive")]
 ```
 
 ### 처리 흐름
@@ -123,8 +126,8 @@ flowchart LR
 4. **결과 공개**  
    결과 계열별 저장·검증 계약에 따라 공개 문서 또는 포인터를 갱신합니다.
 
-5. **조회**  
-   관리자 대시보드는 공개 결과를 읽어 화면에 표시합니다.
+5. **조회 및 검증**  
+   관리자 대시보드는 공개 결과를 조회하고, QA는 시험 결과를 정답표 및 합격 기준과 비교합니다.
 
 Raw Consumer와 Spark 작업은 병렬로 동작합니다. 모든 분석이 원본 DB를 거쳐 순차적으로 실행되는 구조는 아닙니다. `flow`와 `network`는 Kafka 입력을 저장된 원본과 대조합니다.
 
@@ -150,18 +153,56 @@ Raw Consumer와 Spark 작업은 병렬로 동작합니다. 모든 분석이 원�
 
 MongoDB를 사용하면서도 업무 상태, 원본, 분석 결과, 복구 상태, QA 자료를 용도에 따라 분리합니다.
 
-| 기본 논리 DB | 역할 |
-|---|---|
-| `ticketguard_web_state` | 회원 계정, 가입 감사 기록, 로그인 세션, 예매·재고·정책·Outbox |
-| `ticketguard_pipeline_state` | 분석 배치·청크·재처리 복구 상태 |
-| `ticketguard_raw` | Kafka 원문과 전송 메타데이터 보관 |
-| `ticketguard` | 정제·격리·이상 관측·요청 집계 결과 |
-| `ticketguard_flow` | 사용자 흐름·사전 모니터링 결과와 공개 지표 |
-| `ticketguard_qa` | 시험 실행, 정답표, 봇 프로필, 채점 결과 |
+컬렉션 관계도는 **기본 논리 DB 6개와 선택적 QA 전달 DB 1개**를 구분합니다. 관계도에 표시된 항목은 컬렉션과 조회 뷰, 초기화 잔존 항목을 포함하며, 실제 배포 환경에서 모두 생성되었다는 의미는 아닙니다.
+
+### DB별 역할
+
+| 논리 DB | 역할 | 주요 컬렉션·뷰 |
+|---|---|---|
+| `ticketguard_web_state` | 예매 업무·정책·로그인 상태 | `booking_attempts`, `bookings`, `purchases`, `booking_inventory`, `state`, `outbox`, `web_sessions` |
+| `ticketguard_pipeline_state` | 분석 작업의 처리·복구 상태 | `chunks`, `chunk_ingestion`, `assembled`, `events`, `batches`, `meta`, `guards` |
+| `ticketguard_raw` | Kafka 원문과 전송 메타데이터 | `behavior_events`, `booking_events`, `auth_events`, `http_events`, `raw_chunks`, `unclassified_events` |
+| `ticketguard` | 정제·격리·이상 탐지·요청 분석 | `clean_events`, `quarantine_events`, `anomaly_events`, `anomaly_public`, `network_public`, `event_metrics` |
+| `ticketguard_flow` | 사용자 흐름·사전 모니터링 | `flow_versions`, `flow_series`, `flow_public`, `early_observations`, `early_detections`, `early_actions` |
+| `ticketguard_qa` | 시험 실행·정답표·봇 정의 | `runs`, `answer_keys`, `bot_versions`, `bot_types`, `archive_exports` |
+| `ticketguard_qa_archive` | 승인된 종료 시험 결과의 선택적 전달 | `QA_ARCHIVE_RUNS`, `QA_ARCHIVE_FINDINGS`, `QA_ARCHIVE_ANSWER_KEYS`, `QA_ARCHIVE_BOT_VERSIONS` |
 
 실제 DB 이름과 연결 대상은 환경 설정에 따릅니다. 논리 DB의 개수와 MongoDB 서버의 개수는 다릅니다.
 
+### 웹 업무 상태
+
+웹 업무 데이터는 예매 시도, 확정 내역, 구매 기록, 재고, 정책 상태를 나누어 저장합니다.
+
+| 컬렉션 | 역할 |
+|---|---|
+| `booking_runtime` | 예매 대기열 상태 관리 |
+| `booking_attempts` | 사용자별 최신 예매 시도 보관 |
+| `bookings` | 확정된 예매 내역 보관 |
+| `purchases` | 예매 시도별 구매 내역 보관 |
+| `adjustments` | 취소·환불 수량 조정 기록 |
+| `booking_inventory` | 회차별 잔여 좌석·수량 관리 |
+| `booking_opens` | 사용자별 예매 오픈 시각 보관 |
+| `booking_scenarios` | 사용자별 예매 시나리오 보관 |
+| `state` | 입장 제한과 정책 상태 관리 |
+| `outbox` | 전달 전 업무 이벤트 보관 |
+| `transaction_guard` | 업무 트랜잭션 직렬화 |
+| `browser_guards` | 브라우저 로그인 실패 관리 |
+| `web_sessions` | 웹 로그인 세션 보관 |
+
+주요 참조 관계는 다음과 같습니다. 화살표는 데이터를 복사하는 방향이 아니라 **참조하는 컬렉션에서 참조 대상으로 향하는 관계**입니다.
+
+```mermaid
+flowchart LR
+    STATE["state"] -. "예매 시도 참조 · 조건부" .-> ATTEMPT["booking_attempts"]
+    ATTEMPT -->|"확정 예매 참조"| BOOKING["bookings"]
+    PURCHASE["purchases"] -->|"예매 참조"| BOOKING
+    PURCHASE -. "예매 시도 참조 · 조건부" .-> ATTEMPT
+    ADJUSTMENT["adjustments"] -->|"구매 기록 참조"| PURCHASE
+```
+
 ### 회원가입과 계정 저장
+
+회원가입 구현은 관계도에 표시된 웹 업무 컬렉션 외에 `accounts`와 `account_events`를 사용합니다.
 
 - 신규 계정은 웹 상태 DB의 `accounts`에 저장합니다.
 - 비밀번호는 Django 비밀번호 해시로 저장합니다.
@@ -173,6 +214,58 @@ MongoDB를 사용하면서도 업무 상태, 원본, 분석 결과, 복구 상�
 
 기존 원본 라우팅 버전에서 신규 `signup_*` 이벤트는 `unclassified_events`로 보관됩니다. 계정 저장과 원본 이벤트 분류는 별도 역할입니다.
 
+### 원본 이벤트 보관
+
+원본 DB는 이벤트 종류에 따라 보관 위치를 구분합니다.
+
+| 컬렉션 | 역할 |
+|---|---|
+| `behavior_events` | 브라우저 행동 원본 |
+| `booking_events` | 예매 업무 이벤트 원본 |
+| `auth_events` | 인증 이벤트 원본 |
+| `http_events` | HTTP 요청·응답 원본 |
+| `performance_events` | 브라우저 성능 원본 |
+| `browser_errors` | 브라우저 오류 원본 |
+| `collector_events` | 수집기 이벤트 원본 |
+| `raw_chunks` | 분할 전송 원본 |
+| `unclassified_events` | 기존 분류에 포함되지 않은 원본 |
+
+관계도의 `raw_events`는 초기화에 남아 있는 기존 항목으로 구분합니다. 모든 원본 이벤트가 해당 컬렉션 하나에 저장되는 것으로 해석하지 않습니다.
+
+### 분석 결과와 공개 조회
+
+분석 결과는 계산된 데이터와 화면에 공개할 버전을 구분하여 저장합니다.
+
+| 영역 | 저장·공개 구조 |
+|---|---|
+| 사용자 흐름 | `flow_versions`, `flow_series`에 결과 저장 → `flow_public`이 공개 버전 지정 |
+| 요청 분석 | `network_versions`, `network_series`에 결과 저장 → `network_public`이 공개 버전 지정 |
+| 사전 모니터링 | `early_versions`에 결과 저장 → `early_public`이 공개 버전 지정 |
+| 이상 탐지 | `anomaly_observations`, `anomaly_events`에 관측·근거 저장 → `anomaly_public`에 공개 집계 저장 |
+
+사용자 흐름과 요청 분석에는 조회 뷰를 사용합니다.
+
+- `flow_read_current`: 공개된 사용자 흐름 결과 조회
+- `flow_read_series`: 공개된 사용자 흐름 시계열 조회
+- `network_read_current`: 공개된 요청 분석 결과 조회
+- `network_read_series`: 공개된 요청 분석 시계열 조회
+
+`flow_health`, `network` 관련 공개 상태, `anomaly_health`, `early_health` 등의 상태 정보는 결과 계열별 조회 계약에 따라 해석합니다. 각 계열의 공개 방식과 오류 처리 방식은 동일하지 않습니다.
+
+### 파이프라인 복구 상태
+
+| 컬렉션 | 역할 |
+|---|---|
+| `chunks` | 분할 수신한 청크 보관 |
+| `chunk_ingestion` | 청크의 최초 수신 시각 기록 |
+| `assembled` | 재조립 완료와 중복 관리 |
+| `events` | 재계산에 필요한 최소 이벤트 보관 |
+| `batches` | 배치 완료와 처리 범위 관리 |
+| `meta` | 복구 위치와 처리 이력 보관 |
+| `guards` | 처리 범위별 트랜잭션 직렬화 |
+
+MongoDB 복구 상태와 Spark 체크포인트는 역할이 다르며 함께 관리합니다.
+
 ### 데이터 처리 원칙
 
 - 원본 레코드는 Kafka 출처·토픽·파티션·오프셋을 기준으로 식별합니다.
@@ -183,12 +276,94 @@ MongoDB를 사용하면서도 업무 상태, 원본, 분석 결과, 복구 상�
 - 비밀번호·토큰 등 민감값은 관측 데이터에서 정제합니다.
 - QA 정답표와 봇 설정은 QA 영역에 보관하며 시스템 판정 입력으로 전달하지 않습니다.
 - QA의 시스템·원본 DB 검증에는 읽기 전용 연결을 사용합니다.
+- 컬렉션 관계도의 연결선은 논리 참조이며 MongoDB가 강제하는 외래 키 제약을 의미하지 않습니다.
 
 ## 6. 자동화 QA
 
 QA는 정상 사용자와 봇처럼 행동하는 가상 사용자를 생성하고, 별도로 관리한 정답표와 시스템 결과를 비교합니다.
 
 모의 환경에서는 시험 절차와 채점기가 올바르게 동작하는지 확인하고, 실제 시험 환경에서는 예매 웹과 이벤트 처리 결과를 검증합니다.
+
+### QA 검증 구조
+
+```mermaid
+flowchart TB
+    START["시험 실행<br/>QA 대시보드 · CLI · CI"]
+
+    subgraph QA_AREA["QA 영역"]
+        PLAN["시험 항목 · 실행 조건 설정"]
+        GENERATOR["가상 사용자 생성<br/>정상 사용자 · 매크로 · 미학습 유형"]
+        TRUTH[("QA 정답표<br/>사용자별 정상·봇 구분")]
+        COLLECT["시험 결과 수집"]
+        SCORE["정답표와 결과 비교<br/>탐지율 · 오탐률 · 누락 · 지연 · 복구"]
+        REPORT["합격 기준 판정<br/>실행 결과 · 보고서"]
+        QADB[("ticketguard_qa")]
+    end
+
+    subgraph SYSTEM_AREA["시험 대상 시스템"]
+        WEB["예매 웹<br/>대기열 · 보안문자 · 좌석 · 확정"]
+        KAFKA["Kafka 이벤트 토픽"]
+        PIPELINE["원본 보관 · 정제 · 집계 · 판정"]
+        DATA[("시스템·원본 DB<br/>처리 결과")]
+    end
+
+    START --> PLAN
+    PLAN --> GENERATOR
+    GENERATOR --> TRUTH
+    GENERATOR -->|"시험 계정으로 요청"| WEB
+
+    WEB --> KAFKA
+    KAFKA --> PIPELINE
+    PIPELINE --> DATA
+
+    WEB -->|"업무 응답"| COLLECT
+    KAFKA -->|"QA 전용 소비 그룹으로 조회"| COLLECT
+    DATA -->|"읽기 전용 조회"| COLLECT
+
+    TRUTH --> SCORE
+    COLLECT --> SCORE
+    SCORE --> REPORT
+    REPORT --> QADB
+```
+
+정답표는 QA 영역에만 보관하고 시스템 판정 입력으로 전달하지 않습니다. 시스템의 업무 응답, Kafka 이벤트, DB 처리 결과를 확인한 뒤 정답표와 비교합니다.
+
+위 도식은 실제 환경 시험의 검증 구조입니다. 각 시험은 필요한 판정 연결, DB 읽기 권한, 컨테이너 제어 등의 조건을 갖춘 뒤 수행하며, 모의 환경에서는 가짜 시스템을 대상으로 시험 절차와 채점 동작을 먼저 확인합니다.
+
+### QA 데이터 구조
+
+| 컬렉션 | 역할 |
+|---|---|
+| `runs` | 시험 실행 설정과 결과 보관 |
+| `answer_keys` | 시험·Suite별 정답표 보관 |
+| `bot_versions` | 봇 유형별 행동 버전 보관 |
+| `bot_types` | 사용자 정의 봇 유형 보관 |
+| `archive_exports` | 승인된 종료 시험의 내보내기 기록 |
+
+```mermaid
+flowchart LR
+    ANSWER["answer_keys"] -. "시험 참조" .-> RUN["runs"]
+    RUN -. "봇 버전 참조" .-> VERSION["bot_versions"]
+    VERSION -. "봇 유형 참조 · 조건부" .-> TYPE["bot_types"]
+
+    EXPORT["archive_exports"] -->|"시험 참조"| RUN
+    EXPORT -. "봇 버전 참조 · 조건부" .-> VERSION
+```
+
+화살표는 컬렉션 간 참조 관계를 나타냅니다. 정답표와 봇 버전은 시험의 재현 및 채점에 사용하며, 시스템 판정 데이터와 분리합니다.
+
+### 종료 시험 결과의 선택적 전달
+
+승인된 종료 시험은 별도의 `ticketguard_qa_archive` 영역으로 전달할 수 있습니다.
+
+| 전달 컬렉션 | 내용 |
+|---|---|
+| `QA_ARCHIVE_RUNS` | 승인된 종료 시험 요약 |
+| `QA_ARCHIVE_FINDINGS` | 종료 시험의 판정 항목 |
+| `QA_ARCHIVE_ANSWER_KEYS` | 승인된 정답표 전달 구조 |
+| `QA_ARCHIVE_BOT_VERSIONS` | 승인된 봇 버전 전달 구조 |
+
+이 영역은 선택 사항이며 기본 시험 실행 DB와 구분합니다. 정답표와 봇 버전은 명시적으로 선택한 경우에만 전달하며, 전달 DB를 시스템 판정 코드의 입력으로 사용하지 않습니다.
 
 ### 시험 구성
 
@@ -252,58 +427,7 @@ QA 구현 보고서 기준으로 다음 체계를 구성했습니다.
 - 실제 판정 정확도·탐지 회귀·집계 지연·장애 복구 등은 보고서상 연결 조건을 갖춘 뒤 수행할 항목입니다.
 - 해당 실제 예매 시험에서 봇 15명도 차단 없이 예매했으므로, 예매·이벤트 검증 결과를 매크로 차단 성공률로 해석하지 않습니다.
 
-## 7. 로컬 실행
-
-### 준비 사항
-
-- Git
-- Docker Desktop
-- Linux containers 실행 환경
-- 저장소 루트의 `.env`
-- 웹·파이프라인 상태 저장용 MongoDB 계정과 연결 설정
-
-MongoDB 상태 저장 설정은 [상태 저장 안내](docs/mongodb-state.md)를 참고합니다.
-
-기존 `.env`와 DB 계정은 유지하고 필요한 설정을 추가합니다. 비밀번호와 실제 접속 URI는 Git에 올리지 않습니다.
-
-### 기본 예매 웹 실행
-
-저장소 루트에서 실행합니다.
-
-```powershell
-docker compose --env-file .env -f compose.yml -f compose.state.yml config --quiet
-
-docker compose --env-file .env -f compose.yml -f compose.state.yml up -d --build
-
-docker compose --env-file .env -f compose.yml -f compose.state.yml ps -a
-```
-
-접속 주소:
-
-```text
-http://127.0.0.1:8000/
-```
-
-`state-init`과 토픽 초기화 서비스는 `Exited (0)`이면 정상 완료 상태입니다.
-
-### 관리자·QA 및 분석 기능
-
-관리자·QA 화면에는 게이트웨이, QA DB, 관리자 인증 설정이 추가로 필요합니다. 관리자 앱이 사용하는 시스템 MongoDB 네트워크도 준비되어 있어야 합니다.
-
-Raw Consumer와 Spark 작업은 각각의 설정과 실행 절차를 따릅니다. 기본 예매 웹 실행 명령만으로 전체 분석 및 실제 QA 연결이 완료되지는 않습니다.
-
-| 화면 | 경로 | 조건 |
-|---|---|---|
-| 예매 웹 | `/` | 기본 웹 실행 |
-| 회원가입 | `/signup/` | 웹 상태 DB 연결 |
-| QA 대시보드 | `/qa/` | 게이트웨이·QA 서비스·관리자 인증 |
-| 관리자 대시보드 | `/admin/` | 관리자 서비스·DB 읽기 권한·관리자 인증 |
-| 기존 이벤트 조회 | `/admin/db` | 관리자 DB 연결 |
-| 관리자 시안 | `/admin/preview` | 관리자 인증·고정 샘플 |
-
-현재 Compose는 로컬 개발 구성입니다. 외부 서버 배포 상태와는 별도로 확인해야 합니다. DB·볼륨 초기화는 일반 실행 절차에 포함하지 않습니다.
-
-## 8. 프로젝트 구조
+## 7. 프로젝트 구조
 
 ```text
 Ticket_Guard/
@@ -320,7 +444,7 @@ Ticket_Guard/
 └── .github/workflows/   CI 설정
 ```
 
-## 9. 상세 문서
+## 8. 상세 문서
 
 | 주제 | 문서 |
 |---|---|
@@ -338,7 +462,7 @@ Ticket_Guard/
 
 상세 문서는 작성 시점의 구현·검증 범위를 함께 확인합니다. 과거 실행 명령과 현재 상태 저장 구성이 다르면 현재 Compose와 MongoDB 상태 저장 설정을 우선 확인합니다.
 
-## 10. 현재 제한과 후속 과제
+## 9. 현재 제한과 후속 과제
 
 - 실제 판정과 QA를 연결하여 탐지율·오탐률을 같은 조건으로 재측정합니다.
 - 원본·집계 DB의 읽기 권한과 실제 조회 대상·뷰 구성을 확인하여 종단 검증을 수행합니다.
