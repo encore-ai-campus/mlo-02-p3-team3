@@ -314,7 +314,8 @@
           <br />
         {{ show.time }} · {{ show.venue }}</strong>
       </div>
-      <p id="countdown" class="warning" data-opens-at="{{ opens_at }}" hidden></p>
+      <p id="countdown" class="warning" data-opens-at="{{ opens_at }}" data-resets-at="{{ resets_at }}" data-server-time="{{ server_time }}" hidden></p>
+      <p id="sale-reset" class="fine-print" aria-live="polite"></p>
       <button id="start-booking" class="button full">
         예매하기 <span>→</span>
       </button>

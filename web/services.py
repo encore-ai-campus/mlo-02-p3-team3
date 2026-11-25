@@ -14,6 +14,7 @@ from django.utils.crypto import salted_hmac
 from .events import emit
 from .poster_catalog import WINTER_SHOWS
 from . import prevention
+from .booking_schedule import window
 
 SHOWS = {
     'blue-hour': dict(id='blue-hour', title='온기', english='WARM FREQUENCIES',
@@ -31,15 +32,15 @@ SHOWS = {
         kind='reserved', kind_label='지정석', poster='november.png', tagline='11월을 채우는 인디 라이브 사운드.',
         description='입동의 소리 — INDIE LIVE / NOVEMBER. 올림픽공원 올림픽홀에서 열리는 인디 라이브 공연입니다.')
     , 'city-night': dict(id='city-night', title='온기', english='WARM FREQUENCIES',
-        genre='콘서트', venue='세빛섬 컨벤션홀', date='2026.11.28', time='20:00', price=48000,
+        genre='페스티벌', venue='세빛섬 컨벤션홀', date='2026.11.28', time='20:00', price=48000,
         kind='reserved', kind_label='지정석', poster='warm.png', tagline='11월의 차가운 공기를 감싸는 따뜻한 라이브.',
         description='WARM FREQUENCIES — 온기. 세빛섬 컨벤션홀에서 만나는 11월 라이브 세션입니다.')
     , 'starlight': dict(id='starlight', title='겨울의 문턱', english='NOVEMBER LIVE',
-        genre='콘서트', venue='서울숲 야외무대', date='2026.11.29', time='18:30', price=42000,
+        genre='뮤지컬', venue='서울숲 야외무대', date='2026.11.29', time='18:30', price=42000,
         kind='general', kind_label='자유석', poster='winter.png', tagline='가을과 겨울 사이, 음악으로 만나는 11월.',
         description='겨울의 문턱 — NOVEMBER LIVE. 서울숲 야외무대에서 만나는 11월 라이브 공연입니다.')
     , 'summer-rhythm': dict(id='summer-rhythm', title='입동의 소리', english='INDIE LIVE / NOVEMBER',
-        genre='콘서트', venue='잠실실내체육관', date='2026.11.30', time='19:30', price=58000,
+        genre='연극', venue='잠실실내체육관', date='2026.11.30', time='19:30', price=58000,
         kind='reserved', kind_label='지정석', poster='november.png', tagline='11월을 채우는 인디 라이브 사운드.',
         description='입동의 소리 — INDIE LIVE / NOVEMBER. 잠실실내체육관에서 열리는 인디 라이브 공연입니다.')
 }
@@ -79,6 +80,7 @@ class MockRepository:
         self.admission_count = 0
         self.opens = {}
         self.scenarios = {}
+        self.cycle_inventories = {}
 
     def active_users(self):
         return list(self.attempts)
@@ -87,31 +89,59 @@ class MockRepository:
         return self.attempts.values()
 
     def sold_for(self, show_id):
+        if window(show_id):
+            return self.cycle_inventory(show_id)['sold']
         return self.sold
 
     def remaining_for(self, show_id):
+        if window(show_id):
+            return self.cycle_inventory(show_id)['remaining']
         return self.remaining
 
+    def cycle_inventory(self, show_id):
+        sale = window(show_id)
+        inventory = self.cycle_inventories.get(show_id)
+        if inventory is None or inventory['cycle'] != sale['cycle']:
+            inventory = dict(cycle=sale['cycle'], sold=set(), remaining=28)
+            self.cycle_inventories[show_id] = inventory
+        return inventory
+
     def sell(self, show_id, seats, quantity):
+        if window(show_id):
+            inventory = self.cycle_inventory(show_id)
+            if SHOWS[show_id]['kind'] == 'reserved': inventory['sold'].update(seats)
+            else: inventory['remaining'] -= quantity
+            return
         if SHOWS[show_id]['kind'] == 'reserved': self.sold.update(seats)
         else: self.remaining -= quantity
 
     def set_remaining(self, show_id, quantity):
+        if window(show_id):
+            self.cycle_inventory(show_id)['remaining'] = quantity
+            return
         self.remaining = quantity
 
     def current(self, user, required=True):
         a = self.attempts.get(user)
+        sale = window(a['show_id']) if a else None
+        if a and sale and a['stage'] not in ('complete', 'expired', 'cancelled') and a.get('cycle') != sale['cycle']:
+            a['stage'], a['captcha'] = 'expired', ''
+            a['reset_expired'] = True
         if a and a['stage'] not in ('complete', 'expired', 'cancelled'):
             if time.time() - a['heartbeat'] > settings.ATTEMPT_TIMEOUT_SECONDS:
                 a['stage'], a['captcha'] = 'expired', ''
                 emit(user, 'connection_timeout', a, result='failure', errorCode='EXPIRED', details={'reason':'heartbeat_expired','elapsedMs':round((time.time()-a['heartbeat'])*1000,2)})
         if required and (not a or a['stage'] in ('expired', 'cancelled')):
             show_id = a['show_id'] if a else 'blue-hour'
+            if a and a.get('reset_expired'):
+                raise FlowError('새 예매가 시작되어 좌석이 초기화되었어요. 다시 입장해 주세요.',
+                                'EXPIRED', 409, '/detail/' + show_id + '/')
             raise FlowError('입장 권한이 만료되었어요. 대기열에 다시 입장해 주세요.', 'EXPIRED', 409, '/detail/' + show_id + '/')
         return a
 
     def opens_at(self, user, show_id):
-        return self.opens.get((user, show_id), 0)
+        sale = window(show_id)
+        return max(self.opens.get((user, show_id), 0), sale['opens_at'] if sale else 0)
 
     def advance_queue(self):
         """Global FIFO admission: at most one batch per interval, no saved slots."""
@@ -171,6 +201,8 @@ class MockRepository:
             a = dict(id=str(uuid4()), show_id=show_id, page_id=page_id, stage='queue',
                      entered=time.time(), heartbeat=time.time(), rank=self.queue_counter,
                      wrong=0, captcha='', sequence=0, booking_id=None, scenario=self.scenarios.get((user,show_id)))
+            sale = window(show_id)
+            if sale: a['cycle'] = sale['cycle']
             a['is_simulation'] = prevention.simulated_account(user)
             self.attempts[user] = a
             policy.attempt = a
@@ -328,6 +360,7 @@ class MockRepository:
                          created_at=datetime.now(timezone.utc).isoformat(),
                          page_id=page_id, schedule_id=show['schedule_id'], is_simulation=policy.simulation,
                          booking_attempt_id=a['id'], scenario=a.get('scenario'))
+                if a.get('cycle'): b['cycle'] = a['cycle']
                 policy.session.purchase(policy.target, a['id'], b)
                 policy.session.put('entry:' + policy.target, {'attempt': a['id'], 'status': 'complete'})
                 self.sell(show['id'], seats, quantity)
