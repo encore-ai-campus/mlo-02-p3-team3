@@ -314,7 +314,8 @@
           <br />
         {{ show.time }} · {{ show.venue }}</strong>
       </div>
-      <p id="countdown" class="warning" data-opens-at="{{ opens_at }}" hidden></p>
+      <p id="countdown" class="warning" data-opens-at="{{ opens_at }}" data-resets-at="{{ resets_at }}" data-server-time="{{ server_time }}" hidden></p>
+      <p id="sale-reset" class="fine-print" aria-live="polite"></p>
       <button id="start-booking" class="button full">
         예매하기 <span>→</span>
       </button>
@@ -581,8 +582,7 @@
         <span class="status-badge">✓ 예매 확정</span><span class="booking-number">{{ booking.id }}</span>
         <h2>{{ booking.show.title }}</h2>
         <p>
-          {{ booking.show.date }} ({{ booking.show.weekday }}) {{ booking.show.time }} · {{
-            booking.show.venue }}
+          {{ booking.show.date }} ({{ booking.show.weekday }}) {{ booking.show.time }} · {{ booking.show.venue }}
         </p>
         <p class="muted">
           {% for seat in booking.seats %}{{ seat }}{% if not forloop.last %} · {% endif %}{% empty %}자유석{% endfor %} · {{ booking.quantity }}명

@@ -17,6 +17,7 @@ from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.cache import never_cache
 from PIL import Image, ImageDraw, ImageFont
 from .services import repo, SHOWS, FlowError
+from .booking_schedule import window
 from .events import emit, publisher, CLIENT_EVENTS, build_event, event_request_context
 from .event_schema import EventValidationError, timestamp, validate_event, validate_details
 from .telemetry import TELEMETRY_EVENTS, sanitize
@@ -57,6 +58,19 @@ def snapshot(a):
                 wrong=a['wrong'], sequence=a['sequence'], sold=sorted(repo.sold_for(a['show_id'])), remaining=repo.remaining_for(a['show_id']))
 
 
+@require_GET
+@never_cache
+def availability(request, identifier):
+    if identifier not in SHOWS:
+        raise Http404
+    with repo.lock:
+        sale = window(identifier)
+        return JsonResponse(dict(server_time=int(time.time() * 1000),
+            opens_at=int(repo.opens_at(request.session.get('user'), identifier) * 1000),
+            resets_at=int(sale['resets_at'] * 1000) if sale else None,
+            sold=sorted(repo.sold_for(identifier)), remaining=repo.remaining_for(identifier)))
+
+
 @never_cache
 @ensure_csrf_cookie
 def page(request, screen, identifier=None):
@@ -81,7 +95,9 @@ def page(request, screen, identifier=None):
             elif screen == 'detail':
                 if identifier not in SHOWS:
                     raise Http404
-                context.update(show=SHOWS[identifier], opens_at=int(repo.opens_at(user, identifier)*1000))
+                sale = window(identifier)
+                context.update(show=SHOWS[identifier], opens_at=int(repo.opens_at(user, identifier)*1000),
+                               resets_at=int(sale['resets_at']*1000) if sale else '', server_time=int(time.time()*1000))
             elif screen in ('queue', 'captcha', 'select'):
                 a = repo.current(user)
                 repo.advance_queue()

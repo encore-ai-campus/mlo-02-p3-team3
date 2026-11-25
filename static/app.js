@@ -218,17 +218,46 @@
     if (selected) expandFeaturedCard(selected);
   });
 
+  let serverOffset = Number($('#countdown')?.dataset.serverTime || Date.now()) - Date.now();
   function countdown() {
     const el = $('#countdown');
     if (!el) return;
-    const seconds = Math.max(0, Math.ceil((Number(el.dataset.opensAt) - Date.now()) / 1000));
+    const now = Date.now() + serverOffset;
+    const seconds = Math.max(0, Math.ceil((Number(el.dataset.opensAt) - now) / 1000));
     el.hidden = seconds === 0;
     el.textContent = '예매 시작까지 ' + String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
     $('#start-booking').disabled = seconds > 0;
     $('#start-booking').textContent = seconds > 0 ? '예매 오픈 예정' : '예매하기 →';
+    const resetsAt = Number(el.dataset.resetsAt);
+    if (resetsAt) {
+      const left = Math.max(0, Math.ceil((resetsAt - now) / 1000));
+      $('#sale-reset').textContent = seconds > 0 ? '오픈 후 1시간마다 좌석이 초기화되고 새 예매가 시작돼요.'
+        : '좌석 초기화까지 ' + String(Math.floor(left / 60)).padStart(2, '0') + ':' + String(left % 60).padStart(2, '0');
+    }
   }
   countdown();
   if ($('#countdown')) setInterval(countdown, 1000);
+  let availabilityInFlight = false;
+  async function refreshAvailability() {
+    if (screen !== 'detail' || availabilityInFlight || moving) return;
+    availabilityInFlight = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch('/api/shows/' + encodeURIComponent(showId) + '/availability/', {signal: controller.signal});
+      if (!response.ok) return;
+      const result = await response.json();
+      serverOffset = result.server_time - Date.now();
+      $('#countdown').dataset.opensAt = result.opens_at;
+      $('#countdown').dataset.resetsAt = result.resets_at || '';
+      countdown();
+    } catch (_) { /* Keep the last schedule; the booking endpoint remains authoritative. */ }
+    finally { clearTimeout(timer); availabilityInFlight = false; }
+  }
+  if (screen === 'detail') {
+    refreshAvailability();
+    setInterval(refreshAvailability, 2000);
+  }
   $('#start-booking')?.addEventListener('click', async e => {
     e.currentTarget.disabled = true;
     try {
@@ -272,6 +301,7 @@
         $('#queue-bar').style.width = Math.max(5, 100 / Math.max(1, result.rank)) + '%';
       }
       setOnline();
+      if (screen === 'select') updateInventory(result);
       if (result.stage !== screen) go(result.redirect);
     } catch (error) {
       if (isConnectionError(error) && screen === 'queue') {
@@ -354,6 +384,21 @@
     } finally { button.disabled = blocked || offline; }
   });
 
+  function updateInventory(result) {
+    let lostSelection = false;
+    if (Array.isArray(result.sold)) document.querySelectorAll('[data-seat]').forEach(el => {
+      const sold = result.sold.includes(el.dataset.seat);
+      el.disabled = sold;
+      el.classList.toggle('sold', sold);
+      if (sold && chosen.delete(el.dataset.seat)) lostSelection = true;
+    });
+    if (result.remaining !== undefined) {
+      remaining = result.remaining;
+      if ($('#remaining')) $('#remaining').textContent = remaining;
+    }
+    if (lostSelection) fieldError('#selection-error', '선택한 좌석이 먼저 판매되어 선택에서 제외했어요. 다른 좌석을 선택해 주세요.');
+    renderSelection();
+  }
   function renderSelection() {
     if (screen !== 'select') return;
     document.querySelectorAll('[data-seat]').forEach(el => {
@@ -465,7 +510,7 @@
       if (!blocked && !moving) {
         storage.setItem('tg-active', JSON.stringify({id: attemptId, pageId}));
         refreshCaptcha();
-        setInterval(heartbeat, screen === 'queue' ? 1000 : 10000);
+        setInterval(heartbeat, screen === 'queue' ? 1000 : screen === 'select' ? 2000 : 10000);
       }
     } else {
       const active = JSON.parse(storage.getItem('tg-active') || 'null');
