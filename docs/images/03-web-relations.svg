@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="850" viewBox="0 0 1600 850">
+<defs><marker id="a0" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#2563EB"/></marker><marker id="a1" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#8952FF"/></marker><marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#00A99D"/></marker><marker id="a3" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#F08300"/></marker><marker id="a4" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#667C98"/></marker></defs>
+<rect width="1600" height="850" fill="#F4F6FF"/>
+<rect width="1600" height="135" fill="#2563EB"/>
+<text x="44" y="61" fill="white" font-size="34" font-weight="700" font-family="Malgun Gothic, sans-serif">TicketGuard · 웹 업무 컬렉션 관계</text>
+<text x="46" y="103" fill="#D9E5FF" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">화살표: 참조하는 컬렉션 → 참조 대상  |  논리 참조이며 FK 제약을 의미하지 않음</text>
+<text x="48" y="179" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard_web_state</text>
+<rect x="60" y="285" width="400" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M72,286 H448 Q459,286 459,297 V334 H61 V297 Q61,286 72,286" fill="#2563EB" fill-opacity="0.07"/>
+<text x="78" y="318" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">booking_attempts</text>
+<text x="78" y="365" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">사용자별 최신 예매 시도</text>
+<text x="78" y="394" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">확정된 예매 내역 참조</text>
+<rect x="600" y="285" width="400" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M612,286 H988 Q999,286 999,297 V334 H601 V297 Q601,286 612,286" fill="#2563EB" fill-opacity="0.07"/>
+<text x="618" y="318" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">bookings</text>
+<text x="618" y="365" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">확정 예매 내역 보관</text>
+<text x="618" y="394" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">예약 번호 · 좌석 · 수량</text>
+<rect x="1140" y="285" width="400" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M1152,286 H1528 Q1539,286 1539,297 V334 H1141 V297 Q1141,286 1152,286" fill="#2563EB" fill-opacity="0.07"/>
+<text x="1158" y="318" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">purchases</text>
+<text x="1158" y="365" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">예매 시도별 구매 내역</text>
+<text x="1158" y="394" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">예매 및 시도 참조</text>
+<rect x="60" y="565" width="400" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M72,566 H448 Q459,566 459,577 V614 H61 V577 Q61,566 72,566" fill="#2563EB" fill-opacity="0.07"/>
+<text x="78" y="598" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">state</text>
+<text x="78" y="645" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">입장 제한과 정책 상태</text>
+<text x="78" y="674" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">예매 시도를 조건부 참조</text>
+<rect x="1140" y="565" width="400" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M1152,566 H1528 Q1539,566 1539,577 V614 H1141 V577 Q1141,566 1152,566" fill="#2563EB" fill-opacity="0.07"/>
+<text x="1158" y="598" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">adjustments</text>
+<text x="1158" y="645" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">취소·환불 수량 조정 기록</text>
+<text x="1158" y="674" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">구매 내역 참조</text>
+<polyline points="460,356 600,356" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<text x="474" y="336" fill="#2563EB" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">확정 예매</text>
+<polyline points="1140,356 1000,356" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<text x="1020" y="336" fill="#2563EB" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">예매 참조</text>
+<polyline points="260,565 260,427" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)" stroke-dasharray="8 6"/>
+<text x="276" y="503" fill="#2563EB" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">조건부</text>
+<polyline points="1340,565 1340,427" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<text x="1357" y="503" fill="#2563EB" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">구매 참조</text>
+<polyline points="1340,285 1340,225 260,225 260,285" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)" stroke-dasharray="8 6"/>
+<text x="650" y="212" fill="#2563EB" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">예매 시도 참조 · 조건부</text>
+<rect x="44" y="770" width="1512" height="50" rx="8" fill="#E8EEFF"/>
+<text x="62" y="802" fill="#475B77" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">업무 컬렉션의 식별자 참조 관계입니다. 이벤트 처리 순서나 데이터 복사 방향을 나타내지 않습니다.</text>
+</svg>

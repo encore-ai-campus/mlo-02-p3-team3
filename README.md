@@ -80,37 +80,9 @@ TicketGuard는 공연 예매 웹에서 발생하는 사용자 행동과 서버 �
 
 ## 3. 시스템 구조
 
-```mermaid
-flowchart LR
-    USER["예매 사용자 / QA 시험 트래픽"] --> WEB["Django 예매 웹"]
+![TicketGuard 전체 시스템 구조](docs/images/01-system.png)
 
-    WEB --> WEBDB[("ticketguard_web_state<br/>계정·예매·세션·정책")]
-    WEB --> KAFKA["Kafka 공통 이벤트 토픽"]
-
-    KAFKA --> RAW["Raw Consumer"]
-    RAW --> RAWDB[("ticketguard_raw<br/>원문·전송 메타데이터")]
-
-    KAFKA --> INGEST["Spark ingest"]
-    KAFKA --> FLOW["Spark flow / 사전 모니터링"]
-    KAFKA --> NETWORK["Spark network"]
-
-    RAWDB -. "원본 대조" .-> FLOW
-    RAWDB -. "원본 대조" .-> NETWORK
-
-    INGEST --> SYSTEMDB[("ticketguard<br/>정제·격리·이상·요청 지표")]
-    NETWORK --> SYSTEMDB
-    FLOW --> FLOWDB[("ticketguard_flow<br/>사용자 흐름·사전 관측")]
-
-    FLOW --> STATEDB[("ticketguard_pipeline_state<br/>배치·청크·복구 상태")]
-    NETWORK --> STATEDB
-
-    SYSTEMDB --> ADMIN["관리자 대시보드"]
-    FLOWDB --> ADMIN
-
-    QA["독립 QA · 정답표 기반 채점"] --> USER
-    QA --> QADB[("ticketguard_qa<br/>시험·정답표·봇 버전")]
-    QADB -. "승인된 종료 시험의 선택적 전달" .-> ARCHIVE[("ticketguard_qa_archive")]
-```
+[확대·편집용 SVG](docs/images/01-system.svg)
 
 ### 처리 흐름
 
@@ -191,14 +163,9 @@ MongoDB를 사용하면서도 업무 상태, 원본, 분석 결과, 복구 상�
 
 주요 참조 관계는 다음과 같습니다. 화살표는 데이터를 복사하는 방향이 아니라 **참조하는 컬렉션에서 참조 대상으로 향하는 관계**입니다.
 
-```mermaid
-flowchart LR
-    STATE["state"] -. "예매 시도 참조 · 조건부" .-> ATTEMPT["booking_attempts"]
-    ATTEMPT -->|"확정 예매 참조"| BOOKING["bookings"]
-    PURCHASE["purchases"] -->|"예매 참조"| BOOKING
-    PURCHASE -. "예매 시도 참조 · 조건부" .-> ATTEMPT
-    ADJUSTMENT["adjustments"] -->|"구매 기록 참조"| PURCHASE
-```
+![TicketGuard 웹 업무 컬렉션 관계](docs/images/03-web-relations.png)
+
+[확대·편집용 SVG](docs/images/03-web-relations.svg)
 
 ### 회원가입과 계정 저장
 
@@ -286,45 +253,9 @@ QA는 정상 사용자와 봇처럼 행동하는 가상 사용자를 생성하�
 
 ### QA 검증 구조
 
-```mermaid
-flowchart TB
-    START["시험 실행<br/>QA 대시보드 · CLI · CI"]
+![TicketGuard QA 검증 흐름](docs/images/02-qa-workflow.png)
 
-    subgraph QA_AREA["QA 영역"]
-        PLAN["시험 항목 · 실행 조건 설정"]
-        GENERATOR["가상 사용자 생성<br/>정상 사용자 · 매크로 · 미학습 유형"]
-        TRUTH[("QA 정답표<br/>사용자별 정상·봇 구분")]
-        COLLECT["시험 결과 수집"]
-        SCORE["정답표와 결과 비교<br/>탐지율 · 오탐률 · 누락 · 지연 · 복구"]
-        REPORT["합격 기준 판정<br/>실행 결과 · 보고서"]
-        QADB[("ticketguard_qa")]
-    end
-
-    subgraph SYSTEM_AREA["시험 대상 시스템"]
-        WEB["예매 웹<br/>대기열 · 보안문자 · 좌석 · 확정"]
-        KAFKA["Kafka 이벤트 토픽"]
-        PIPELINE["원본 보관 · 정제 · 집계 · 판정"]
-        DATA[("시스템·원본 DB<br/>처리 결과")]
-    end
-
-    START --> PLAN
-    PLAN --> GENERATOR
-    GENERATOR --> TRUTH
-    GENERATOR -->|"시험 계정으로 요청"| WEB
-
-    WEB --> KAFKA
-    KAFKA --> PIPELINE
-    PIPELINE --> DATA
-
-    WEB -->|"업무 응답"| COLLECT
-    KAFKA -->|"QA 전용 소비 그룹으로 조회"| COLLECT
-    DATA -->|"읽기 전용 조회"| COLLECT
-
-    TRUTH --> SCORE
-    COLLECT --> SCORE
-    SCORE --> REPORT
-    REPORT --> QADB
-```
+[확대·편집용 SVG](docs/images/02-qa-workflow.svg)
 
 정답표는 QA 영역에만 보관하고 시스템 판정 입력으로 전달하지 않습니다. 시스템의 업무 응답, Kafka 이벤트, DB 처리 결과를 확인한 뒤 정답표와 비교합니다.
 
@@ -340,15 +271,9 @@ flowchart TB
 | `bot_types` | 사용자 정의 봇 유형 보관 |
 | `archive_exports` | 승인된 종료 시험의 내보내기 기록 |
 
-```mermaid
-flowchart LR
-    ANSWER["answer_keys"] -. "시험 참조" .-> RUN["runs"]
-    RUN -. "봇 버전 참조" .-> VERSION["bot_versions"]
-    VERSION -. "봇 유형 참조 · 조건부" .-> TYPE["bot_types"]
+![TicketGuard QA 컬렉션 관계](docs/images/04-qa-relations.png)
 
-    EXPORT["archive_exports"] -->|"시험 참조"| RUN
-    EXPORT -. "봇 버전 참조 · 조건부" .-> VERSION
-```
+[확대·편집용 SVG](docs/images/04-qa-relations.svg)
 
 화살표는 컬렉션 간 참조 관계를 나타냅니다. 정답표와 봇 버전은 시험의 재현 및 채점에 사용하며, 시스템 판정 데이터와 분리합니다.
 
@@ -445,6 +370,8 @@ Ticket_Guard/
 ```
 
 ## 8. 상세 문서
+
+[도식 이미지 적용 전 README 보관본](docs/readme-before-diagrams.md)
 
 | 주제 | 문서 |
 |---|---|

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<defs><marker id="a0" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#2563EB"/></marker><marker id="a1" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#8952FF"/></marker><marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#00A99D"/></marker><marker id="a3" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#F08300"/></marker><marker id="a4" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#667C98"/></marker></defs>
+<rect width="1600" height="1000" fill="#F4F6FF"/>
+<rect width="1600" height="135" fill="#2563EB"/>
+<text x="44" y="61" fill="white" font-size="34" font-weight="700" font-family="Malgun Gothic, sans-serif">TicketGuard · QA 검증 흐름</text>
+<text x="46" y="103" fill="#D9E5FF" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험 트래픽과 정답표를 분리하고, 실제 결과를 비교·채점</text>
+<text x="48" y="181" fill="#667C98" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">실선: 시험·결과 흐름     점선: QA 내부 정답·설정 참조</text>
+<rect x="48" y="245" width="320" height="142" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M60,246 H356 Q367,246 367,257 V294 H49 V257 Q49,246 60,246" fill="#F08300" fill-opacity="0.07"/>
+<text x="66" y="278" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">시험 실행</text>
+<text x="66" y="325" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">대시보드 · CLI · CI</text>
+<text x="66" y="354" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험 항목 · 실행 조건 선택</text>
+<rect x="432" y="245" width="320" height="142" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M444,246 H740 Q751,246 751,257 V294 H433 V257 Q433,246 444,246" fill="#F08300" fill-opacity="0.07"/>
+<text x="450" y="278" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">가상 사용자 생성</text>
+<text x="450" y="325" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">정상 · 매크로 · 미학습 유형</text>
+<text x="450" y="354" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험 계정으로 예매 요청</text>
+<rect x="816" y="245" width="320" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M828,246 H1124 Q1135,246 1135,257 V294 H817 V257 Q817,246 828,246" fill="#2563EB" fill-opacity="0.07"/>
+<text x="834" y="278" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">시험 대상 시스템</text>
+<text x="834" y="325" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">예매 웹 → Kafka</text>
+<text x="834" y="354" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">원본 보관 · 분석 처리</text>
+<rect x="1200" y="245" width="352" height="142" rx="12" fill="white" stroke="#00A99D" stroke-width="2"/>
+<path d="M1212,246 H1540 Q1551,246 1551,257 V294 H1201 V257 Q1201,246 1212,246" fill="#00A99D" fill-opacity="0.07"/>
+<text x="1218" y="278" fill="#00A99D" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">결과 수집</text>
+<text x="1218" y="325" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">업무 응답 · 이벤트 도착</text>
+<text x="1218" y="354" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">DB 결과 읽기 전용 조회</text>
+<polyline points="368,316 432,316" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)"/>
+<polyline points="752,316 816,316" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)"/>
+<polyline points="1136,316 1200,316" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<rect x="432" y="590" width="320" height="172" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M444,591 H740 Q751,591 751,602 V639 H433 V602 Q433,591 444,591" fill="#F08300" fill-opacity="0.07"/>
+<text x="450" y="623" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">answer_keys</text>
+<text x="450" y="670" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">사용자별 정상·봇 정답</text>
+<text x="450" y="699" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">QA DB에만 보관</text>
+<text x="450" y="746" fill="#F08300" font-size="16" font-weight="700" font-family="Malgun Gothic, sans-serif">시스템 판정 입력으로 전달하지 않음</text>
+<rect x="816" y="590" width="320" height="172" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M828,591 H1124 Q1135,591 1135,602 V639 H817 V602 Q817,591 828,591" fill="#F08300" fill-opacity="0.07"/>
+<text x="834" y="623" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">비교 · 채점</text>
+<text x="834" y="670" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">탐지율 · 오탐률</text>
+<text x="834" y="699" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">누락 · 중복 · 지연 · 복구</text>
+<rect x="1200" y="590" width="352" height="172" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M1212,591 H1540 Q1551,591 1551,602 V639 H1201 V602 Q1201,591 1212,591" fill="#F08300" fill-opacity="0.07"/>
+<text x="1218" y="623" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">실행 결과 · 보고서</text>
+<text x="1218" y="670" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">합격 기준에 따라 판정</text>
+<text x="1218" y="699" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">runs · QA 전용 MongoDB</text>
+<polyline points="592,387 592,590" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)" stroke-dasharray="8 6"/>
+<text x="610" y="490" fill="#F08300" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">정답 분리 보관</text>
+<polyline points="752,676 816,676" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)" stroke-dasharray="8 6"/>
+<polyline points="1376,387 1376,486 976,486 976,590" fill="none" stroke="#00A99D" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a2)"/>
+<text x="1060" y="465" fill="#00A99D" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">관측한 실제 결과</text>
+<polyline points="1136,676 1200,676" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)"/>
+<rect x="44" y="837" width="1512" height="50" rx="8" fill="#E8EEFF"/>
+<text x="62" y="869" fill="#475B77" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">실제 시험: 판정 연결·DB 읽기 권한 등 조건 충족 후 수행  |  모의 시험: 가짜 시스템으로 절차·채점 검증</text>
+<text x="48" y="948" fill="#667C98" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">QA 정답표·봇 설정은 QA 영역에 보관하며, 시스템·원본 DB의 검증 조회는 읽기 전용입니다.</text>
+</svg>

@@ -1,0 +1,476 @@
+> 도식 이미지 적용 전 README 보관본입니다. 현재 프로젝트 소개는 [메인 README](../README.md)를 확인하세요.
+
+# TicketGuard · 티켓가드
+
+> 공연 예매 행동을 수집하고, 실시간 데이터 처리와 독립된 QA로 매크로 의심 신호를 검증하는 프로젝트입니다.
+
+TicketGuard는 공연 예매 웹에서 발생하는 사용자 행동과 서버 처리 기록을 **Kafka → Spark → MongoDB**로 연결하는 데이터 처리 프로젝트입니다.
+
+예매자는 공연 조회부터 대기열, 보안문자, 좌석 선택, 예매 확정까지의 흐름을 이용합니다. 운영자는 관리자 대시보드에서 사용자 흐름과 이상 신호를 확인하고, QA는 별도로 생성한 정답표와 실제 시스템 결과를 비교하여 기능과 데이터 처리 품질을 검증합니다.
+
+프로젝트의 목표는 예매가 끝난 뒤의 사후 분석을 넘어, **구매 과정에서 의심 행동을 파악하고 판단 근거를 남기는 것**입니다.
+
+---
+
+## 1. 프로젝트 배경
+
+공연 예매 오픈 시점에는 짧은 시간에 많은 요청이 집중됩니다. 자동화 프로그램의 반복 요청과 빠른 좌석 선점은 일반 사용자의 예매 기회를 줄일 수 있습니다.
+
+로그인이나 보안문자 통과 여부만으로는 구매 과정에서 발생하는 모든 자동화 행동을 구분하기 어렵습니다. TicketGuard는 예매 단계에서 발생한 기록을 연결하여 다음을 확인하고자 합니다.
+
+- 사용자가 어떤 순서와 속도로 예매를 진행했는가
+- 짧은 간격의 반복 요청과 대기열 재진입이 발생하는가
+- 보안문자 시도와 좌석 선택에서 의심 신호가 관측되는가
+- 이벤트가 발행·저장·처리되는 과정에서 누락이나 중복이 발생하는가
+- 분석 결과와 화면에 표시된 지표의 근거를 추적할 수 있는가
+- 같은 조건으로 시험했을 때 결과를 재현할 수 있는가
+
+시험 트래픽은 프로젝트에서 직접 구현한 예매 웹을 대상으로 생성합니다.
+
+## 2. 주요 기능
+
+### 공연 예매 웹
+
+- 회원가입·로그인·로그아웃
+- 공연 목록 및 상세 정보 조회
+- 공연 검색과 장르 선택
+- 예매 대기열
+- 보안문자 확인
+- 좌석 및 인원 선택
+- 예매 확정 및 예매 내역 조회
+- 사용자 행동과 서버 업무 이벤트 생성
+
+### 이벤트 수집과 전달
+
+- 화면 진입·이탈, 검색, 공연·회차·좌석 선택 등 행동 수집
+- 브라우저에서 접근 가능한 요청·응답, 성능, 오류 정보 관측
+- 서버 업무 결과와 HTTP 요청·응답 관측
+- 민감값 정제 및 관측 한계 기록
+- Kafka 이벤트 발행과 전달 상태 확인
+- 재시도 및 큰 관측 이벤트의 청크 전송
+
+### 데이터 처리
+
+- Kafka 원문과 전송 위치를 MongoDB에 보관
+- 이벤트 형식 검증과 정규화
+- 정상 정제 결과와 격리 데이터 분리
+- 사용자 흐름과 요청 관측 지표 집계
+- 이상 신호 및 사전 모니터링 결과 처리
+- 일부 분석 경로의 원본 대조와 결과 검증
+- 배치·청크·재처리 상태 저장
+- 결과 버전과 공개 포인터를 이용한 조회 구조
+
+### 관리자 대시보드
+
+- 사용자 흐름과 공개 지표 조회
+- 요청 관측 및 이상 신호 확인
+- 사전 탐지 항목과 근거 조회
+- 정제 이벤트와 격리 데이터 조회
+- 미공개·조회 실패·오래된 자료 등의 상태 구분
+- 실제 데이터 화면과 고정 시안 화면 분리
+
+### 자동화 QA
+
+- 정상 사용자 및 매크로 봇 트래픽 생성
+- 정답표 기반 판정 결과 비교
+- 예매 흐름과 이벤트 계약 검증
+- 이벤트 전달·원본 적재 검증
+- 탐지 정확도·회귀·집계 지연 시험
+- 좌석 동시성·부하·장애 복구 시험
+- 시험 실행 결과와 보고서 관리
+- 승인된 종료 시험 결과의 선택적 내보내기
+
+## 3. 시스템 구조
+
+```mermaid
+flowchart LR
+    USER["예매 사용자 / QA 시험 트래픽"] --> WEB["Django 예매 웹"]
+
+    WEB --> WEBDB[("ticketguard_web_state<br/>계정·예매·세션·정책")]
+    WEB --> KAFKA["Kafka 공통 이벤트 토픽"]
+
+    KAFKA --> RAW["Raw Consumer"]
+    RAW --> RAWDB[("ticketguard_raw<br/>원문·전송 메타데이터")]
+
+    KAFKA --> INGEST["Spark ingest"]
+    KAFKA --> FLOW["Spark flow / 사전 모니터링"]
+    KAFKA --> NETWORK["Spark network"]
+
+    RAWDB -. "원본 대조" .-> FLOW
+    RAWDB -. "원본 대조" .-> NETWORK
+
+    INGEST --> SYSTEMDB[("ticketguard<br/>정제·격리·이상·요청 지표")]
+    NETWORK --> SYSTEMDB
+    FLOW --> FLOWDB[("ticketguard_flow<br/>사용자 흐름·사전 관측")]
+
+    FLOW --> STATEDB[("ticketguard_pipeline_state<br/>배치·청크·복구 상태")]
+    NETWORK --> STATEDB
+
+    SYSTEMDB --> ADMIN["관리자 대시보드"]
+    FLOWDB --> ADMIN
+
+    QA["독립 QA · 정답표 기반 채점"] --> USER
+    QA --> QADB[("ticketguard_qa<br/>시험·정답표·봇 버전")]
+    QADB -. "승인된 종료 시험의 선택적 전달" .-> ARCHIVE[("ticketguard_qa_archive")]
+```
+
+### 처리 흐름
+
+1. **입력**  
+   예매 업무 요청, 브라우저 행동, 서버 관측에서 이벤트를 생성합니다.
+
+2. **전달**  
+   이벤트를 공통 Kafka 토픽 `ticketguard.events.v1`로 발행합니다.
+
+3. **보관 및 분석**  
+   Raw Consumer와 Spark 작업이 Kafka를 각각 소비하여 원본 보관과 정제·집계를 수행합니다.
+
+4. **결과 공개**  
+   결과 계열별 저장·검증 계약에 따라 공개 문서 또는 포인터를 갱신합니다.
+
+5. **조회 및 검증**  
+   관리자 대시보드는 공개 결과를 조회하고, QA는 시험 결과를 정답표 및 합격 기준과 비교합니다.
+
+Raw Consumer와 Spark 작업은 병렬로 동작합니다. 모든 분석이 원본 DB를 거쳐 순차적으로 실행되는 구조는 아닙니다. `flow`와 `network`는 Kafka 입력을 저장된 원본과 대조합니다.
+
+**Kafka 전달 확인, 원본 저장 완료, 분석 처리 완료, 지표 공개, 브라우저 조회는 서로 다른 단계입니다.** `delivered` 응답만으로 DB 저장과 전체 분석 완료를 판단하지 않습니다.
+
+## 4. 기술 스택
+
+| 구분 | 기술 |
+|---|---|
+| 예매 웹 | Python, Django, HTML, CSS, JavaScript |
+| 관리자·QA 웹 | FastAPI, Uvicorn, Jinja2 |
+| 메시지 전달 | Apache Kafka, confluent-kafka |
+| 스트리밍 처리 | Apache Spark, PySpark Structured Streaming |
+| 데이터 저장 | MongoDB, PyMongo |
+| 자동화·검증 | pytest, HTTPX, Playwright, Locust |
+| 실행 환경 | Docker, Docker Compose |
+| 게이트웨이 | Nginx |
+| 지속적 통합 | GitHub Actions |
+
+현재 기술 구성은 저장소의 구현과 실행 설정을 기준으로 합니다.
+
+## 5. 데이터 저장 구조
+
+MongoDB를 사용하면서도 업무 상태, 원본, 분석 결과, 복구 상태, QA 자료를 용도에 따라 분리합니다.
+
+컬렉션 관계도는 **기본 논리 DB 6개와 선택적 QA 전달 DB 1개**를 구분합니다. 관계도에 표시된 항목은 컬렉션과 조회 뷰, 초기화 잔존 항목을 포함하며, 실제 배포 환경에서 모두 생성되었다는 의미는 아닙니다.
+
+### DB별 역할
+
+| 논리 DB | 역할 | 주요 컬렉션·뷰 |
+|---|---|---|
+| `ticketguard_web_state` | 예매 업무·정책·로그인 상태 | `booking_attempts`, `bookings`, `purchases`, `booking_inventory`, `state`, `outbox`, `web_sessions` |
+| `ticketguard_pipeline_state` | 분석 작업의 처리·복구 상태 | `chunks`, `chunk_ingestion`, `assembled`, `events`, `batches`, `meta`, `guards` |
+| `ticketguard_raw` | Kafka 원문과 전송 메타데이터 | `behavior_events`, `booking_events`, `auth_events`, `http_events`, `raw_chunks`, `unclassified_events` |
+| `ticketguard` | 정제·격리·이상 탐지·요청 분석 | `clean_events`, `quarantine_events`, `anomaly_events`, `anomaly_public`, `network_public`, `event_metrics` |
+| `ticketguard_flow` | 사용자 흐름·사전 모니터링 | `flow_versions`, `flow_series`, `flow_public`, `early_observations`, `early_detections`, `early_actions` |
+| `ticketguard_qa` | 시험 실행·정답표·봇 정의 | `runs`, `answer_keys`, `bot_versions`, `bot_types`, `archive_exports` |
+| `ticketguard_qa_archive` | 승인된 종료 시험 결과의 선택적 전달 | `QA_ARCHIVE_RUNS`, `QA_ARCHIVE_FINDINGS`, `QA_ARCHIVE_ANSWER_KEYS`, `QA_ARCHIVE_BOT_VERSIONS` |
+
+실제 DB 이름과 연결 대상은 환경 설정에 따릅니다. 논리 DB의 개수와 MongoDB 서버의 개수는 다릅니다.
+
+### 웹 업무 상태
+
+웹 업무 데이터는 예매 시도, 확정 내역, 구매 기록, 재고, 정책 상태를 나누어 저장합니다.
+
+| 컬렉션 | 역할 |
+|---|---|
+| `booking_runtime` | 예매 대기열 상태 관리 |
+| `booking_attempts` | 사용자별 최신 예매 시도 보관 |
+| `bookings` | 확정된 예매 내역 보관 |
+| `purchases` | 예매 시도별 구매 내역 보관 |
+| `adjustments` | 취소·환불 수량 조정 기록 |
+| `booking_inventory` | 회차별 잔여 좌석·수량 관리 |
+| `booking_opens` | 사용자별 예매 오픈 시각 보관 |
+| `booking_scenarios` | 사용자별 예매 시나리오 보관 |
+| `state` | 입장 제한과 정책 상태 관리 |
+| `outbox` | 전달 전 업무 이벤트 보관 |
+| `transaction_guard` | 업무 트랜잭션 직렬화 |
+| `browser_guards` | 브라우저 로그인 실패 관리 |
+| `web_sessions` | 웹 로그인 세션 보관 |
+
+주요 참조 관계는 다음과 같습니다. 화살표는 데이터를 복사하는 방향이 아니라 **참조하는 컬렉션에서 참조 대상으로 향하는 관계**입니다.
+
+```mermaid
+flowchart LR
+    STATE["state"] -. "예매 시도 참조 · 조건부" .-> ATTEMPT["booking_attempts"]
+    ATTEMPT -->|"확정 예매 참조"| BOOKING["bookings"]
+    PURCHASE["purchases"] -->|"예매 참조"| BOOKING
+    PURCHASE -. "예매 시도 참조 · 조건부" .-> ATTEMPT
+    ADJUSTMENT["adjustments"] -->|"구매 기록 참조"| PURCHASE
+```
+
+### 회원가입과 계정 저장
+
+회원가입 구현은 관계도에 표시된 웹 업무 컬렉션 외에 `accounts`와 `account_events`를 사용합니다.
+
+- 신규 계정은 웹 상태 DB의 `accounts`에 저장합니다.
+- 비밀번호는 Django 비밀번호 해시로 저장합니다.
+- 일반 회원가입으로 관리자 권한을 지정할 수 없습니다.
+- 가입 요청·성공·실패는 `account_events`에 기록합니다.
+- 계정 생성과 가입 성공 이벤트 저장은 같은 MongoDB 트랜잭션에서 처리합니다.
+- Kafka 전달은 기존 Outbox를 사용합니다.
+- 개발용·관리자·QA 계정 이름은 일반 가입에서 예약합니다.
+
+기존 원본 라우팅 버전에서 신규 `signup_*` 이벤트는 `unclassified_events`로 보관됩니다. 계정 저장과 원본 이벤트 분류는 별도 역할입니다.
+
+### 원본 이벤트 보관
+
+원본 DB는 이벤트 종류에 따라 보관 위치를 구분합니다.
+
+| 컬렉션 | 역할 |
+|---|---|
+| `behavior_events` | 브라우저 행동 원본 |
+| `booking_events` | 예매 업무 이벤트 원본 |
+| `auth_events` | 인증 이벤트 원본 |
+| `http_events` | HTTP 요청·응답 원본 |
+| `performance_events` | 브라우저 성능 원본 |
+| `browser_errors` | 브라우저 오류 원본 |
+| `collector_events` | 수집기 이벤트 원본 |
+| `raw_chunks` | 분할 전송 원본 |
+| `unclassified_events` | 기존 분류에 포함되지 않은 원본 |
+
+관계도의 `raw_events`는 초기화에 남아 있는 기존 항목으로 구분합니다. 모든 원본 이벤트가 해당 컬렉션 하나에 저장되는 것으로 해석하지 않습니다.
+
+### 분석 결과와 공개 조회
+
+분석 결과는 계산된 데이터와 화면에 공개할 버전을 구분하여 저장합니다.
+
+| 영역 | 저장·공개 구조 |
+|---|---|
+| 사용자 흐름 | `flow_versions`, `flow_series`에 결과 저장 → `flow_public`이 공개 버전 지정 |
+| 요청 분석 | `network_versions`, `network_series`에 결과 저장 → `network_public`이 공개 버전 지정 |
+| 사전 모니터링 | `early_versions`에 결과 저장 → `early_public`이 공개 버전 지정 |
+| 이상 탐지 | `anomaly_observations`, `anomaly_events`에 관측·근거 저장 → `anomaly_public`에 공개 집계 저장 |
+
+사용자 흐름과 요청 분석에는 조회 뷰를 사용합니다.
+
+- `flow_read_current`: 공개된 사용자 흐름 결과 조회
+- `flow_read_series`: 공개된 사용자 흐름 시계열 조회
+- `network_read_current`: 공개된 요청 분석 결과 조회
+- `network_read_series`: 공개된 요청 분석 시계열 조회
+
+`flow_health`, `network` 관련 공개 상태, `anomaly_health`, `early_health` 등의 상태 정보는 결과 계열별 조회 계약에 따라 해석합니다. 각 계열의 공개 방식과 오류 처리 방식은 동일하지 않습니다.
+
+### 파이프라인 복구 상태
+
+| 컬렉션 | 역할 |
+|---|---|
+| `chunks` | 분할 수신한 청크 보관 |
+| `chunk_ingestion` | 청크의 최초 수신 시각 기록 |
+| `assembled` | 재조립 완료와 중복 관리 |
+| `events` | 재계산에 필요한 최소 이벤트 보관 |
+| `batches` | 배치 완료와 처리 범위 관리 |
+| `meta` | 복구 위치와 처리 이력 보관 |
+| `guards` | 처리 범위별 트랜잭션 직렬화 |
+
+MongoDB 복구 상태와 Spark 체크포인트는 역할이 다르며 함께 관리합니다.
+
+### 데이터 처리 원칙
+
+- 원본 레코드는 Kafka 출처·토픽·파티션·오프셋을 기준으로 식별합니다.
+- 같은 전송 위치의 재처리 중복을 방지합니다.
+- 형식이 잘못된 이벤트는 정상 정제 결과와 구분하여 격리합니다.
+- 공개 결과는 계열별 버전·범위·상태 계약에 따라 조회합니다.
+- 조회 실패나 미공개 결과를 샘플 숫자 또는 관측된 0으로 대체하지 않습니다.
+- 비밀번호·토큰 등 민감값은 관측 데이터에서 정제합니다.
+- QA 정답표와 봇 설정은 QA 영역에 보관하며 시스템 판정 입력으로 전달하지 않습니다.
+- QA의 시스템·원본 DB 검증에는 읽기 전용 연결을 사용합니다.
+- 컬렉션 관계도의 연결선은 논리 참조이며 MongoDB가 강제하는 외래 키 제약을 의미하지 않습니다.
+
+## 6. 자동화 QA
+
+QA는 정상 사용자와 봇처럼 행동하는 가상 사용자를 생성하고, 별도로 관리한 정답표와 시스템 결과를 비교합니다.
+
+모의 환경에서는 시험 절차와 채점기가 올바르게 동작하는지 확인하고, 실제 시험 환경에서는 예매 웹과 이벤트 처리 결과를 검증합니다.
+
+### QA 검증 구조
+
+```mermaid
+flowchart TB
+    START["시험 실행<br/>QA 대시보드 · CLI · CI"]
+
+    subgraph QA_AREA["QA 영역"]
+        PLAN["시험 항목 · 실행 조건 설정"]
+        GENERATOR["가상 사용자 생성<br/>정상 사용자 · 매크로 · 미학습 유형"]
+        TRUTH[("QA 정답표<br/>사용자별 정상·봇 구분")]
+        COLLECT["시험 결과 수집"]
+        SCORE["정답표와 결과 비교<br/>탐지율 · 오탐률 · 누락 · 지연 · 복구"]
+        REPORT["합격 기준 판정<br/>실행 결과 · 보고서"]
+        QADB[("ticketguard_qa")]
+    end
+
+    subgraph SYSTEM_AREA["시험 대상 시스템"]
+        WEB["예매 웹<br/>대기열 · 보안문자 · 좌석 · 확정"]
+        KAFKA["Kafka 이벤트 토픽"]
+        PIPELINE["원본 보관 · 정제 · 집계 · 판정"]
+        DATA[("시스템·원본 DB<br/>처리 결과")]
+    end
+
+    START --> PLAN
+    PLAN --> GENERATOR
+    GENERATOR --> TRUTH
+    GENERATOR -->|"시험 계정으로 요청"| WEB
+
+    WEB --> KAFKA
+    KAFKA --> PIPELINE
+    PIPELINE --> DATA
+
+    WEB -->|"업무 응답"| COLLECT
+    KAFKA -->|"QA 전용 소비 그룹으로 조회"| COLLECT
+    DATA -->|"읽기 전용 조회"| COLLECT
+
+    TRUTH --> SCORE
+    COLLECT --> SCORE
+    SCORE --> REPORT
+    REPORT --> QADB
+```
+
+정답표는 QA 영역에만 보관하고 시스템 판정 입력으로 전달하지 않습니다. 시스템의 업무 응답, Kafka 이벤트, DB 처리 결과를 확인한 뒤 정답표와 비교합니다.
+
+위 도식은 실제 환경 시험의 검증 구조입니다. 각 시험은 필요한 판정 연결, DB 읽기 권한, 컨테이너 제어 등의 조건을 갖춘 뒤 수행하며, 모의 환경에서는 가짜 시스템을 대상으로 시험 절차와 채점 동작을 먼저 확인합니다.
+
+### QA 데이터 구조
+
+| 컬렉션 | 역할 |
+|---|---|
+| `runs` | 시험 실행 설정과 결과 보관 |
+| `answer_keys` | 시험·Suite별 정답표 보관 |
+| `bot_versions` | 봇 유형별 행동 버전 보관 |
+| `bot_types` | 사용자 정의 봇 유형 보관 |
+| `archive_exports` | 승인된 종료 시험의 내보내기 기록 |
+
+```mermaid
+flowchart LR
+    ANSWER["answer_keys"] -. "시험 참조" .-> RUN["runs"]
+    RUN -. "봇 버전 참조" .-> VERSION["bot_versions"]
+    VERSION -. "봇 유형 참조 · 조건부" .-> TYPE["bot_types"]
+
+    EXPORT["archive_exports"] -->|"시험 참조"| RUN
+    EXPORT -. "봇 버전 참조 · 조건부" .-> VERSION
+```
+
+화살표는 컬렉션 간 참조 관계를 나타냅니다. 정답표와 봇 버전은 시험의 재현 및 채점에 사용하며, 시스템 판정 데이터와 분리합니다.
+
+### 종료 시험 결과의 선택적 전달
+
+승인된 종료 시험은 별도의 `ticketguard_qa_archive` 영역으로 전달할 수 있습니다.
+
+| 전달 컬렉션 | 내용 |
+|---|---|
+| `QA_ARCHIVE_RUNS` | 승인된 종료 시험 요약 |
+| `QA_ARCHIVE_FINDINGS` | 종료 시험의 판정 항목 |
+| `QA_ARCHIVE_ANSWER_KEYS` | 승인된 정답표 전달 구조 |
+| `QA_ARCHIVE_BOT_VERSIONS` | 승인된 봇 버전 전달 구조 |
+
+이 영역은 선택 사항이며 기본 시험 실행 DB와 구분합니다. 정답표와 봇 버전은 명시적으로 선택한 경우에만 전달하며, 전달 DB를 시스템 판정 코드의 입력으로 사용하지 않습니다.
+
+### 시험 구성
+
+QA 구현 보고서 기준으로 다음 체계를 구성했습니다.
+
+| 항목 | 구성 |
+|---|---|
+| 행동 유형 | 정상 1종·매크로 7종·미학습 4종, 총 12종 |
+| 시험 항목 | 12개 |
+| 합격 기준 | 7개 |
+| 실행 방식 | QA 대시보드, CLI, CI |
+
+시험 항목은 다음과 같습니다.
+
+| 시험 항목 | 확인 내용 |
+|---|---|
+| QA 자체 점검 | 채점 로직과 지표 계산의 정확성 |
+| 이벤트 계약 | 이벤트 형식과 필드 계약 |
+| 예매 흐름 | 동시 예매 상황에서의 단계 진행과 결과 |
+| 이벤트 전달 | Kafka 도착 여부와 누락·중복 |
+| 원본 적재 | 원문 보관과 분류·저장 정합성 |
+| 판정 정확도 | 정답표 대비 탐지율과 오탐률 |
+| 탐지 회귀 | 규칙 변경 전후 탐지 성능 변화 |
+| Gold 반영 지연 | 이벤트 발생부터 집계 반영까지의 시간 |
+| 좌석 동시성 | 같은 좌석의 동시 확정과 초과 판매 |
+| 부하 | 오픈 시점 요청 집중과 제한 동작 |
+| 장애 복구 | 처리 중단 후 복구 시간과 데이터 정합성 |
+| 장애 중 탐지 | 중단 중 유입된 세션의 복구 후 판정 |
+
+### 목표 기준
+
+아래 값은 QA의 합격 목표이며 실제 시스템이 모두 달성했다는 의미는 아닙니다.
+
+| 지표 | 목표 |
+|---|---:|
+| 매크로 탐지율 | 90% 이상 |
+| 브라우저 자동화 탐지율 | 70% 이상 |
+| 정상 사용자 오탐률 | 1% 이하 |
+| 판정 응답 시간 | p95 3초 이하 |
+| 판정 실패율 | 0% |
+| 집계 반영 시간 | p95 10초 이하 |
+| 장애 복구 시간 | 60초 이내 |
+
+### 보고서에 기록된 검증 결과
+
+| 구분 | 결과 |
+|---|---|
+| 모의 환경 | 시험 항목 12개 합격 |
+| 실제 시험 환경 | 이벤트 계약·예매 흐름·이벤트 전달 3개 항목 합격 |
+| 시험 인원 | 가상 사용자 50명: 정상 35명, 봇 E·F·G 각 5명 |
+| 예매 결과 | 확정 42명·선호 좌석 소진에 따른 매진 8명·오류 0건 |
+| 좌석 클릭 이벤트 | 441건 중 441건 도착 |
+| 서버 이벤트 | 799건의 누락·중복 0건 |
+| 이벤트 전달 지연 | 해당 실행의 p95 36ms |
+| 판매 정합성 | 해당 실행에서 같은 좌석 중복 판매 0건 |
+
+위 수치는 QA 구현 보고서에 기록된 특정 시험 환경과 실행 결과입니다.
+
+- 모의 환경 결과는 QA 절차와 채점 검증 결과이며 실제 탐지 성능과 구분합니다.
+- 전달 지연 36ms는 판정 응답 시간이나 전체 분석 지연을 의미하지 않습니다.
+- 실제 판정 정확도·탐지 회귀·집계 지연·장애 복구 등은 보고서상 연결 조건을 갖춘 뒤 수행할 항목입니다.
+- 해당 실제 예매 시험에서 봇 15명도 차단 없이 예매했으므로, 예매·이벤트 검증 결과를 매크로 차단 성공률로 해석하지 않습니다.
+
+## 7. 프로젝트 구조
+
+```text
+Ticket_Guard/
+├── web/                 예매·회원가입·이벤트 수집·웹 상태 저장
+├── templates/           예매 화면 템플릿
+├── static/              스타일·화면 동작·브라우저 관측
+├── raw_consumer/        Kafka 원본 보관
+├── pipeline/            Spark 정제·집계·검증·복구 상태
+├── admin_dashboard/     관리자 결과 조회 앱
+├── qa/                  자동화 시험·정답표·QA 대시보드
+├── mongo/               MongoDB 초기화·권한·로컬 실행 설정
+├── gateway/             관리자 인증 연결·Nginx 라우팅
+├── docs/                아키텍처·연결·검증 문서
+└── .github/workflows/   CI 설정
+```
+
+## 8. 상세 문서
+
+| 주제 | 문서 |
+|---|---|
+| 웹 상태·회원가입·MongoDB 설정 | [MongoDB 상태 저장 설정](../docs/mongodb-state.md) |
+| 예매 입장·대기열 | [예매 입장 제어](../docs/booking-admission.md) |
+| Kafka 연결 | [Kafka 문서](../docs/kafka.md) |
+| MongoDB 연결 | [MongoDB 문서](../docs/mongodb.md) |
+| 분석 파이프라인 | [파이프라인 안내](../pipeline/README.md) |
+| 사용자 흐름 | [구현·실행 안내](../pipeline/docs/user_flow.md) |
+| 결과 저장·조회 계약 | [데이터 계약](../pipeline/docs/contract.md) |
+| 사전 모니터링 | [조기 탐지 관측 계약](../pipeline/docs/early_monitor.md) |
+| 관리자 대시보드 | [관리자 앱 안내](../admin_dashboard/README.md) |
+| 실제 공개 지표 연결 | [연결 기록](../admin_dashboard/LIVE_CONNECTION.md) |
+| 자동화 QA | [QA 안내](../qa/README.md) |
+
+상세 문서는 작성 시점의 구현·검증 범위를 함께 확인합니다. 과거 실행 명령과 현재 상태 저장 구성이 다르면 현재 Compose와 MongoDB 상태 저장 설정을 우선 확인합니다.
+
+## 9. 현재 제한과 후속 과제
+
+- 실제 판정과 QA를 연결하여 탐지율·오탐률을 같은 조건으로 재측정합니다.
+- 원본·집계 DB의 읽기 권한과 실제 조회 대상·뷰 구성을 확인하여 종단 검증을 수행합니다.
+- 장애·재처리·체크포인트 복구와 부분 저장 실패를 실제 연결 환경에서 검증합니다.
+- 관리자 화면은 접속·조회·새로고침 시 데이터를 읽습니다. 분석 스트리밍과 브라우저 자동 갱신은 구분합니다.
+- 현재 `flow`·`network` 실행은 로컬 Spark 조건을 전제로 하며 분산 클러스터 성능으로 일반화하지 않습니다.
+- 추가 본인 확인·기획사 리포트·모델 학습 등 초기 기획의 확장 기능은 연결·검증 상태를 확인하면서 진행합니다.
+
+현재 자료만으로 실제 서비스의 성능 우위, 전체 구간의 무손실·정확히 한 번 처리, 운영 배포 완료를 선언하지 않습니다.

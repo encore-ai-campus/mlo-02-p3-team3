@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120">
+<defs><marker id="a0" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#2563EB"/></marker><marker id="a1" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#8952FF"/></marker><marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#00A99D"/></marker><marker id="a3" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#F08300"/></marker><marker id="a4" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#667C98"/></marker></defs>
+<rect width="1600" height="1120" fill="#F4F6FF"/>
+<rect width="1600" height="135" fill="#2563EB"/>
+<text x="44" y="61" fill="white" font-size="34" font-weight="700" font-family="Malgun Gothic, sans-serif">TicketGuard · 전체 시스템 구조</text>
+<text x="46" y="103" fill="#D9E5FF" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">입력 → Kafka 발행 → 병렬 처리 → MongoDB 저장·공개</text>
+<text x="48" y="179" fill="#2563EB" font-size="19" font-weight="700" font-family="Malgun Gothic, sans-serif">01  웹 입력·상태</text>
+<text x="420" y="179" fill="#2563EB" font-size="19" font-weight="700" font-family="Malgun Gothic, sans-serif">02  이벤트 전달</text>
+<text x="760" y="179" fill="#2563EB" font-size="19" font-weight="700" font-family="Malgun Gothic, sans-serif">03  병렬 소비·처리</text>
+<text x="1160" y="179" fill="#2563EB" font-size="19" font-weight="700" font-family="Malgun Gothic, sans-serif">04  결과 저장·조회</text>
+<rect x="48" y="236" width="300" height="180" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M60,237 H336 Q347,237 347,248 V285 H49 V248 Q49,237 60,237" fill="#2563EB" fill-opacity="0.07"/>
+<text x="66" y="269" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">Django 예매 웹</text>
+<text x="66" y="316" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">로그인 · 대기열 · 보안문자</text>
+<text x="66" y="345" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">좌석 선택 · 예매 확정</text>
+<text x="66" y="374" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">브라우저·서버 이벤트 생성</text>
+<rect x="48" y="596" width="300" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M60,597 H336 Q347,597 347,608 V645 H49 V608 Q49,597 60,597" fill="#2563EB" fill-opacity="0.07"/>
+<text x="66" y="629" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard_web_state</text>
+<text x="66" y="676" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">회원 계정 · 예매 · 재고</text>
+<text x="66" y="705" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">로그인 세션 · 정책 · Outbox</text>
+<polyline points="198,416 198,596" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<text x="214" y="506" fill="#2563EB" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">업무 상태 저장</text>
+<rect x="420" y="236" width="240" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M432,237 H648 Q659,237 659,248 V285 H421 V248 Q421,237 432,237" fill="#2563EB" fill-opacity="0.07"/>
+<text x="438" y="269" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">Kafka</text>
+<text x="438" y="316" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">공통 이벤트 토픽</text>
+<text x="438" y="345" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">ticketguard.events.v1</text>
+<polyline points="348,305 420,305" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<rect x="760" y="220" width="320" height="142" rx="12" fill="white" stroke="#00A99D" stroke-width="2"/>
+<path d="M772,221 H1068 Q1079,221 1079,232 V269 H761 V232 Q761,221 772,221" fill="#00A99D" fill-opacity="0.07"/>
+<text x="778" y="253" fill="#00A99D" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">Raw Consumer</text>
+<text x="778" y="300" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">원문 · 전송 위치 보관</text>
+<text x="778" y="329" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">저장 확인 후 offset commit</text>
+<rect x="1160" y="220" width="390" height="142" rx="12" fill="white" stroke="#00A99D" stroke-width="2"/>
+<path d="M1172,221 H1538 Q1549,221 1549,232 V269 H1161 V232 Q1161,221 1172,221" fill="#00A99D" fill-opacity="0.07"/>
+<text x="1178" y="253" fill="#00A99D" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard_raw</text>
+<text x="1178" y="300" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">종류별 원본 이벤트</text>
+<text x="1178" y="329" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">행동 · 예매 · 인증 · HTTP</text>
+<polyline points="660,305 706,305 706,291 760,291" fill="none" stroke="#00A99D" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a2)"/>
+<polyline points="1080,291 1160,291" fill="none" stroke="#00A99D" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a2)"/>
+<rect x="760" y="420" width="320" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M772,421 H1068 Q1079,421 1079,432 V469 H761 V432 Q761,421 772,421" fill="#2563EB" fill-opacity="0.07"/>
+<text x="778" y="453" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">Spark ingest</text>
+<text x="778" y="500" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">이벤트 정규화 · 격리</text>
+<text x="778" y="529" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">이상 관측 · 이벤트 집계</text>
+<rect x="1160" y="420" width="390" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M1172,421 H1538 Q1549,421 1549,432 V469 H1161 V432 Q1161,421 1172,421" fill="#2563EB" fill-opacity="0.07"/>
+<text x="1178" y="453" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard</text>
+<text x="1178" y="500" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">clean / quarantine</text>
+<text x="1178" y="529" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">anomaly / event_metrics</text>
+<polyline points="660,305 706,305 706,491 760,491" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<polyline points="1080,491 1160,491" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<rect x="760" y="620" width="320" height="142" rx="12" fill="white" stroke="#8952FF" stroke-width="2"/>
+<path d="M772,621 H1068 Q1079,621 1079,632 V669 H761 V632 Q761,621 772,621" fill="#8952FF" fill-opacity="0.07"/>
+<text x="778" y="653" fill="#8952FF" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">Spark flow</text>
+<text x="778" y="700" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">원본 대조 · 흐름 계산</text>
+<text x="778" y="729" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">사전 모니터링 결과 검증</text>
+<rect x="1160" y="620" width="390" height="142" rx="12" fill="white" stroke="#8952FF" stroke-width="2"/>
+<path d="M1172,621 H1538 Q1549,621 1549,632 V669 H1161 V632 Q1161,621 1172,621" fill="#8952FF" fill-opacity="0.07"/>
+<text x="1178" y="653" fill="#8952FF" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard_flow</text>
+<text x="1178" y="700" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">flow / early 결과</text>
+<text x="1178" y="729" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">버전 · 공개 포인터 · 상태</text>
+<polyline points="660,305 706,305 706,691 760,691" fill="none" stroke="#8952FF" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a1)"/>
+<polyline points="1080,691 1160,691" fill="none" stroke="#8952FF" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a1)"/>
+<rect x="760" y="820" width="320" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M772,821 H1068 Q1079,821 1079,832 V869 H761 V832 Q761,821 772,821" fill="#2563EB" fill-opacity="0.07"/>
+<text x="778" y="853" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">Spark network</text>
+<text x="778" y="900" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">원본 대조 · 요청 집계</text>
+<text x="778" y="929" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">요청·오류·지연 관측</text>
+<rect x="1160" y="820" width="390" height="142" rx="12" fill="white" stroke="#2563EB" stroke-width="2"/>
+<path d="M1172,821 H1538 Q1549,821 1549,832 V869 H1161 V832 Q1161,821 1172,821" fill="#2563EB" fill-opacity="0.07"/>
+<text x="1178" y="853" fill="#2563EB" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard</text>
+<text x="1178" y="900" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">network 결과</text>
+<text x="1178" y="929" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">공개 버전 · 조회 뷰</text>
+<polyline points="660,305 706,305 706,891 760,891" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<polyline points="1080,891 1160,891" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a0)"/>
+<text x="48" y="808" fill="#2563EB" font-size="23" font-weight="700" font-family="Malgun Gothic, sans-serif">관리자 대시보드</text>
+<text x="48" y="845" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">공개된 분석 결과를 읽어 표시</text>
+<text x="48" y="886" fill="#667C98" font-size="23" font-weight="700" font-family="Malgun Gothic, sans-serif">복구 상태 DB</text>
+<text x="48" y="923" fill="#667C98" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">ticketguard_pipeline_state</text>
+<text x="48" y="954" fill="#475B77" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">flow · network의 처리·복구 상태</text>
+<rect x="44" y="1010" width="1512" height="50" rx="8" fill="#E8EEFF"/>
+<text x="62" y="1042" fill="#475B77" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">원본 대조: flow·network만 적용  |  Kafka 전달·DB 저장·결과 공개·화면 조회는 서로 다른 완료 단계</text>
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1110" viewBox="0 0 1600 1110">
+<defs><marker id="a0" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#2563EB"/></marker><marker id="a1" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#8952FF"/></marker><marker id="a2" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#00A99D"/></marker><marker id="a3" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#F08300"/></marker><marker id="a4" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#667C98"/></marker></defs>
+<rect width="1600" height="1110" fill="#F4F6FF"/>
+<rect width="1600" height="135" fill="#2563EB"/>
+<text x="44" y="61" fill="white" font-size="34" font-weight="700" font-family="Malgun Gothic, sans-serif">TicketGuard · QA 컬렉션 관계</text>
+<text x="46" y="103" fill="#D9E5FF" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험 실행·정답표·봇 버전을 분리하고 종료 시험의 전달 이력을 관리</text>
+<text x="48" y="182" fill="#F08300" font-size="23" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard_qa</text>
+<rect x="60" y="270" width="400" height="142" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M72,271 H448 Q459,271 459,282 V319 H61 V282 Q61,271 72,271" fill="#F08300" fill-opacity="0.07"/>
+<text x="78" y="303" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">answer_keys</text>
+<text x="78" y="350" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험·Suite별 정답표</text>
+<text x="78" y="379" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험 실행 참조</text>
+<rect x="600" y="270" width="400" height="142" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M612,271 H988 Q999,271 999,282 V319 H601 V282 Q601,271 612,271" fill="#F08300" fill-opacity="0.07"/>
+<text x="618" y="303" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">runs</text>
+<text x="618" y="350" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험 실행 설정과 결과</text>
+<text x="618" y="379" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">사용한 봇 버전 참조</text>
+<rect x="1140" y="270" width="400" height="142" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M1152,271 H1528 Q1539,271 1539,282 V319 H1141 V282 Q1141,271 1152,271" fill="#F08300" fill-opacity="0.07"/>
+<text x="1158" y="303" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">bot_versions</text>
+<text x="1158" y="350" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">봇 유형별 행동 버전</text>
+<text x="1158" y="379" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">사용자 정의 유형 조건부 참조</text>
+<rect x="600" y="565" width="400" height="142" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M612,566 H988 Q999,566 999,577 V614 H601 V577 Q601,566 612,566" fill="#F08300" fill-opacity="0.07"/>
+<text x="618" y="598" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">archive_exports</text>
+<text x="618" y="645" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">승인된 종료 시험 내보내기</text>
+<text x="618" y="674" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">시험·봇 버전 참조</text>
+<rect x="1140" y="565" width="400" height="142" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M1152,566 H1528 Q1539,566 1539,577 V614 H1141 V577 Q1141,566 1152,566" fill="#F08300" fill-opacity="0.07"/>
+<text x="1158" y="598" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">bot_types</text>
+<text x="1158" y="645" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">사용자 정의 봇 유형</text>
+<text x="1158" y="674" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">유형 정의 보관</text>
+<polyline points="460,341 600,341" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)" stroke-dasharray="8 6"/>
+<polyline points="1000,341 1140,341" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)" stroke-dasharray="8 6"/>
+<polyline points="1340,412 1340,565" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)" stroke-dasharray="8 6"/>
+<text x="1355" y="493" fill="#F08300" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">유형 · 조건부</text>
+<polyline points="800,565 800,412" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)"/>
+<text x="817" y="494" fill="#F08300" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">시험 참조</text>
+<polyline points="1000,636 1070,636 1070,466 1190,466 1190,412" fill="none" stroke="#F08300" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#a3)" stroke-dasharray="8 6"/>
+<text x="1000" y="738" fill="#F08300" font-size="17" font-weight="400" font-family="Malgun Gothic, sans-serif">봇 버전 참조 · 조건부</text>
+<rect x="60" y="832" width="1480" height="160" rx="12" fill="white" stroke="#F08300" stroke-width="2"/>
+<path d="M72,833 H1528 Q1539,833 1539,844 V881 H61 V844 Q61,833 72,833" fill="#F08300" fill-opacity="0.07"/>
+<text x="78" y="865" fill="#F08300" font-size="22" font-weight="700" font-family="Malgun Gothic, sans-serif">ticketguard_qa_archive  ·  선택적 전달 영역</text>
+<text x="78" y="912" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">QA_ARCHIVE_RUNS  ·  QA_ARCHIVE_FINDINGS</text>
+<text x="78" y="941" fill="#475B77" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">QA_ARCHIVE_ANSWER_KEYS  ·  QA_ARCHIVE_BOT_VERSIONS</text>
+<text x="78" y="976" fill="#F08300" font-size="16" font-weight="700" font-family="Malgun Gothic, sans-serif">승인된 종료 시험만 전달 · 정답표·봇 버전은 명시적으로 선택</text>
+<text x="62" y="1060" fill="#667C98" font-size="18" font-weight="400" font-family="Malgun Gothic, sans-serif">연결선은 컬렉션 참조입니다. 전달 DB는 시스템 판정 코드의 입력으로 사용하지 않습니다.</text>
+</svg>
