@@ -1,448 +1,350 @@
-<!--
-[홍석환] TicketGuard 프로젝트 안내
-브랜치별 담당 영역과 실행 방법, 서비스·DB 연결 정보를 안내한다.
--->
-# Ticket Guard · 티켓가드
+# TicketGuard · 티켓가드
 
-> 브랜치별 문서는 아래 표에서 시작합니다. 이 README는 프로젝트 전체 소개이며 `main`에서만 수정합니다.
+> 공연 예매 행동을 수집하고, 실시간 데이터 처리와 독립된 QA로 매크로 의심 신호를 검증하는 프로젝트입니다.
 
-| 브랜치 | 담당 영역 | README |
-|---|---|---|
-| `develop` | 예매 웹 (Django) | `web/README.md` · 작성 예정 |
-| `db` | 이벤트 파이프라인 · DB (Kafka · Spark · MongoDB) | `pipeline/README.md` · 작성 예정 |
-| `qa` | 자동화 QA · QA 대시보드 | [qa/README.md](qa/README.md) |
+TicketGuard는 공연 예매 웹에서 발생하는 사용자 행동과 서버 처리 기록을 **Kafka → Spark → MongoDB**로 연결하는 데이터 처리 프로젝트입니다.
 
-공연 예매 웹과 실시간 이벤트 처리 파이프라인 프로젝트. **현재 구현 범위: Django 웹 + 실제 Kafka 이벤트 발행 + MongoDB 실행 환경**입니다. Spark 원본 적재 코드와 비적재 점검을 추가했습니다. 실제 적재·복구 실험은 미실행입니다. [Spark 문서](docs/spark.md)를 확인하세요. 자세한 구성·스키마·실행 명령은 [Kafka 연결 문서](docs/kafka.md)를 확인하세요.
+예매자는 공연 조회부터 대기열, 보안문자, 좌석 선택, 예매 확정까지의 흐름을 이용합니다. 운영자는 관리자 대시보드에서 사용자 흐름과 이상 신호를 확인하고, QA는 별도로 생성한 정답표와 실제 시스템 결과를 비교하여 기능과 데이터 처리 품질을 검증합니다.
 
-## 실행
+프로젝트의 목표는 예매가 끝난 뒤의 사후 분석을 넘어, **구매 과정에서 의심 행동을 파악하고 판단 근거를 남기는 것**입니다.
 
-먼저 [MongoDB 상태 저장 설정](docs/mongodb-state.md)에 따라 .env에 웹/분석 전용 MongoDB 연결과 계정을 추가합니다.
+---
 
-Docker Desktop에서 Linux containers를 실행한 뒤 PowerShell에서:
+## 1. 프로젝트 배경
+
+공연 예매 오픈 시점에는 짧은 시간에 많은 요청이 집중됩니다. 자동화 프로그램의 반복 요청과 빠른 좌석 선점은 일반 사용자의 예매 기회를 줄일 수 있습니다.
+
+로그인이나 보안문자 통과 여부만으로는 구매 과정에서 발생하는 모든 자동화 행동을 구분하기 어렵습니다. TicketGuard는 예매 단계에서 발생한 기록을 연결하여 다음을 확인하고자 합니다.
+
+- 사용자가 어떤 순서와 속도로 예매를 진행했는가
+- 짧은 간격의 반복 요청과 대기열 재진입이 발생하는가
+- 보안문자 시도와 좌석 선택에서 의심 신호가 관측되는가
+- 이벤트가 발행·저장·처리되는 과정에서 누락이나 중복이 발생하는가
+- 분석 결과와 화면에 표시된 지표의 근거를 추적할 수 있는가
+- 같은 조건으로 시험했을 때 결과를 재현할 수 있는가
+
+시험 트래픽은 프로젝트에서 직접 구현한 예매 웹을 대상으로 생성합니다.
+
+## 2. 주요 기능
+
+### 공연 예매 웹
+
+- 회원가입·로그인·로그아웃
+- 공연 목록 및 상세 정보 조회
+- 공연 검색과 장르 선택
+- 예매 대기열
+- 보안문자 확인
+- 좌석 및 인원 선택
+- 예매 확정 및 예매 내역 조회
+- 사용자 행동과 서버 업무 이벤트 생성
+
+### 이벤트 수집과 전달
+
+- 화면 진입·이탈, 검색, 공연·회차·좌석 선택 등 행동 수집
+- 브라우저에서 접근 가능한 요청·응답, 성능, 오류 정보 관측
+- 서버 업무 결과와 HTTP 요청·응답 관측
+- 민감값 정제 및 관측 한계 기록
+- Kafka 이벤트 발행과 전달 상태 확인
+- 재시도 및 큰 관측 이벤트의 청크 전송
+
+### 데이터 처리
+
+- Kafka 원문과 전송 위치를 MongoDB에 보관
+- 이벤트 형식 검증과 정규화
+- 정상 정제 결과와 격리 데이터 분리
+- 사용자 흐름과 요청 관측 지표 집계
+- 이상 신호 및 사전 모니터링 결과 처리
+- 일부 분석 경로의 원본 대조와 결과 검증
+- 배치·청크·재처리 상태 저장
+
+### 관리자 대시보드
+
+- 사용자 흐름과 공개 지표 조회
+- 요청 관측 및 이상 신호 확인
+- 사전 탐지 항목과 근거 조회
+- 정제 이벤트와 격리 데이터 조회
+- 미공개·조회 실패·오래된 자료 등의 상태 구분
+- 실제 데이터 화면과 고정 시안 화면 분리
+
+### 자동화 QA
+
+- 정상 사용자 및 매크로 봇 트래픽 생성
+- 정답표 기반 판정 결과 비교
+- 예매 흐름과 이벤트 계약 검증
+- 이벤트 전달·원본 적재 검증
+- 탐지 정확도·회귀·집계 지연 시험
+- 좌석 동시성·부하·장애 복구 시험
+- 시험 실행 결과와 보고서 관리
+
+## 3. 시스템 구조
+
+```mermaid
+flowchart LR
+    USER["예매 사용자 / QA 시험 트래픽"] --> WEB["Django 예매 웹"]
+
+    WEB --> WEBDB[("웹 상태 MongoDB")]
+    WEB --> KAFKA["Kafka 공통 이벤트 토픽"]
+
+    KAFKA --> RAW["Raw Consumer"]
+    RAW --> RAWDB[("원본 MongoDB")]
+
+    KAFKA --> INGEST["Spark ingest"]
+    KAFKA --> FLOW["Spark flow / 사전 모니터링"]
+    KAFKA --> NETWORK["Spark network"]
+
+    RAWDB -. "원본 대조" .-> FLOW
+    RAWDB -. "원본 대조" .-> NETWORK
+
+    INGEST --> SYSTEMDB[("정제·격리·이상·요청 지표")]
+    NETWORK --> SYSTEMDB
+    FLOW --> FLOWDB[("사용자 흐름·사전 관측 지표")]
+
+    FLOW --> STATEDB[("파이프라인 복구 상태")]
+    NETWORK --> STATEDB
+
+    SYSTEMDB --> ADMIN["관리자 대시보드"]
+    FLOWDB --> ADMIN
+
+    QA["독립 QA · 정답표 기반 채점"] --> USER
+    QA --> QADB[("QA 전용 MongoDB")]
+```
+
+### 처리 흐름
+
+1. **입력**  
+   예매 업무 요청, 브라우저 행동, 서버 관측에서 이벤트를 생성합니다.
+
+2. **전달**  
+   이벤트를 공통 Kafka 토픽 `ticketguard.events.v1`로 발행합니다.
+
+3. **보관 및 분석**  
+   Raw Consumer와 Spark 작업이 Kafka를 각각 소비하여 원본 보관과 정제·집계를 수행합니다.
+
+4. **결과 공개**  
+   결과 계열별 저장·검증 계약에 따라 공개 문서 또는 포인터를 갱신합니다.
+
+5. **조회**  
+   관리자 대시보드는 공개 결과를 읽어 화면에 표시합니다.
+
+Raw Consumer와 Spark 작업은 병렬로 동작합니다. 모든 분석이 원본 DB를 거쳐 순차적으로 실행되는 구조는 아닙니다. `flow`와 `network`는 Kafka 입력을 저장된 원본과 대조합니다.
+
+**Kafka 전달 확인, 원본 저장 완료, 분석 처리 완료, 지표 공개, 브라우저 조회는 서로 다른 단계입니다.** `delivered` 응답만으로 DB 저장과 전체 분석 완료를 판단하지 않습니다.
+
+## 4. 기술 스택
+
+| 구분 | 기술 |
+|---|---|
+| 예매 웹 | Python, Django, HTML, CSS, JavaScript |
+| 관리자·QA 웹 | FastAPI, Uvicorn, Jinja2 |
+| 메시지 전달 | Apache Kafka, confluent-kafka |
+| 스트리밍 처리 | Apache Spark, PySpark Structured Streaming |
+| 데이터 저장 | MongoDB, PyMongo |
+| 자동화·검증 | pytest, HTTPX, Playwright, Locust |
+| 실행 환경 | Docker, Docker Compose |
+| 게이트웨이 | Nginx |
+| 지속적 통합 | GitHub Actions |
+
+현재 기술 구성은 저장소의 구현과 실행 설정을 기준으로 합니다.
+
+## 5. 데이터 저장 구조
+
+MongoDB를 사용하면서도 업무 상태, 원본, 분석 결과, 복구 상태, QA 자료를 용도에 따라 분리합니다.
+
+| 기본 논리 DB | 역할 |
+|---|---|
+| `ticketguard_web_state` | 회원 계정, 가입 감사 기록, 로그인 세션, 예매·재고·정책·Outbox |
+| `ticketguard_pipeline_state` | 분석 배치·청크·재처리 복구 상태 |
+| `ticketguard_raw` | Kafka 원문과 전송 메타데이터 보관 |
+| `ticketguard` | 정제·격리·이상 관측·요청 집계 결과 |
+| `ticketguard_flow` | 사용자 흐름·사전 모니터링 결과와 공개 지표 |
+| `ticketguard_qa` | 시험 실행, 정답표, 봇 프로필, 채점 결과 |
+
+실제 DB 이름과 연결 대상은 환경 설정에 따릅니다. 논리 DB의 개수와 MongoDB 서버의 개수는 다릅니다.
+
+### 회원가입과 계정 저장
+
+- 신규 계정은 웹 상태 DB의 `accounts`에 저장합니다.
+- 비밀번호는 Django 비밀번호 해시로 저장합니다.
+- 일반 회원가입으로 관리자 권한을 지정할 수 없습니다.
+- 가입 요청·성공·실패는 `account_events`에 기록합니다.
+- 계정 생성과 가입 성공 이벤트 저장은 같은 MongoDB 트랜잭션에서 처리합니다.
+- Kafka 전달은 기존 Outbox를 사용합니다.
+- 개발용·관리자·QA 계정 이름은 일반 가입에서 예약합니다.
+
+기존 원본 라우팅 버전에서 신규 `signup_*` 이벤트는 `unclassified_events`로 보관됩니다. 계정 저장과 원본 이벤트 분류는 별도 역할입니다.
+
+### 데이터 처리 원칙
+
+- 원본 레코드는 Kafka 출처·토픽·파티션·오프셋을 기준으로 식별합니다.
+- 같은 전송 위치의 재처리 중복을 방지합니다.
+- 형식이 잘못된 이벤트는 정상 정제 결과와 구분하여 격리합니다.
+- 공개 결과는 계열별 버전·범위·상태 계약에 따라 조회합니다.
+- 조회 실패나 미공개 결과를 샘플 숫자 또는 관측된 0으로 대체하지 않습니다.
+- 비밀번호·토큰 등 민감값은 관측 데이터에서 정제합니다.
+- QA 정답표와 봇 설정은 QA 영역에 보관하며 시스템 판정 입력으로 전달하지 않습니다.
+- QA의 시스템·원본 DB 검증에는 읽기 전용 연결을 사용합니다.
+
+## 6. 자동화 QA
+
+QA는 정상 사용자와 봇처럼 행동하는 가상 사용자를 생성하고, 별도로 관리한 정답표와 시스템 결과를 비교합니다.
+
+모의 환경에서는 시험 절차와 채점기가 올바르게 동작하는지 확인하고, 실제 시험 환경에서는 예매 웹과 이벤트 처리 결과를 검증합니다.
+
+### 시험 구성
+
+QA 구현 보고서 기준으로 다음 체계를 구성했습니다.
+
+| 항목 | 구성 |
+|---|---|
+| 행동 유형 | 정상 1종·매크로 7종·미학습 4종, 총 12종 |
+| 시험 항목 | 12개 |
+| 합격 기준 | 7개 |
+| 실행 방식 | QA 대시보드, CLI, CI |
+
+시험 항목은 다음과 같습니다.
+
+| 시험 항목 | 확인 내용 |
+|---|---|
+| QA 자체 점검 | 채점 로직과 지표 계산의 정확성 |
+| 이벤트 계약 | 이벤트 형식과 필드 계약 |
+| 예매 흐름 | 동시 예매 상황에서의 단계 진행과 결과 |
+| 이벤트 전달 | Kafka 도착 여부와 누락·중복 |
+| 원본 적재 | 원문 보관과 분류·저장 정합성 |
+| 판정 정확도 | 정답표 대비 탐지율과 오탐률 |
+| 탐지 회귀 | 규칙 변경 전후 탐지 성능 변화 |
+| Gold 반영 지연 | 이벤트 발생부터 집계 반영까지의 시간 |
+| 좌석 동시성 | 같은 좌석의 동시 확정과 초과 판매 |
+| 부하 | 오픈 시점 요청 집중과 제한 동작 |
+| 장애 복구 | 처리 중단 후 복구 시간과 데이터 정합성 |
+| 장애 중 탐지 | 중단 중 유입된 세션의 복구 후 판정 |
+
+### 목표 기준
+
+아래 값은 QA의 합격 목표이며 실제 시스템이 모두 달성했다는 의미는 아닙니다.
+
+| 지표 | 목표 |
+|---|---:|
+| 매크로 탐지율 | 90% 이상 |
+| 브라우저 자동화 탐지율 | 70% 이상 |
+| 정상 사용자 오탐률 | 1% 이하 |
+| 판정 응답 시간 | p95 3초 이하 |
+| 판정 실패율 | 0% |
+| 집계 반영 시간 | p95 10초 이하 |
+| 장애 복구 시간 | 60초 이내 |
+
+### 보고서에 기록된 검증 결과
+
+| 구분 | 결과 |
+|---|---|
+| 모의 환경 | 시험 항목 12개 합격 |
+| 실제 시험 환경 | 이벤트 계약·예매 흐름·이벤트 전달 3개 항목 합격 |
+| 시험 인원 | 가상 사용자 50명: 정상 35명, 봇 E·F·G 각 5명 |
+| 예매 결과 | 확정 42명·선호 좌석 소진에 따른 매진 8명·오류 0건 |
+| 좌석 클릭 이벤트 | 441건 중 441건 도착 |
+| 서버 이벤트 | 799건의 누락·중복 0건 |
+| 이벤트 전달 지연 | 해당 실행의 p95 36ms |
+| 판매 정합성 | 해당 실행에서 같은 좌석 중복 판매 0건 |
+
+위 수치는 QA 구현 보고서에 기록된 특정 시험 환경과 실행 결과입니다.
+
+- 모의 환경 결과는 QA 절차와 채점 검증 결과이며 실제 탐지 성능과 구분합니다.
+- 전달 지연 36ms는 판정 응답 시간이나 전체 분석 지연을 의미하지 않습니다.
+- 실제 판정 정확도·탐지 회귀·집계 지연·장애 복구 등은 보고서상 연결 조건을 갖춘 뒤 수행할 항목입니다.
+- 해당 실제 예매 시험에서 봇 15명도 차단 없이 예매했으므로, 예매·이벤트 검증 결과를 매크로 차단 성공률로 해석하지 않습니다.
+
+## 7. 로컬 실행
+
+### 준비 사항
+
+- Git
+- Docker Desktop
+- Linux containers 실행 환경
+- 저장소 루트의 `.env`
+- 웹·파이프라인 상태 저장용 MongoDB 계정과 연결 설정
+
+MongoDB 상태 저장 설정은 [상태 저장 안내](docs/mongodb-state.md)를 참고합니다.
+
+기존 `.env`와 DB 계정은 유지하고 필요한 설정을 추가합니다. 비밀번호와 실제 접속 URI는 Git에 올리지 않습니다.
+
+### 기본 예매 웹 실행
+
+저장소 루트에서 실행합니다.
 
 ```powershell
-cd C:\workspace\Ticket_Guard
+docker compose --env-file .env -f compose.yml -f compose.state.yml config --quiet
+
 docker compose --env-file .env -f compose.yml -f compose.state.yml up -d --build
-docker compose --env-file .env -f compose.yml -f compose.state.yml ps
+
+docker compose --env-file .env -f compose.yml -f compose.state.yml ps -a
 ```
 
-접속: http://localhost:8000
-
-| 개발용 계정 | 비밀번호 |
-|---|---|
-| ticketguard | ticketguard-demo |
-| guest | ticketguard-demo |
-
-두 계정은 예매 내역과 입장 권한이 분리되고 공연 재고는 공유됩니다. 실제 계정 체계가 아닌 개발용 로그인입니다. 외부에 배포하지 마세요.
-
-신규 환경에서 `.env`가 없을 때만 `.env.example`을 `.env`로 복사하고 수정한 뒤 `docker compose --env-file .env -f compose.yml -f compose.state.yml up -d`로 재생성합니다. `.env`는 Git에서 제외됩니다. `.env.example`의 CHANGE_ME는 반드시 별도 비밀번호로 바꾸고 URI에도 반영합니다. 기존 팀 환경변수는 유지합니다.
-
-```powershell
-Copy-Item .env.example .env
-docker compose --env-file .env -f compose.yml -f compose.state.yml up -d
-docker compose --env-file .env logs --tail 50 web
-```
-
-`compose.yml`은 기존 파일명 그대로 유지했습니다. Python **3.13.15**, Django **5.2.18**, Pillow **12.0.0**을 사용합니다. 호스트에 Python을 설치할 필요가 없습니다. 기본 Compose는 Kafka와 토픽 초기화를 함께 실행합니다. MongoDB는 별도 mongo 프로필로 추가했습니다. 같은 이름을 쓰는 이전 폴더 자원과 충돌하지 않도록 MongoDB 명령에는 `-p ticket-guard-workspace-db`를 반드시 사용합니다. 실행·초기화·검증은 [MongoDB 문서](docs/mongodb.md)를 따릅니다. Spark는 별도 `ticket-guard-workspace-pipeline` 프로젝트와 spark 프로필로 빌드·점검합니다. 실제 적재 명령은 [Spark 문서](docs/spark.md)를 먼저 확인하세요. 기존 `.env`를 복사 명령으로 덮어쓰지 마세요.
-
-### QA 대시보드 실행 (관리자 · Live Run)
-
-관리자 로그인과 QA 대시보드(`/qa/`)는 팀 입구 `compose.gateway.yml`과 QA DB `qa/compose.qa-db.yml`을 함께 붙여 실행할 때만 켜집니다. `docker compose --env-file .env -f compose.yml -f compose.state.yml up -d`만으로 띄우면 관리자 로그인이 꺼져 있어 "아이디 또는 비밀번호를 확인해 주세요"가 표시됩니다.
-
-모든 명령은 저장소 맨 위 폴더(PowerShell)에서 실행. `-f` 4개를 붙여야 관리자 로그인 · QA 대시보드(`/qa/`)가 켜짐.
-
-**1. 처음 실행 · PC를 다시 켠 뒤**
-
-```powershell
-# 시스템 MongoDB 먼저 실행: 관리자 앱이 사용하는 외부 네트워크 생성
-docker compose --env-file .env -p ticket-guard-workspace-db -f compose.yml -f mongo/compose.local.yml --profile mongo up -d --no-deps --wait mongo
-
-# 기본 웹·QA·관리자 대시보드 실행
-docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml up -d --build --wait
-
-# 실행 상태 확인
-docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml ps -a
-```
-
-**2. 최신화 (git pull 뒤)**
-
-| 증상 | 원인 | 확인 명령 |
-|---|---|---|
-| 관리자 로그인 실패 | `.env` 관리자 두 줄 누락 · `compose.gateway.yml` 누락 | `docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml exec web printenv DEMO_ADMIN_USERNAME` · 출력 없으면 누락 |
-| 로그인 후 `/qa/` 502 | QA 대시보드 미기동 · `qa/compose.qa-db.yml` 누락 · `QA_MONGO_*` 누락 | `docker compose --env-file .env -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml logs --tail 50 qa-dashboard qa-mongo` |
-| `/qa/` 접속 시 로그인 화면으로 이동 | 고객 계정 또는 로그아웃 상태 · 관리자 전용이라 정상 차단 | 관리자 계정으로 다시 로그인 |
-QA 대시보드는 코드를 이미지 안에 복사해서 실행 → pull 뒤 다시 빌드해야 반영.
-
-```powershell
-# QA 코드만 바뀌었을 때 · 예매 웹 데이터 유지
-docker compose -f compose.yml -f compose.state.yml -f compose.gateway.yml -f qa/compose.qa-db.yml -f qa/compose.qa-live.yml up -d --build --no-deps qa-dashboard
-# 예매 웹 등 다른 코드도 바뀌었을 때 · 1단계 전체 실행 명령 다시 실행
-```
-
-**3. 접속**
-
-http://localhost:8000/login/ → 관리자 계정 로그인 → QA 대시보드로 이동.
-
-- `.env`가 바뀌면 1단계 전체 실행 명령을 다시 실행
-- `down -v` 사용 금지 · QA DB 기록까지 삭제
-
-## 사용 흐름
-
-로그인 → 공연 검색/필터 → 공연 상세 → 대기열(약 12초) → 보안문자 → 지정석/자유석 선택 → 예매 확정 → 완료/내역.
-
-- 지정석: A~J × 1~10, 최대 4석. 자유석: 잔여 수량 이내 1~4명.
-- 선택만으로 재고를 점유하지 않습니다. 확정 요청에서 서버가 가격·재고·입장 권한을 확인합니다.
-- 보안문자는 PNG로 표시하고 MongoDB에는 시도별 HMAC 검증값만 저장합니다. 오답 5회 시 대기열부터 다시 진행합니다.
-- 현재 탭을 유지하며 새로고침할 수 있습니다. 상단 메뉴로 나가면 취소 확인을 제공합니다. 닫힌 탭은 마지막 heartbeat부터 60초 후 권한이 만료됩니다.
-- 다른 탭에서 같은 계정으로 예매를 시작하면 기존 탭을 유지합니다. BroadcastChannel로 복제 탭 식별자 중복을 줄이지만 실제 다중 브라우저의 세션·접속 제어는 후속 서버 설계 대상입니다.
-- 확정 결과 재요청은 같은 예매를 반환합니다. 미확정의 오래된 sequence는 거부합니다.
-- UI의 시안 날짜는 표시용 고정 데이터이며 기본적으로 예매 가능합니다. 서버의 개발용 오픈 시간 설정으로 시작 전 상태를 재현합니다.
-- 실제 결제, 소셜 로그인, 회원가입, 추가 인증, 봇 판정은 없습니다.
-
-## 개발용 시나리오
-
-페이지 아래 **개발 시나리오**를 펼치세요. 기본적으로 DEBUG에서만 활성화됩니다. `SHOW_SCENARIOS=0`이면 패널·조작 API·로그 조회가 비활성화됩니다.
-
-| 화면 | 재현 방법 |
-|---|---|
-| 공연 상세 | 30초 뒤 오픈 / 지금 오픈 |
-| 대기열 | 즉시 입장, 연결 끊김, 입장 만료 |
-| 보안문자 | 오답 4회 상태 후 틀린 답 제출 → 5회 실패; 검증 통신 오류는 다음 제출을 클라이언트에서 실패시켜 오답 불변 확인 |
-| 지정석 | 좌석 선택 → 선택 좌석 먼저 판매 → 확정 → 재선택 안내 |
-| 자유석 | 2명 이상 선택 → 잔여 수량 1명 → 확정 → 인원 변경 안내 |
-| 선택 공통 | 동일 확정 요청 2회 / 오래된 요청 재현 |
-| 공통 | 내 이벤트 확인: 현재 로그인 사용자 이벤트만 최근 100개, 화면에는 마지막 15개 |
-
-재고 시나리오는 다른 사용자와 공유되는 모의 재고를 변경합니다. '오래된 요청'은 높은 sequence를 잘못된 선택으로 먼저 접수한 뒤 같은 sequence를 재전송하여 거부를 확인합니다. 실제 네트워크 응답 역전은 자동 테스트/후속 통합 테스트로 구분해야 합니다.
-
-## 테스트
-
-```powershell
-docker compose --env-file .env exec -e EVENT_PUBLISHER=mock -T web python manage.py check
-docker compose --env-file .env exec -e EVENT_PUBLISHER=mock -T web python manage.py test web -v 2
-```
-
-시스템 검사와 핵심 회귀 테스트를 제공합니다. DB가 없는 `SimpleTestCase`로 서비스 원자성·중복 요청·오답·접근 제한·CSRF·이벤트 검증을 확인합니다. GitHub Actions도 같은 Python 이미지로 실행합니다. 워크플로 파일을 만들었지만 원격 실행은 push 후 확인해야 합니다.
-
-개발 서버는 `--noreload` 단일 프로세스입니다. Python 코드 변경 후:
-
-```powershell
-docker compose --env-file .env restart web
-```
-
-CSS·JS·템플릿 변경은 브라우저 새로고침으로 확인합니다. 의존성 변경 시 `docker compose --env-file .env -f compose.yml -f compose.state.yml up -d --build`로 재빌드합니다.
-
-## 모의 저장소의 한계와 초기화
-
-- 예매·회차별 재고·대기열·보안문자 검증값·오픈시간과 로그인 보호 상태는 MongoDB에 저장합니다. 업무 이벤트는 같은 트랜잭션의 outbox를 통해 Kafka로 전달합니다.
-- **서버 재시작 시 위 데이터가 전부 초기화됩니다.** 완료된 예매도 재시작 뒤에는 조회할 수 없습니다.
-- 초기화 명령은 `docker compose --env-file .env restart web`입니다. 디스크나 실제 DB의 데이터를 삭제하지 않습니다.
-- 프로세스 내부 RLock으로 확정을 직렬화합니다. 여러 프로세스·컨테이너 사이 정합성을 보장하지 않습니다.
-- 개발 계정은 환경변수로 검증하고 로그인 세션은 MongoDB에 저장합니다. 웹 정책·구매 원장은 MongoDB에 저장합니다. 설정과 실행 방법은 docs/mongodb-state.md를 참고하세요.
-- 세션 쿠키에는 임의 식별자만 넣고 DB에는 식별자 해시와 세션 내용을 보관합니다. 로그아웃은 서버 문서를 폐기합니다. 실제 회원 계정 인증 공급자는 별도 구현 대상입니다.
-- 브라우저 이벤트의 이탈 수집은 best effort입니다. 브라우저 종료 시 유실될 수 있습니다.
-- 개발 로그 뷰어는 메모리에 최근 1,000건을 보관합니다. Kafka 전달 완료는 별도 callback/receipt로 구분하며, receipt는 최대 2,000건/15분입니다. Kafka 데이터는 named volume에 유지됩니다. 업무 이벤트의 미전달 outbox는 MongoDB에 남고 재시도 시 같은 ID를 사용합니다. 요청 후 drain 또는 drain_prevention_outbox 명령으로 재전송합니다. 세션·브라우저 보호 문서는 조회 시 만료 검사와 TTL 정리를 함께 사용합니다.
-
-## 구조
+접속 주소:
 
 ```text
-config/                 Django 설정, URL, ASGI
-web/services.py         예매 업무, MongoRepository(운영), MockRepository(테스트), 공연 카탈로그
-web/events.py           EventPublisher 계약, MockEventPublisher, 이벤트 생성
-web/views.py            요청 검증·화면 렌더링·API
-web/tests.py            서비스·HTTP 회귀 테스트
-templates/              화면과 공통 컴포넌트
-static/                 CSS, JavaScript, 공연 이미지
-docs/architecture.md    필수 후속 데이터 파이프라인 설계
+http://127.0.0.1:8000/
 ```
 
-## DB별 포트 번호
+`state-init`과 토픽 초기화 서비스는 `Exited (0)`이면 정상 완료 상태입니다.
 
-### 1. DB 구성 현황
+### 관리자·QA 및 분석 기능
 
-모든 Docker 실행 설정은 **저장소 루트 `.env` 하나**에서 관리합니다.
-예시는 루트 `.env.example`입니다. 기존 `raw_consumer/.env`는 보관 파일이며 아래
-명령에서는 읽지 않습니다. 실제 환경 파일과 `.env.backup-*`는 Git에서 제외합니다.
+관리자·QA 화면에는 게이트웨이, QA DB, 관리자 인증 설정이 추가로 필요합니다. 관리자 앱이 사용하는 시스템 MongoDB 네트워크도 준비되어 있어야 합니다.
 
-| 구분 | 용도 / 기본 DB | 프로젝트 / 서비스 | 내부 포트 | 같은 PC 공개 포트 |
-|---|---|---|---|---|
-| 시스템 | 정제·격리·집계 / `ticketguard` | `ticket-guard-workspace-db` / `mongo` | `27017` | `MONGO_HOST_PORT`, 기본 `27017` · 예: `27018` |
-| 원본 | Kafka 원본 보존 / `ticketguard_raw` | `ticket-guard-raw` / `mongo-raw` | `27020` | `27020` |
-| QA 자체 | 계획·정답표·실행 결과 / `ticketguard_qa` | `ticket-guard` / `qa-mongo` | `27017` | `QA_MONGO_HOST_PORT`, 기본 `27021` |
+Raw Consumer와 Spark 작업은 각각의 설정과 실행 절차를 따릅니다. 기본 예매 웹 실행 명령만으로 전체 분석 및 실제 QA 연결이 완료되지는 않습니다.
 
-PC 포트는 각각 `mongo/compose.local.yml`, `compose.raw.local.yml`,
-`qa/compose.qa-db.local.yml`을 추가할 때만 `127.0.0.1`에 공개됩니다.
-시스템 DB는 관리자 앱 전용 저장소가 아니라 파이프라인 데이터를 조회하는 대상입니다.
-예매·재고·대기열·보호 상태·세션은 웹 전용 MongoDB가 기준 저장소입니다. 저장 구조와 적용 방법은 [MongoDB 업무 상태](docs/mongodb-runtime.md)를 참고하세요.
-
-| 계정 설정 | 생성 위치 / 권한 | 용도 |
+| 화면 | 경로 | 조건 |
 |---|---|---|
-| `MONGO_ROOT_*` | `admin` / 관리자 | 시스템 DB 관리 |
-| `MONGO_WRITER_*` | `MONGO_DATABASE` / `readWrite` | Spark, 기본 관리자 조회·Compass |
-| `RAW_MONGO_ROOT_*` | `admin` / 관리자 | 원본 DB 관리 |
-| `RAW_MONGO_WRITER_*` | `RAW_MONGO_DATABASE` / `readWrite` | 원본 적재·Compass |
-| `QA_MONGO_ROOT_*` | `admin` / 관리자 | QA DB 관리 |
-| `QA_MONGO_USERNAME/PASSWORD` | `QA_MONGO_DATABASE` / `readWrite` | QA 자체 데이터 저장·조회 |
+| 예매 웹 | `/` | 기본 웹 실행 |
+| 회원가입 | `/signup/` | 웹 상태 DB 연결 |
+| QA 대시보드 | `/qa/` | 게이트웨이·QA 서비스·관리자 인증 |
+| 관리자 대시보드 | `/admin/` | 관리자 서비스·DB 읽기 권한·관리자 인증 |
+| 기존 이벤트 조회 | `/admin/db` | 관리자 DB 연결 |
+| 관리자 시안 | `/admin/preview` | 관리자 인증·고정 샘플 |
 
-별도 reader인 `MONGO_ADMIN_READER_*`, `RAW_MONGO_READER_*`는 **선택 사항**입니다.
-기본 writer 설치에서는 두 값을 모두 비우고 reader 검사를 실행하지 않습니다.
-계정 생성은 **빈 볼륨의 최초 실행 때만** 적용됩니다. 환경 파일 변경·컨테이너
-재시작만으로 기존 DB 계정이나 비밀번호가 바뀌지는 않습니다.
+현재 Compose는 로컬 개발 구성입니다. 외부 서버 배포 상태와는 별도로 확인해야 합니다. DB·볼륨 초기화는 일반 실행 절차에 포함하지 않습니다.
 
-### 2. 최초 DB 설정 명령
-
-Windows PowerShell의 같은 창에서 저장소 루트를 작업 위치로 사용합니다.
-각 명령 직후 `$LASTEXITCODE`가 `0`인지 확인하고 오류가 나면 다음 단계로 넘어가지 않습니다.
-
-**환경 파일 준비**
-
-Docker Desktop의 Linux containers 엔진을 실행합니다.
-
-```powershell
-cd C:\workspace\Ticket_Guard
-docker version
-if (!(Test-Path .env)) { Copy-Item .env.example .env }
-```
-
-Server 정보까지 출력되어야 합니다. 기존 환경 파일은 덮어쓰지 않습니다.
-루트 `.env`에서 `CHANGE_ME` 값을 교체하고 아래 항목을 준비합니다.
-
-- 시스템: `MONGO_ROOT_*`, `MONGO_WRITER_*`, `MONGO_DATABASE`, `MONGO_HOST_PORT`
-- 원본: `RAW_MONGO_ROOT_*`, `RAW_MONGO_WRITER_*`, `RAW_MONGO_DATABASE`, `RAW_SOURCE_ID`
-- 토픽: `KAFKA_EVENTS_TOPIC`과 `RAW_KAFKA_TOPIC` 일치
-- 네트워크: 기본 `RAW_KAFKA_NETWORK=ticket-guard_default`
-- QA 자체 DB: `QA_MONGO_ROOT_*`, `QA_MONGO_USERNAME`, `QA_MONGO_PASSWORD`, `QA_MONGO_DATABASE`
-- 웹 관리자: `DEMO_ADMIN_USERNAME`, `DEMO_ADMIN_PASSWORD`
-- 관리자 조회: `TICKET_GUARD_ADMIN_MONGO_URI`, `TICKET_GUARD_ADMIN_MONGO_NETWORK`
-
-기본 관리자 URI에는 기존 writer 계정을 지정합니다. URI는 계정을 새로 만들지 않습니다.
+## 8. 프로젝트 구조
 
 ```text
-mongodb://<URL인코딩한_writer사용자명>:<URL인코딩한_writer비밀번호>@ticket-guard-workspace-db-mongo-1:27017/<MONGO_DATABASE>?authSource=<MONGO_DATABASE>
+Ticket_Guard/
+├── web/                 예매·회원가입·이벤트 수집·웹 상태 저장
+├── templates/           예매 화면 템플릿
+├── static/              스타일·화면 동작·브라우저 관측
+├── raw_consumer/        Kafka 원본 보관
+├── pipeline/            Spark 정제·집계·검증·복구 상태
+├── admin_dashboard/     관리자 결과 조회 앱
+├── qa/                  자동화 시험·정답표·QA 대시보드
+├── mongo/               MongoDB 초기화·권한·로컬 실행 설정
+├── gateway/             관리자 인증 연결·Nginx 라우팅
+├── docs/                아키텍처·연결·검증 문서
+└── .github/workflows/   CI 설정
 ```
 
-꺾쇠를 실제 값으로 교체합니다. 계정 생성 변수에는 원래 비밀번호를, URI에는
-URL 인코딩한 값을 사용합니다. 각 DB의 root와 writer 사용자명은 달라야 합니다.
-QA DB URI는 Compose가 구성하므로 QA 비밀번호는 현재 안내대로 영문·숫자를 사용합니다.
-동일한 키가 PowerShell 환경 변수에 있으면 `.env`보다 우선합니다.
+## 9. 상세 문서
 
-**명령에 사용할 파일 조합 선언**
-
-```powershell
-$systemDbArgs = @(
-    "--env-file", ".env",
-    "-p", "ticket-guard-workspace-db",
-    "-f", "compose.yml",
-    "-f", "mongo/compose.local.yml",
-    "--profile", "mongo"
-)
-$rawArgs = @(
-    "--env-file", ".env",
-    "-f", "compose.raw.yml",
-    "-f", "compose.raw.local.yml"
-)
-$teamArgs = @(
-    "--env-file", ".env",
-    "-f", "compose.yml",
-    "-f", "compose.state.yml",
-    "-f", "compose.gateway.yml",
-    "-f", "qa/compose.qa-db.yml",
-    "-f", "qa/compose.qa-db.local.yml"
-)
-$sparkArgs = @(
-    "--env-file", ".env",
-    "-p", "ticket-guard-workspace-pipeline",
-    "-f", "compose.yml",
-    "--profile", "spark"
-)
-docker compose @systemDbArgs config --quiet
-docker compose @rawArgs config --quiet
-docker compose @teamArgs config --quiet
-```
-
-출력 없이 종료 코드가 `0`이면 문법 검사를 통과했습니다. 기존 DB 인증까지
-검사한 것은 아닙니다. 비밀값 노출을 피하려면 전체 `config` 대신 `config --quiet`를 사용합니다.
-
-**시스템 DB 실행·writer 검사**
-
-```powershell
-docker compose @systemDbArgs up -d --wait mongo
-docker compose @systemDbArgs exec -T -e MONGO_VERIFY_ROLE=writer mongo mongosh --quiet --norc /opt/mongo/verify.js
-```
-
-`writer: authentication, ping, roles, collection, _id index OK`이면 성공입니다.
-최초 설치의 `documents=0`은 정상입니다. 실패하면
-`docker compose @systemDbArgs logs --tail 50 mongo`를 확인합니다.
-
-**원본 DB 실행·writer 검사**
-
-```powershell
-docker compose @rawArgs up -d --no-deps --wait mongo-raw
-docker compose @rawArgs exec -T mongo-raw mongosh --quiet --norc --port 27020 /opt/raw/verify.js
-```
-
-`raw_events`와 종류별 컬렉션 9개의 건수·인덱스가 출력되고 종료 코드가 `0`이면
-성공입니다. 기본 설치에는 reader가 필요하지 않습니다. 실패하면
-`docker compose @rawArgs logs --tail 50 mongo-raw`를 확인합니다.
-
-**웹·Kafka·QA·대시보드 실행**
-
-```powershell
-docker compose @teamArgs build web qa-dashboard admin-dashboard
-docker compose @rawArgs build raw-consumer
-docker compose @teamArgs up -d --wait
-docker compose @teamArgs ps -a
-docker compose @teamArgs exec -T gateway nginx -t
-```
-
-QA 이미지의 Chromium 설치에는 시간이 걸릴 수 있습니다. `kafka-init`은
-`Exited (0)`이면 정상이고 나머지는 실행 상태를 확인합니다. nginx는
-`test is successful`을 확인합니다. 오류가 나면 아래 로그를 봅니다.
-
-```powershell
-docker compose @teamArgs logs --tail 50 kafka kafka-init web qa-mongo qa-dashboard admin-dashboard gateway
-```
-
-**원본 적재기 실행·실제 데이터 확인**
-
-```powershell
-docker compose @rawArgs up -d raw-consumer
-docker compose @rawArgs ps -a
-docker compose @rawArgs logs --since 2m raw-consumer
-```
-
-`raw_consumer started`는 DB 연결 후 시작한 기록입니다. 브라우저에서
-`http://127.0.0.1:8000`에 접속해 로그인·검색·공연 선택 등을 수행합니다.
-`batch_saved`와 원본 컬렉션 문서 증가를 함께 확인합니다. 과거 `failed`와 최신
-`started`가 함께 있으면 시각과 현재 상태를 구분합니다. 새 이벤트가 없으면
-저장 로그가 없을 수 있습니다.
-
-**선택: 시스템 DB 정제·집계 데이터**
-
-```powershell
-docker compose @sparkArgs build spark
-docker compose @sparkArgs up -d --no-deps spark
-docker compose @sparkArgs logs --tail 50 spark
-```
-
-Spark는 원본 적재기와 별도로 Kafka를 처리합니다. `clean_events`,
-`quarantine_events`, `event_metrics`는 파이프라인이 실제 처리한 뒤 확인합니다.
-
-### 3. MongoDB Compass 접속
-
-고급 연결 옵션의 인증 탭에서 루트 `.env`의 값을 입력합니다.
-
-| DB | 같은 PC 주소 | 사용자명 | 비밀번호 | 인증 DB |
-|---|---|---|---|---|
-| 시스템 | `127.0.0.1:<MONGO_HOST_PORT>` | `MONGO_WRITER_USERNAME` | `MONGO_WRITER_PASSWORD` | `MONGO_DATABASE`, 기본 `ticketguard` |
-| 원본 | `127.0.0.1:27020` | `RAW_MONGO_WRITER_USERNAME` | `RAW_MONGO_WRITER_PASSWORD` | `RAW_MONGO_DATABASE`, 기본 `ticketguard_raw` |
-| QA 자체 | `127.0.0.1:<QA_MONGO_HOST_PORT>` | `QA_MONGO_USERNAME` | `QA_MONGO_PASSWORD` | `QA_MONGO_DATABASE`, 기본 `ticketguard_qa` |
-
-root 계정의 인증 DB는 `admin`입니다. 원본 `http_events`, `auth_events`,
-`behavior_events` 등에서 Documents를 새로고침하고 아래 조건을 사용합니다.
-
-```javascript
-// Filter (실제 토픽으로 지정)
-{topic: "ticketguard.events.v1"}
-// Sort
-{ingestedAt: -1}
-```
-
-시스템 DB의 `raw_events`는 원본 적재기의 목적지가 아닙니다. 원본 적재기는 별도
-`ticketguard_raw`의 종류별 컬렉션에 저장합니다. QA DB는 시험 전에는 기록이 없을 수 있습니다.
-Docker 내부에서는 서비스·컨테이너 호스트와 내부 포트를 사용합니다.
-다른 PC의 `localhost`는 그 PC 자신입니다. 시스템 DB의 팀 내부망 공개에는
-선택적 `mongo/compose.lan.yml`과 서버 LAN IP를 사용합니다. 원본 원격 조회와
-AWS는 SSH 터널·VPC 등 허용된 접근 경로를 준비하고 DB를 인터넷에 공개하지 않습니다.
-
-### 4. 선택: 별도 읽기 계정과 QA 외부 DB 검증
-
-QA 자체 DB 저장은 기본 실행에 포함됩니다. QA가 시스템·원본 DB를 읽어 검증하는
-기능은 별도이며 QA 전용 원본 DB를 만드는 것이 아닙니다. 이 기능에 필요한
-reader 계정·URI·네트워크가 없다면 다음 명령을 실행하지 않습니다.
-
-`MONGO_ADMIN_READER_*`, `RAW_MONGO_READER_*`를 각각 둘 다 설정하면 빈 DB에서
-자동 생성합니다. 기존 볼륨에는 유효한 관리자 인증으로 `/opt/mongo/setup-reader.js`,
-`/opt/raw/setup-reader.js`를 실행하며 기존 비밀번호·권한을 임의로 바꾸지 않습니다.
-설정·검사 방법은 [DB 연결 문서](docs/mongodb.md)를 참고합니다.
-
-루트 `.env`의 `TICKET_GUARD_QA_SYSTEM_MONGO_URI`,
-`TICKET_GUARD_QA_SYSTEM_RAW_MONGO_URI`는 해당 읽기 계정을 지정합니다.
-`TICKET_GUARD_QA_SYSTEM_RAW_SOURCE_ID`는 같은 파일의 `RAW_SOURCE_ID`와 일치시킵니다.
-
-```powershell
-$qaDbArgs = $teamArgs + @(
-    "-f", "qa/compose.qa-live.yml",
-    "-f", "compose.qa-db-access.yml"
-)
-docker compose @qaDbArgs config --quiet
-docker compose @qaDbArgs run --rm --no-deps --entrypoint python qa-dashboard /opt/ticketguard/verify-qa-connections.py
-```
-
-두 DB 모두 `authentication, read-only role and query OK`여야 합니다.
-일치하는 출처 문서가 없다면 빈 DB와 출처 설정 불일치를 별도로 확인합니다.
-성공 후 `docker compose @qaDbArgs up -d --no-deps qa-dashboard`로 반영합니다.
-기본 `$teamArgs`에는 검사 파일이 마운트되지 않으므로 이 검사 명령도 생략합니다.
-
-### 5. 재시작·초기화·문제 해결
-
-새 PowerShell 창에서는 인수 배열부터 다시 선언합니다. 환경 파일 통합만으로
-DB를 재생성할 필요는 없습니다. 일반 재시작은 기존 계정·데이터를 유지합니다.
-
-```powershell
-docker compose @systemDbArgs restart mongo
-docker compose @rawArgs restart mongo-raw
-docker compose @teamArgs restart
-docker compose @rawArgs up -d raw-consumer
-```
-
-환경 변수 변경을 반영할 때는 필요한 서비스만 `up -d --no-deps <서비스>`로 갱신합니다.
-단순 `restart`는 환경 변수를 갱신하지 않습니다. 컨테이너는 실행 인스턴스,
-이미지는 실행 재료, 볼륨은 DB·Kafka 저장 데이터입니다. 이미지 삭제·재빌드만으로
-볼륨의 계정·데이터가 초기화되지 않습니다.
-
-**데이터까지 버리고 최초 설치를 다시 검증할 때만** 아래를 직접 실행합니다.
-지정한 TicketGuard 프로젝트의 DB·QA 기록·Kafka 데이터·Spark 체크포인트가 삭제됩니다.
-
-```powershell
-docker compose @sparkArgs down --volumes --remove-orphans
-docker compose @rawArgs down --volumes --remove-orphans
-# 선택적 QA 연결을 사용했다면 해당 조합을 먼저 종료
-# docker compose @qaDbArgs down --volumes --remove-orphans
-docker compose @teamArgs --profile mongo down --volumes --remove-orphans
-docker compose @systemDbArgs down --volumes --remove-orphans
-```
-
-일반 실행에 이 삭제 명령은 필요하지 않습니다.
-
-| 증상 | 확인 사항 |
+| 주제 | 문서 |
 |---|---|
-| required variable | 루트 `.env`의 해당 키·값·저장 여부와 `--env-file .env` |
-| 인증 실패 | 계정·비밀번호·인증 DB 일치. `.env`만 바꿔도 기존 계정은 그대로임 |
-| 연결 거부 | DB 실행, PC 공개 포트와 접속한 컴퓨터의 주소 |
-| unhealthy·재시작 반복 | DB 로그의 필수 설정 누락·placeholder·인증 실패 |
-| ServerSelectionTimeoutError | 원본 DB 존재·준비 상태, 내부 `mongo-raw:27020`, 공유 네트워크 |
-| 검사 파일 없음 | 선택적 `compose.qa-db-access.yml`을 포함했는지 확인. 기본 설치에서는 검사 생략 |
-| 관리자 DB 조회 실패 | 관리자 URI의 실제 생성 계정·DB·authSource·DB 네트워크 |
+| 웹 상태·회원가입·MongoDB 설정 | [MongoDB 상태 저장 설정](docs/mongodb-state.md) |
+| 예매 입장·대기열 | [예매 입장 제어](docs/booking-admission.md) |
+| Kafka 연결 | [Kafka 문서](docs/kafka.md) |
+| MongoDB 연결 | [MongoDB 문서](docs/mongodb.md) |
+| 분석 파이프라인 | [파이프라인 안내](pipeline/README.md) |
+| 사용자 흐름 | [구현·실행 안내](pipeline/docs/user_flow.md) |
+| 결과 저장·조회 계약 | [데이터 계약](pipeline/docs/contract.md) |
+| 사전 모니터링 | [조기 탐지 관측 계약](pipeline/docs/early_monitor.md) |
+| 관리자 대시보드 | [관리자 앱 안내](admin_dashboard/README.md) |
+| 실제 공개 지표 연결 | [연결 기록](admin_dashboard/LIVE_CONNECTION.md) |
+| 자동화 QA | [QA 안내](qa/README.md) |
 
-이 세션에서 writer 인증·Compass·원본 적재는 사용자 확인했습니다.
-환경 파일 통합·작업본 복원은 값 보존과 Compose 문법만 확인하며 실제 서비스를
-재설치하지 않습니다. 실제 AWS 배포·운영 보안·여러 서버 연결은 미검증입니다.
+상세 문서는 작성 시점의 구현·검증 범위를 함께 확인합니다. 과거 실행 명령과 현재 상태 저장 구성이 다르면 현재 Compose와 MongoDB 상태 저장 설정을 우선 확인합니다.
 
-## 개발 환경과 운영 환경
+## 10. 현재 제한과 후속 과제
 
-현재 Compose는 로컬 개발 전용이며 127.0.0.1에만 포트를 노출합니다. 운영에서는 Django runserver와 모의 저장소를 사용하면 안 됩니다. 별도 운영 설정, WSGI/ASGI 서버, TLS, 정적 파일 배포, 실제 인증·공유 상태 저장소, 권한·모니터링 구성이 필요합니다. DEBUG=0일 때 안전한 SECRET_KEY가 없으면 기동을 거부합니다. HTTPS용 secure cookie를 켭니다. 이 설정만으로 운영 배포가 준비되었다는 의미는 아닙니다.
+- 실제 판정과 QA를 연결하여 탐지율·오탐률을 같은 조건으로 재측정합니다.
+- 원본·집계 DB의 읽기 권한과 실제 조회 대상·뷰 구성을 확인하여 종단 검증을 수행합니다.
+- 장애·재처리·체크포인트 복구와 부분 저장 실패를 실제 연결 환경에서 검증합니다.
+- 관리자 화면은 접속·조회·새로고침 시 데이터를 읽습니다. 분석 스트리밍과 브라우저 자동 갱신은 구분합니다.
+- 현재 `flow`·`network` 실행은 로컬 Spark 조건을 전제로 하며 분산 클러스터 성능으로 일반화하지 않습니다.
+- 추가 본인 확인·기획사 리포트·모델 학습 등 초기 기획의 확장 기능은 연결·검증 상태를 확인하면서 진행합니다.
 
-## GitHub
-
-기존 remote `https://github.com/seoloo/Ticket_Guard.git`을 유지합니다. 원격 push와 PR 생성은 수행하지 않습니다. 팀원은 저장소를 clone한 뒤 같은 Compose 명령으로 실행할 수 있습니다. 소스·이미지 자산을 공유하며, 여러 웹 프로세스의 업무 상태는 같은 웹 전용 MongoDB에 연결할 때 공유됩니다.
-
-## 필수 후속 작업
-
-1. 완료: Python 3.13.15 기반 실제 Kafka 발행·Consumer 검증. [구현·검증 내역](docs/kafka.md).
-2. Kafka 소비 → PySpark Structured Streaming 검증/정규화/집계.
-3. MongoDB 예매·재고 저장과 이벤트 적재, TTL/인덱스.
-4. checkpoint와 장애 재처리, 전체 Docker 통합 검증, 다중 노드 별도 검증.
-
-상세 기준은 [후속 아키텍처](docs/architecture.md)를 참고하세요.
-
+현재 자료만으로 실제 서비스의 성능 우위, 전체 구간의 무손실·정확히 한 번 처리, 운영 배포 완료를 선언하지 않습니다.
