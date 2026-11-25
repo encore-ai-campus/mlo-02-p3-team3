@@ -90,7 +90,7 @@ def test_existing_sections_and_new_stage_cards_coexist_without_collapsing(admin_
     assert layout.common_details==1
     assert all(button['type']=='button' and button['aria-controls']=='sd-common-detail' for button in layout.metric_buttons)
     assert all(not button['data-sd-metric'].startswith('captcha') for button in layout.metric_buttons)
-    assert 'stage_detections.js?v=3' in response.text
+    assert ('stage_detections.js?v=refresh-30s' if path == '/' else 'stage_detections.js?v=3') in response.text
     for title in ('고유 감지 시도','응답 전 중첩','재요청 시도','다중 페이지 계정',
                   '요청·응답 추이','최근 감지 목록','계정 타임라인','단계별 탐지 현황',
                   '검토 대상','빠른 완료','단시간 복수 구매','한도 초과','계정별 구매 사례'):

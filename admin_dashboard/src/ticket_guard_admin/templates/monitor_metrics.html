@@ -1,0 +1,5 @@
+{% if not flow.unpublished %}<div class="mp-live-meta"><span class="mp-pill mp-confirmed">검증 공개 결과</span><span>기준 {{ flow.as_of_label }}</span><details><summary>집계 범위·게시 정보</summary><p>집계 범위 {{ flow.window_label }}</p><p>공개 {{ flow.published_label }}</p><p>접속 집계 단위: {{ flow.counting_label }} · 시계열은 현재 시각 기준 최근 12시간</p></details></div>{% endif %}
+  {% include 'monitor_user_flow.html' %}
+  {% include 'monitor_network.html' %}
+  {% include 'monitor_anomaly.html' %}
+<script data-metrics-data type="application/json">{{ dashboard_data|tojson }}</script>

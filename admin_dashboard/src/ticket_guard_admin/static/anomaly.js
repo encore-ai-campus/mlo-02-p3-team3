@@ -1,6 +1,10 @@
 /* 관리자 이상 관측 · DOM 텍스트로 근거 표시, 서버로 쓰기 요청 없음 */
 (() => {
   'use strict';
+  let lifecycle;
+  function init() {
+  lifecycle?.abort();
+  lifecycle=new AbortController();
   const node=document.querySelector('[data-monitor-data]');
   if(!node)return;
   const data=JSON.parse(node.textContent).anomaly;
@@ -54,5 +58,8 @@
   }));
   if(new URL(location.href).searchParams.get('anomaly_mode')==='post')document.querySelector('[data-an-mode="post"]').click();
   if(events.length)events[0].click();if(accounts.length)accounts[0].click();
-  window.addEventListener('hashchange',chart);window.addEventListener('resize',chart);chart();
+  window.addEventListener('hashchange',chart,{signal:lifecycle.signal});window.addEventListener('resize',chart,{signal:lifecycle.signal});chart();
+  }
+  window.addEventListener('monitor:updated',init);
+  init();
 })();

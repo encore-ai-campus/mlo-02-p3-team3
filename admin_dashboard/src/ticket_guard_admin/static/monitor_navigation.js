@@ -4,7 +4,7 @@
 */
 (() => {
   'use strict';
-  const data=JSON.parse(document.querySelector('[data-monitor-data]').textContent);
+  let data=JSON.parse(document.querySelector('[data-monitor-data]').textContent);
   const isLive=document.body.dataset.monitorMode==='live';
   const names={flow:'사용자 흐름',network:'네트워크 상태',anomaly:'이상탐지'};
   const charts=window.TGMonitorCharts;
@@ -37,5 +37,6 @@
   let frame=0;
   function resize() { cancelAnimationFrame(frame); frame=requestAnimationFrame(draw); }
   window.addEventListener('resize',resize);
+  window.addEventListener('monitor:updated',()=>{data=JSON.parse(document.querySelector('[data-monitor-data]').textContent);route();});
   route();
 })();
