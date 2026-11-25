@@ -16,9 +16,12 @@ class PipelineLatencySuite:
     )
 
     def run(self, context: SuiteContext) -> SuiteResult:
-        # TODO(Kafka · Spark 연결 후): 시험 이벤트를 먼저 보내고 반영을 기다림
+        # Live = 최근 15분 서버 이벤트 · 같은 Run의 트래픽 Suite 뒤에 실행
         pipeline_reader = context.system_target.pipeline_reader
         gold_latency_values_sec = pipeline_reader.read_gold_latency_sec(context.run_id)
+        if not gold_latency_values_sec:
+            return SuiteResult(self.suite_name, SuiteOutcome.SKIPPED,
+                               message="최근 15분 처리 기록 없음 · 예매 흐름 등 트래픽 Suite와 함께 실행")
         quarantined_event_count = pipeline_reader.count_quarantined_events(context.run_id)
         return SuiteResult(
             suite_name=self.suite_name,
