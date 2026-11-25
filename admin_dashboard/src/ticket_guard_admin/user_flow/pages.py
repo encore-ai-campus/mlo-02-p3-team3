@@ -17,7 +17,7 @@ from ticket_guard_admin.early_monitor.presentation import display as display_ear
 from ticket_guard_admin.early_monitor.stage_detections import build as build_stage_detections
 
 
-def render_published_dashboard(request, mongo_uri) -> HTMLResponse:
+def render_published_dashboard(request, mongo_uri, *, fragment=False) -> HTMLResponse:
     context = dict(base_path=request.app.state.base_path,
                    admin_user=getattr(request.state, 'admin_user', ''), is_preview=False,
                    flow=None, flow_error=None, scope='all', scope_choices=[{'value': 'all', 'label': '전체 공개 지표'}],
@@ -55,6 +55,6 @@ def render_published_dashboard(request, mongo_uri) -> HTMLResponse:
         context['early'] = display_early(error=str(exc), selected=early_scope, previous_as_of=exc.previous_as_of)
     context['detection_stages'] = build_stage_detections(context['early'],context['anomaly'],legacy_scope=context['scope'])
     context['dashboard_data'] = {'flow': context['flow'], 'anomaly': context['anomaly']}
-    response = templates.TemplateResponse(request, 'monitor_live.html', context)
+    response = templates.TemplateResponse(request, 'monitor_metrics.html' if fragment else 'monitor_live.html', context)
     response.headers['Cache-Control'] = 'no-store'
     return response

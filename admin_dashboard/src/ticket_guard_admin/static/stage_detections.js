@@ -1,6 +1,7 @@
 /* 새 영역 내부에서만 선택 상태·공통 상세를 갱신한다. 기존 타임라인 선택과 독립적이다. */
 (() => {
   'use strict';
+  function init() {
   document.querySelectorAll('[data-stage-detection-root]').forEach(root => {
     const node=root.querySelector('[data-sd-data]');
     if(!node) return;
@@ -58,4 +59,7 @@
       || Array.from(metrics.values())[0];
     if(initial) select(initial.key);
   });
+  }
+  window.addEventListener('monitor:updated',init);
+  init();
 })();

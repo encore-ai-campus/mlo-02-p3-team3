@@ -41,7 +41,9 @@ const root={querySelector(selector){assert.ok(nodes[selector],`Unexpected select
   }};
 const previousTimeline={selected:'existing-selection'};
 const document={querySelectorAll(selector){assert.equal(selector,'[data-stage-detection-root]');return [root];},createElement:element};
-vm.runInNewContext(fs.readFileSync(process.argv[2],'utf8'),{document});
+const listeners={};
+vm.runInNewContext(fs.readFileSync(process.argv[2],'utf8'),{document,window:{addEventListener(name,fn){listeners[name]=fn;}}});
+assert.equal(typeof listeners['monitor:updated'],'function');
 assert.equal(buttons[1].attributes['aria-pressed'],'true');
 assert.equal(stages[1].dataset.selected,'true');
 assert.equal(stages.filter(stage=>!stage.selected.hidden).length,1);

@@ -21,6 +21,10 @@ def create_admin_dashboard_app(settings: AdminSettings | None = None) -> FastAPI
     def dashboard(request: Request):
         return render_published_dashboard(request, app.state.admin_settings.mongo_uri)
 
+    @app.get("/metrics", dependencies=[Depends(require_admin)])
+    def metrics(request: Request):
+        return render_published_dashboard(request, app.state.admin_settings.mongo_uri, fragment=True)
+
     @app.get("/db", dependencies=[Depends(require_admin)])
     def legacy_dashboard(request: Request):
         return render_live_dashboard(request, app.state.admin_settings.mongo_uri)
