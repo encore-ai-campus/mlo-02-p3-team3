@@ -134,3 +134,65 @@ def test_fake_run_does_not_wait(qa_database):
 def test_verdict_reader_needs_mongo_uri():
     with pytest.raises(NotImplementedError):  # 미설정 = 판정 정확도 Suite 건너뜀
         LiveMongoVerdictReader("").read_session_verdicts("run-test")
+
+
+def build_pipeline_database(events: list[dict]) -> mongomock.MongoClient:
+    memory_client = mongomock.MongoClient(SYSTEM_MONGO_URI, tz_aware=True)
+    if events:
+        memory_client["ticketguard"].clean_events.insert_many(events)
+    return memory_client
+
+
+def server_event(seconds_ago: float, latency_sec: float, source: str = "server") -> dict:
+    occurred_at = NOW - timedelta(seconds=seconds_ago)
+    return {"source": source, "occurredAt": occurred_at, "normalizedAt": occurred_at + timedelta(seconds=latency_sec)}
+
+
+def test_gold_latency_uses_recent_server_events_only():
+    client = build_pipeline_database([
+        server_event(60, 2.5), server_event(120, 4.0),
+        server_event(60, 30.0, source="browser"),  # 브라우저 시계 · 제외
+        server_event(20 * 60, 9.0),  # 15분 밖 · 제외
+    ])
+    reader = live_mongo_reader.LiveMongoPipelineReader(SYSTEM_MONGO_URI, clock=lambda: NOW)
+    with patch.object(live_mongo_reader, "MongoClient", lambda *args, **kwargs: client):
+        assert sorted(reader.read_gold_latency_sec("run-test")) == [2.5, 4.0]
+
+
+def test_live_metrics_report_throughput_and_gold_latency():
+    client = build_pipeline_database([server_event(5, 1.0), server_event(10, 3.0), server_event(200, 1.0)])
+    reader = live_mongo_reader.LiveMongoLiveMetricsReader(SYSTEM_MONGO_URI, clock=lambda: NOW, monotonic=lambda: 0.0)
+    with patch.object(live_mongo_reader, "MongoClient", lambda *args, **kwargs: client):
+        metrics = reader.read_live_metrics("run-test", 10.0)
+    assert metrics.events_per_sec == round(2 / 30, 1)
+    assert metrics.gold_latency_p95_sec == 3.0
+    assert metrics.api_latency_p95_sec is None  # 시스템 기록 없음 · 측정 전
+
+
+def test_live_metrics_are_cached_between_ticks():
+    reader = live_mongo_reader.LiveMongoLiveMetricsReader(SYSTEM_MONGO_URI, clock=lambda: NOW, monotonic=lambda: 0.0)
+    calls = []
+    client = build_pipeline_database([server_event(5, 1.0)])
+    with patch.object(live_mongo_reader, "MongoClient", lambda *args, **kwargs: calls.append(1) or client):
+        reader.read_live_metrics("run-test", 1.0)
+        reader.read_live_metrics("run-test", 2.0)
+    assert len(calls) == 1
+
+
+def test_pipeline_latency_skips_without_recent_events(qa_database):
+    from ticket_guard_qa.domain.enums import SuiteOutcome
+    from ticket_guard_qa.test_suites.pipeline_latency import PipelineLatencySuite
+
+    class EmptyPipelineReader:
+        def read_gold_latency_sec(self, run_id):
+            return []
+
+    context = SuiteContext(
+        run_id="run-test",
+        run_config=RunConfig(TargetKind.FAKE, ("pipeline_latency",)),
+        system_target=replace(build_fake_system_target(), pipeline_reader=EmptyPipelineReader()),
+        answer_key_repository=AnswerKeyRepository(qa_database),
+        case_data_dir=QA_ROOT_DIR / "case_data",
+        report_progress=lambda text, **fields: None,
+    )
+    assert PipelineLatencySuite().run(context).outcome is SuiteOutcome.SKIPPED

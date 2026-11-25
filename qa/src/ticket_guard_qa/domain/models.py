@@ -248,11 +248,11 @@ class VirtualUserSessionResult:
 
 @dataclass(frozen=True)
 class LiveMetrics:
-    """03 화면 실시간 수치 · 합격 기준 metric_name과 같은 이름"""
-    api_latency_p95_sec: float
-    api_error_rate_percent: float
-    events_per_sec: float
-    gold_latency_p95_sec: float
+    """03 화면 실시간 수치 · 합격 기준 metric_name과 같은 이름 · None = 측정 전"""
+    api_latency_p95_sec: float | None
+    api_error_rate_percent: float | None
+    events_per_sec: float | None
+    gold_latency_p95_sec: float | None
 
 
 @dataclass(frozen=True)

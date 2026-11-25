@@ -12,7 +12,11 @@ from ticket_guard_qa.system_targets.live_django_system import (
 )
 from ticket_guard_qa.system_targets.live_kafka_injector import KafkaEventInjector
 from ticket_guard_qa.system_targets.live_kafka_reader import KafkaEventStreamReader
-from ticket_guard_qa.system_targets.live_mongo_reader import LiveMongoPipelineReader, LiveMongoVerdictReader
+from ticket_guard_qa.system_targets.live_mongo_reader import (
+    LiveMongoLiveMetricsReader,
+    LiveMongoPipelineReader,
+    LiveMongoVerdictReader,
+)
 from ticket_guard_qa.system_targets.live_raw_mongo_reader import LiveMongoRawEventReader
 from ticket_guard_qa.system_targets.target_interfaces import PIPELINE_SERVICE_NAME, SystemTarget
 
@@ -34,7 +38,7 @@ def build_system_target(settings: Settings, target_kind: TargetKind | None = Non
         ),
         verdict_reader=LiveMongoVerdictReader(settings.system_mongo_uri) if has_mongo else LiveDjangoVerdictReader(),
         pipeline_reader=LiveMongoPipelineReader(settings.system_mongo_uri, settings.kafka_events_topic),
-        live_metrics_reader=LiveDjangoLiveMetricsReader(),
+        live_metrics_reader=LiveMongoLiveMetricsReader(settings.system_mongo_uri) if has_mongo else LiveDjangoLiveMetricsReader(),
         process_control=LiveDockerProcessControl({PIPELINE_SERVICE_NAME: settings.pipeline_container_name}, settings.docker_socket_path),
         event_stream_reader=(
             KafkaEventStreamReader(settings.kafka_bootstrap_servers, settings.kafka_events_topic)
