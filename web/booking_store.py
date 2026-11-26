@@ -11,6 +11,7 @@ from threading import RLock, local
 from pymongo.errors import PyMongoError
 from .prevention_store import Store
 from . import prevention
+from .booking_schedule import transaction_time
 
 logger = logging.getLogger('ticketguard.booking')
 
@@ -107,7 +108,7 @@ class MongoBookingMixin:
             try:
                 store._prepare_booking()
                 with store.transaction(guard=getattr(self._local, 'guard', 'ledger')) as session:
-                    from .booking_schedule import transaction_time
+                    
                     token = prevention.active.set(session)
                     clock_token = transaction_time.set(time.time())
                     self.depth = 1
