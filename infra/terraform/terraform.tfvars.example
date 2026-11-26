@@ -1,0 +1,5 @@
+# 사용법: 이 파일을 terraform.tfvars 로 복사한 뒤 값 입력 (terraform.tfvars 는 저장소 제외)
+# 관리자 IP 확인: aws ec2 describe-security-group-rules --filters Name=group-id,Values=sg-06824ead7c1315fe5
+
+# 관리자 접속 허용 IP (/32 형식 필수)
+admin_cidr = "203.0.113.10/32"
