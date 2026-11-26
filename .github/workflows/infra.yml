@@ -1,0 +1,39 @@
+# 생성 이유: Terraform 코드의 형식 · 문법 검증 자동화
+# 범위: infra/terraform 변경 시에만 실행 · AWS 접속 없음 (plan · apply 미실행)
+name: infra
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/infra.yml"
+  push:
+    branches: [main, infra]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/infra.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ">=1.7.0"
+
+      - name: 형식 검사
+        run: terraform fmt -check -recursive
+
+      - name: 초기화 (backend 없이)
+        run: terraform init -backend=false -input=false
+
+      - name: 문법 검사
+        run: terraform validate

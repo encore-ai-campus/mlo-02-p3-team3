@@ -1,0 +1,18 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "ssm:StartSession",
+            "Resource": [
+                "arn:aws:ec2:ap-northeast-2:589792084208:instance/i-05b288c5ca0f2e2a4",
+                "arn:aws:ssm:ap-northeast-2:589792084208:document/TicketGuard-WebState-Mongo-PortForward"
+            ],
+            "Condition": {
+                "BoolIfExists": {
+                    "ssm:SessionDocumentAccessCheck": "true"
+                }
+            }
+        }
+    ]
+}

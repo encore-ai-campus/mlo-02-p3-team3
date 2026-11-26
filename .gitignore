@@ -19,4 +19,16 @@ output/
 .ticketguard-state/
 TicketGuard-Compass-Team-Setup
 ticketguard_Hong_accessKeys
-ticketguard-aws-20261126-015745
+# [설호현] Terraform · AWS 비밀 정보 (public 저장소 · 계정 ID · 리소스 ID는 허용)
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfvars
+!infra/terraform/terraform.tfvars.example
+infra/terraform/*.tfplan
+infra/terraform/generated.tf
+infra/terraform/crash.log
+*_accessKeys*
+ticketguard-aws-*
+*credentials*.csv
+.aws/

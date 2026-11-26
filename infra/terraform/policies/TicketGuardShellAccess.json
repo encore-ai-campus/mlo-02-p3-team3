@@ -1,0 +1,44 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "SessionManagerConsoleRead",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:DescribeInstanceInformation",
+                "ssm:GetConnectionStatus",
+                "ssm:GetServiceSetting",
+                "ssm:DescribeSessions"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "StartShellOnTicketGuard",
+            "Effect": "Allow",
+            "Action": "ssm:StartSession",
+            "Resource": [
+                "arn:aws:ec2:ap-northeast-2:589792084208:instance/i-05b288c5ca0f2e2a4",
+                "arn:aws:ssm:ap-northeast-2:589792084208:document/SSM-SessionManagerRunShell"
+            ],
+            "Condition": {
+                "BoolIfExists": {
+                    "ssm:SessionDocumentAccessCheck": "true"
+                }
+            }
+        },
+        {
+            "Sid": "ManageOwnSession",
+            "Effect": "Allow",
+            "Action": [
+                "ssm:TerminateSession",
+                "ssm:ResumeSession"
+            ],
+            "Resource": "arn:aws:ssm:ap-northeast-2:589792084208:session/*",
+            "Condition": {
+                "StringEquals": {
+                    "ssm:resourceTag/aws:ssmmessages:session-id": "${aws:userid}"
+                }
+            }
+        }
+    ]
+}
