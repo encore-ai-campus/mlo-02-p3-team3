@@ -55,25 +55,26 @@ def test_missing_rate_limit_fails_t2():
     system_target.booking_api.state.is_rate_limit_missing = True
     result = LoadCapacitySuite(FAST_HOLD_SEC).run(build_context(system_target))
     assert result.outcome is SuiteOutcome.FAILED
-    assert failure_lines(result.message) == ["FAIL: T2 요청 속도 제한 미적용 · 연속 요청 30건 차단 0건"]
+    assert failure_lines(result.message) == ["FAIL: T2 반복 재입장 제한 미적용 · 연속 재입장 30회 차단 0회"]
 
 
-class UnlimitedDjango:
-    """대기열 즉시 통과 · 공연 목록 항상 200 · 상한 · 속도 제한 없는 시스템"""
+class FakeDjango:
+    """대기열 즉시 통과 · reentry_limit 지정 시 새 예매 시도 n회 뒤 429 TEMPORARILY_RESTRICTED"""
 
-    def __init__(self) -> None:
-        self.page_request_count = 0
+    def __init__(self, reentry_limit: int | None = None) -> None:
+        self.reentry_limit = reentry_limit
+        self.start_count = 0
         self.cancel_count = 0
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         if request.url.path == "/login/":
             return httpx.Response(200, headers={"set-cookie": "csrftoken=token-1; Path=/"})
-        if request.url.path == "/":
-            self.page_request_count += 1
-            return httpx.Response(200, text="<html></html>")
         body = json.loads(request.content)
         if body["action"] == "start":
-            return httpx.Response(200, json={"id": "attempt-1", "stage": "queue"})
+            self.start_count += 1
+            if self.reentry_limit is not None and self.start_count > self.reentry_limit:
+                return httpx.Response(429, json={"code": "TEMPORARILY_RESTRICTED"})
+            return httpx.Response(200, json={"id": f"attempt-{self.start_count}", "stage": "queue"})
         if body["action"] == "heartbeat":
             return httpx.Response(200, json={"stage": "captcha"})
         if body["action"] == "cancel":
@@ -81,18 +82,31 @@ class UnlimitedDjango:
         return httpx.Response(200, json={})
 
 
-def test_live_probes_record_admission_and_page_requests():
-    django = UnlimitedDjango()
-    booking_api = LiveDjangoBookingApi("http://web:8000", "ticketguard", "unused",
-                                       VirtualUserAccountPool(2, "qa-password", "QA123"),
-                                       transport=httpx.MockTransport(django.handle))
+def build_live_booking_api(django: FakeDjango, account_count: int = 2) -> LiveDjangoBookingApi:
+    return LiveDjangoBookingApi("http://web:8000", "ticketguard", "unused",
+                                VirtualUserAccountPool(account_count, "qa-password", "QA123"),
+                                transport=httpx.MockTransport(django.handle))
+
+
+def test_live_probes_record_admission_and_start_cancel_cycles():
+    django = FakeDjango()
+    booking_api = build_live_booking_api(django)
     sample = asyncio.run(booking_api.hold_admitted_session("blue-hour", 0.0))
-    status_codes = asyncio.run(booking_api.send_request_burst(3, 0.0))
+    status_codes = asyncio.run(booking_api.send_request_burst("blue-hour", 3, 0.0))
     assert sample.admitted_at_sec is not None and sample.error is None
     assert status_codes == [200, 200, 200]
-    assert django.page_request_count == 3
-    assert django.cancel_count == 1  # 입장 후 예매 취소로 이탈
-    assert booking_api.virtual_user_capacity() == 2  # 계정 반환
+    assert django.start_count == 1 + 3  # 입장 1 + 재입장 3
+    assert django.cancel_count >= 1 + 3  # 입장 후 이탈 · 재입장마다 취소
+    assert booking_api.virtual_user_capacity() == 2  # 제한 없음 → 계정 반환
+
+
+def test_live_reentry_restriction_is_counted_and_account_set_aside():
+    django = FakeDjango(reentry_limit=10)
+    booking_api = build_live_booking_api(django)
+    status_codes = asyncio.run(booking_api.send_request_burst("blue-hour", 30, 0.0))
+    assert status_codes.count(200) == 10
+    assert status_codes.count(429) == 20
+    assert booking_api.virtual_user_capacity() == 1  # 제한된 계정 5분 제외 · 정상 속도 시험은 다른 계정
 
 
 def test_unknown_limit_is_reference_not_pass_or_fail(monkeypatch):

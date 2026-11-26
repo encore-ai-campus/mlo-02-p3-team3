@@ -109,7 +109,8 @@ CLEAN_COLLECTION_NAME = "clean_events"  # 시스템 Spark 정제 저장
 QUARANTINE_COLLECTION_NAME = "quarantine_events"  # 시스템 Spark 격리 저장
 SUPPORTED_SCHEMA_VERSIONS = (1, 2)
 FAKE_QUEUE_ADMISSION_LIMIT = 20  # T1 가짜 동시 입장 상한
-FAKE_RATE_LIMIT_PER_SEC = 10  # T2 가짜 초당 요청 한도 · 1초 구간
+FAKE_RATE_LIMIT_PER_SEC = 10  # T2 가짜 새 예매 시도 한도 · 2초 구간 · 시스템 reentry_repeat (2초 · 10회)
+FAKE_REENTRY_WINDOW_SEC = 2.0
 FAKE_INGEST_LATENCY_MS = 120  # 원본 적재 지연 예시 · 배치 1초 이내
 FAKE_MISROUTE_COLLECTION_NAME = "collector_events"  # QA 이벤트가 오지 않는 컬렉션 · 오분류 · 중복 흉내
 CAPTCHA_REFRESH_EVENT_TYPE = "captcha_refresh"  # 시스템 web/services.challenge
@@ -447,13 +448,13 @@ class FakeBookingApi:
             released_at = time.monotonic()
         return AdmissionSample(admitted_at, released_at, (admitted_at - entered_at) * 1000)
 
-    async def send_request_burst(self, request_count: int, interval_sec: float) -> list[int]:
-        """가상 시각 · 직전 1초 안 요청이 한도 이상이면 429"""
+    async def send_request_burst(self, show_id: str, request_count: int, interval_sec: float) -> list[int]:
+        """가상 시각 · 직전 2초 안 새 예매 시도가 한도 이상이면 429 · 시스템 반복 재입장 정책 흉내"""
         accepted_times: list[float] = []
         status_codes = []
         for index in range(request_count):
             now = index * interval_sec
-            recent_count = sum(now - accepted_time < 1.0 for accepted_time in accepted_times)
+            recent_count = sum(now - accepted_time < FAKE_REENTRY_WINDOW_SEC for accepted_time in accepted_times)
             if not self.state.is_rate_limit_missing and recent_count >= FAKE_RATE_LIMIT_PER_SEC:
                 status_codes.append(429)
                 continue

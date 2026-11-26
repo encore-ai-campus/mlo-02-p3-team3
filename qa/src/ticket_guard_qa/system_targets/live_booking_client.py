@@ -153,6 +153,15 @@ class LiveBookingClient:
         self.booking_attempt_id = result.body["id"]
         return result
 
+    async def start_and_cancel(self, show_id: str) -> int:
+        """T2 · 새 예매 시도 하나 · 시작 응답 코드 · 200이면 바로 취소 → 다음 시작도 새 시도"""
+        self.show_id = show_id
+        result = await self._post_action("start", showId=show_id)
+        if result.status_code == 200:
+            self.booking_attempt_id = result.body.get("id")
+            self._expect_ok("cancel", await self._post_action("cancel", reason=QUEUE_CANCEL_REASON))
+        return result.status_code
+
     async def wait_for_admission(self, poll_interval_sec: float = QUEUE_POLL_INTERVAL_SEC,
                                  max_wait_sec: float = MAX_QUEUE_WAIT_SEC) -> HttpResult:
         """대기열 heartbeat · 보안문자 단계가 될 때까지"""

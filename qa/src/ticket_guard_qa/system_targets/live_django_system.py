@@ -47,7 +47,9 @@ from ticket_guard_qa.system_targets.target_interfaces import (
 )
 
 ADMISSION_POLL_INTERVAL_SEC = 0.5  # T1 입장 시각 정밀도
-BURST_REQUEST_PATH = "/"  # T2 · 로그인 사용자 공연 목록 화면
+RATE_LIMITED_STATUS_CODE = 429  # T2 · 반복 재입장 제한
+CONNECTION_ERROR_STATUS_CODE = 0
+REENTRY_RESTRICTED_ERROR_CODE = "TEMPORARILY_RESTRICTED"
 DOCKER_API_BASE_URL = "http://docker"  # 소켓 연결 · 호스트 이름 무시
 DOCKER_ACTION_TIMEOUT_SEC = 30.0
 DOCKER_ACTION_OK_STATUS_CODES = (204, 304)  # 304 = 이미 그 상태
@@ -439,23 +441,26 @@ class LiveDjangoBookingApi:
         finally:
             await self.release_client(client, account_number)
 
-    async def send_request_burst(self, request_count: int, interval_sec: float) -> list[int]:
-        """로그인한 세션 하나로 공연 목록 화면 연속 요청 · 429 = 요청 속도 제한"""
+    async def send_request_burst(self, show_id: str, request_count: int, interval_sec: float) -> list[int]:
+        """계정 하나로 예매 시작 → 취소 반복 · 시작마다 새 예매 시도 · 429 = 반복 재입장 제한(시스템 2초 · 10회)
+        제한된 계정 = 5분 제외 → 정상 속도 시험은 다른 계정"""
         account_number = self.acquire_account_number()
         client = LiveBookingClient(self.base_url, self.transport)
-        status_codes = []
+        status_codes: list[int] = []
         try:
             await client.login(build_test_account_username(account_number), self.test_accounts.password)
             for index in range(request_count):
                 if index and interval_sec:
                     await asyncio.sleep(interval_sec)
                 try:
-                    status_codes.append((await client.http_client.get(BURST_REQUEST_PATH)).status_code)
+                    status_codes.append(await client.start_and_cancel(show_id))
                 except httpx.HTTPError:
-                    status_codes.append(0)
+                    status_codes.append(CONNECTION_ERROR_STATUS_CODE)
         except (BookingFlowError, httpx.HTTPError):
-            status_codes += [0] * (request_count - len(status_codes))
+            status_codes += [CONNECTION_ERROR_STATUS_CODE] * (request_count - len(status_codes))
         finally:
+            if RATE_LIMITED_STATUS_CODE in status_codes:
+                self.record_policy_block(account_number, REENTRY_RESTRICTED_ERROR_CODE)
             await self.release_client(client, account_number)
         return status_codes
 

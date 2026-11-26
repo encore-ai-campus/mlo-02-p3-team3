@@ -125,3 +125,14 @@ def test_load_policy_blocks_are_not_server_errors():
     report = LoadReport(2, samples=[AdmissionSample(None, None, 0.0, "start · TEMPORARILY_RESTRICTED"),
                                     AdmissionSample(None, None, 0.0, "connection · ReadTimeout")])
     assert report.server_error_count == 1 and report.blocked_errors == ["start · TEMPORARILY_RESTRICTED"]
+
+
+def test_verdict_api_latency_uses_start_response_not_bot_wait_time():
+    """좌석 클릭 간격 · 대기열 대기 = 봇이 일부러 쉬는 시간 · 판정 API 지연에서 제외"""
+    live = VirtualUserSessionResult(
+        SessionKey("attempt-1"), 9802.0, is_error=False,
+        step_latency_ms={"login": 140.0, "start": 101.0, "queue": 1573.0, "seat_select": 9227.0, "confirm": 136.0},
+    )
+    mock = VirtualUserSessionResult(SessionKey("attempt-2"), 12.0, is_error=False)
+    assert live.api_response_latency_ms == 101.0
+    assert mock.api_response_latency_ms == 12.0

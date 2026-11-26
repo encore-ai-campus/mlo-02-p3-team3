@@ -107,7 +107,7 @@ class BookingApi(Protocol):
     # 부하 · T1 동시 입장 상한 · T2 요청 속도 제한
     def admission_limit(self) -> int | None: ...  # 시스템 동시 입장 상한 · None = 모름 · T1 판정 기준
     async def hold_admitted_session(self, show_id: str, hold_sec: float) -> AdmissionSample: ...  # 대기열 진입 → 입장 → hold_sec 유지 → 이탈
-    async def send_request_burst(self, request_count: int, interval_sec: float) -> list[int]: ...  # 세션 하나 연속 요청 · 상태 코드 · 0 = 연결 오류
+    async def send_request_burst(self, show_id: str, request_count: int, interval_sec: float) -> list[int]: ...  # 계정 하나 예매 시작 → 취소 반복 · 시작 응답 코드 · 0 = 연결 오류
 
 
 class VerdictReader(Protocol):
