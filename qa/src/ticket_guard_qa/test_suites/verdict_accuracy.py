@@ -1,8 +1,10 @@
 """판정 정확도 · 탐지율 · 오탐률 · 기획서 21쪽 · 탐지 = CHALLENGE 이상"""
+import time
 from collections import Counter
+from collections.abc import Callable
 
 from ticket_guard_qa.answer_key.expected_verdicts import build_answer_key, plan_virtual_users
-from ticket_guard_qa.domain.enums import SessionStep, SuiteOutcome
+from ticket_guard_qa.domain.enums import SessionStep, SuiteOutcome, TargetKind
 from ticket_guard_qa.domain.models import (
     AnswerKey,
     PlannedUser,
@@ -33,6 +35,7 @@ from ticket_guard_qa.traffic_generators.virtual_user_traffic import (
 
 VERDICT_ACCURACY_SUITE_NAME = "verdict_accuracy"  # 04 · B1 · B4가 결과를 찾는 이름
 MAX_LISTED_SESSION_COUNT = 200  # 04 · 05 화면 목록 길이
+LIVE_VERDICT_SETTLE_SEC = 30.0  # Live · Kafka → Spark 처리 주기 5초 · 이상 탐지 갱신 · 판정 반영 여유
 
 
 def send_planned_user_traffic(
@@ -104,6 +107,10 @@ class VerdictAccuracySuite:
         "매크로 탐지 90% 이상(브라우저 자동화 70%) · 사람 오판 1% 이하",
     )
 
+    def __init__(self, live_settle_sec: float = LIVE_VERDICT_SETTLE_SEC, sleep: Callable[[float], None] = time.sleep) -> None:
+        self.live_settle_sec = live_settle_sec
+        self.sleep = sleep
+
     def run(self, context: SuiteContext) -> SuiteResult:
         run_config = context.run_config
         # 판정 읽기 미연결(NotImplementedError)이면 트래픽 전에 건너뜀 · 연결되면 그대로 진행 · 약 5분 절약
@@ -116,6 +123,9 @@ class VerdictAccuracySuite:
         context.answer_key_repository.save(context.run_id, answer_key)  # QA DB만
         context.report_progress(f"Ground Truth 저장 · {len(answer_key)}세션")
 
+        if context.system_target.kind is TargetKind.LIVE:
+            context.report_progress(f"판정 반영 대기 · {self.live_settle_sec:.0f}초")
+            self.sleep(self.live_settle_sec)  # 트래픽 끝 → 파이프라인 판정 저장까지
         system_verdicts = context.system_target.verdict_reader.read_session_verdicts(context.run_id)
         rule_hit_count_by_rule_id = read_rule_hit_counts_or_none(context)
         context.report_progress(f"Verdict {len(system_verdicts)}", actor_progress=build_actor_progress(planned_users, {

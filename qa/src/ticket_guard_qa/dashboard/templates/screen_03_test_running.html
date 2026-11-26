@@ -152,6 +152,10 @@
     document.querySelectorAll("[data-live-metric]").forEach((card) => {
       const metricName = card.dataset.liveMetric;
       const value = liveMetrics[metricName];
+      if (value === null || value === undefined) {  // 시스템 기록 없음 · 측정 전
+        card.querySelector(".metric-value").textContent = "-";
+        return;
+      }
       const history = (historyByMetric[metricName] ||= []);
       history.push(value);
       if (history.length > MAX_SPARKLINE_POINTS) history.shift();

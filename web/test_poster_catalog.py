@@ -36,6 +36,13 @@ class PosterCatalogTests(SimpleTestCase):
         for genre, show_id in (('클래식', 'first-snow-classics'), ('무용', 'winter-waltz')):
             response = self.client.get('/', {'genre': genre})
             self.assertEqual([s['id'] for s in response.context['shows']], [show_id])
+        for genre, show_ids in (
+            ('페스티벌', {'city-night', 'november-last-night'}),
+            ('뮤지컬', {'starlight'}),
+            ('연극', {'summer-rhythm'}),
+        ):
+            response = self.client.get('/', {'genre': genre})
+            self.assertEqual({s['id'] for s in response.context['shows']}, show_ids)
         response = self.client.get('/', {'q': '노을 뮤직홀'})
         self.assertEqual([s['id'] for s in response.context['shows']], ['warm-soul'])
 
@@ -62,7 +69,8 @@ class PosterCatalogTests(SimpleTestCase):
             with self.subTest(show=show['id']):
                 self.assertEqual((show['title'], show['english']), poster_titles[show['poster']])
                 self.assertTrue(show['date'].startswith('2026.11.'))
-                self.assertEqual(show['genre'], '콘서트')
+                expected_genres = {'city-night': '페스티벌', 'starlight': '뮤지컬', 'summer-rhythm': '연극'}
+                self.assertEqual(show['genre'], expected_genres.get(show['id'], '콘서트'))
                 response = self.client.get('/detail/' + show['id'] + '/')
                 self.assertContains(response, show['title'])
                 self.assertContains(response, show['english'])

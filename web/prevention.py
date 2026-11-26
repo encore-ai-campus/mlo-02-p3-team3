@@ -137,7 +137,8 @@ class Policy:
         return False
 
     def quota(self, quantity):
-        purchased = self.session.purchased(self.target)
+        cycle = self.attempt.get('cycle') if self.attempt else None
+        purchased = self.session.purchased(self.target, cycle) if cycle else self.session.purchased(self.target)
         self.event('prevention_evaluated', 'purchase_limit_attempt', observed=purchased + quantity,
                    purchasedQuantity=purchased, requestedQuantity=quantity)
         if purchased + quantity > 4:
@@ -160,13 +161,17 @@ def transaction(method):
                 user = args[0] if args else kwargs.get('user')
                 attempt_before = copy.deepcopy(self.attempts.get(user))
                 sold_before, remaining_before = self.sold.copy(), self.remaining
+                cycles_before = copy.deepcopy(self.cycle_inventories)
                 try:
                     with store.transaction() as session:
+                        from .booking_schedule import transaction_time
                         token = active.set(session)
+                        clock_token = transaction_time.set(time.time())
                         try:
                             return method(self, *args, **kwargs)
                         finally:
                             active.reset(token)
+                            transaction_time.reset(clock_token)
                 except Exception as exc:
                     if not (hasattr(exc, 'code') and hasattr(exc, 'status')):
                         changed = self.attempts.get(user)
@@ -177,6 +182,7 @@ def transaction(method):
                         else:
                             self.attempts[user] = attempt_before
                         self.sold, self.remaining = sold_before, remaining_before
+                        self.cycle_inventories = cycles_before
                     raise
         except (OSError, PyMongoError) as storage_error:
             logger.warning('policy_storage_failed errorClass=%s code=%s', type(storage_error).__name__, getattr(storage_error, 'code', None))
@@ -208,9 +214,15 @@ def login_attempt(username, authenticate):
 
 def booking_policy(repo, user, show_id, attempt=None):
     from .services import SHOWS
+    from .booking_schedule import window
     schedule = SHOWS[show_id]['schedule_id']
     simulated = (bool(attempt.get('scenario')) if attempt else bool(repo.scenarios.get((user, show_id)))) or simulated_account(user)
     policy = Policy(active.get(), scope(user, show_id, schedule, simulated), attempt)
+    sale = window(show_id)
+    if sale and policy.state.get('booking_cycle') != sale['cycle']:
+        policy.release('purchase_limit_attempt', reason='expired')
+        policy.state['booking_cycle'] = sale['cycle']
+        policy.save()
     if repo.opens_at(user, show_id) <= policy.now:
         policy.release('not_open_repeat')
     policy.check()

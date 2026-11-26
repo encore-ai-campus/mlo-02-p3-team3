@@ -77,6 +77,19 @@ QA가 시스템 데이터를 읽거나 db 브랜치와 형식을 맞출 때 보�
 | `ruleSetVersion` | `rule_set_version` | Run 비교 기준 |
 | `decidedAt` | `decided_at` | 판정 응답 지연 |
 
+**Live 판정 출처 (2026-11-25 main 기준)** · `SESSION_VERDICTS` 확정 전 · `LiveMongoVerdictReader`가 시스템 DB `ticketguard`에서 세션별로 계산 · 최근 6시간 · 세션 키 `bookingAttemptId`
+
+| 시스템 기록 | 판정 | `matched_rules` |
+|---|---|---|
+| `clean_events` · `prevention_applied` · `prevention_rejected` (서버 즉시 차단) | HOLD | `server_restriction` |
+| `clean_events` · 서버 거절 + `errorCode` `DUPLICATE_PAGE` · `ACTIVE_ATTEMPT` · `CAPTCHA_LIMIT` · `INVALID_STEP` · `NOT_VERIFIED` · `SELECTION_LIMIT` | CHALLENGE | `duplicate_progress` · `captcha_limit` · `step_bypass` · `selection_condition` |
+| `anomaly_events` · `isAnomaly: true` (파이프라인 이상 탐지 · 철회 신호 제외) | CHALLENGE | `rule` 값 (`overlap` · `retry` · `pages` · `fast` · `purchases` · `limit`) |
+| `clean_events` · `evaluationStatus: evaluated` · `prevention_evaluated` · 적중 없음 | NORMAL | - |
+
+- 시스템 점수 없음 → `score` 0 · `ruleSetVersion` = `anomaly_events.ruleVersion`
+- 판정 기록 없는 세션 = NORMAL(놓침)로 채점
+- Live 판정 정확도 · 트래픽 끝난 뒤 30초 대기 후 읽기 (Spark 처리 주기 · 이상 탐지 갱신)
+
 **SESSION_FEATURES** · QA 봇 파라미터(`SessionBehavior`)와 1:1 대조 · 대응 원본은 `domain/models.py`의 `FEATURE_FIELD_BY_BEHAVIOR_FIELD`
 
 | 시스템 필드 | QA 이름 | 대조하는 봇 파라미터 |

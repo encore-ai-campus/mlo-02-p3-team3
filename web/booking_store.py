@@ -105,8 +105,11 @@ class MongoBookingMixin:
                 return
             store = Store()
             try:
+                store._prepare_booking()
                 with store.transaction(guard=getattr(self._local, 'guard', 'ledger')) as session:
+                    from .booking_schedule import transaction_time
                     token = prevention.active.set(session)
+                    clock_token = transaction_time.set(time.time())
                     self.depth = 1
                     try:
                         self._load(session)
@@ -121,6 +124,7 @@ class MongoBookingMixin:
                     finally:
                         self.depth = 0
                         prevention.active.reset(token)
+                        transaction_time.reset(clock_token)
             except PyMongoError as exc:
                 if exc.has_error_label('TransientTransactionError'): raise
                 from .services import FlowError
@@ -180,11 +184,17 @@ class MongoBookingMixin:
 
     def inventory(self, show_id):
         from .services import SHOWS, INITIAL_SOLD
+        from .booking_schedule import window
         key = SHOWS[show_id]['schedule_id']
-        try: return self.inventories[key]
+        sale = window(show_id)
+        try:
+            inventory = self.inventories[key]
         except KeyError:
-            self.inventories[key] = dict(show_id=show_id, sold=sorted(INITIAL_SOLD), remaining=28)
-            return self.inventories[key]
+            inventory = None
+        if inventory is None or (sale and inventory.get('cycle') != sale['cycle']):
+            self.inventories[key] = dict(show_id=show_id, sold=[] if sale else sorted(INITIAL_SOLD),
+                                        remaining=28, cycle=sale['cycle'] if sale else None)
+        return self.inventories[key]
 
     def sold_for(self, show_id):
         with self.lock:
