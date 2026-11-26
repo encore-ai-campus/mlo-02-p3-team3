@@ -46,6 +46,9 @@ REQUIRED_SERVER_EVENT_TYPES = {
     BookingOutcome.BOOKED: BOOKED_SERVER_EVENT_TYPES,
     BookingOutcome.SOLD_OUT: SOLD_OUT_SERVER_EVENT_TYPES,
 }
+# 대조 대상 예매 이벤트 전체 · 민감값 정제 · 16KB 초과 시 웹이 스키마 v2로 올려도 관측 이벤트로 빼지 않음
+BOOKING_SERVER_EVENT_TYPES = BOOKED_SERVER_EVENT_TYPES | SOLD_OUT_SERVER_EVENT_TYPES
+SERVER_EVENT_SOURCE = "server"
 
 
 def find_required_server_event_types(result: VirtualUserSessionResult) -> frozenset[str] | None:
@@ -84,7 +87,14 @@ def parse_occurred_at_ms(value: object) -> float | None:
 
 
 def is_capture_event(event: dict) -> bool:
+    """관측 이벤트 = 서버 관측 · 분할 메시지 · 예매 이벤트는 스키마 v2여도 대조 대상"""
+    if event.get("eventType") in BOOKING_SERVER_EVENT_TYPES:
+        return False
     return event.get("schemaVersion") == CAPTURE_SCHEMA_VERSION or event.get("eventType") == CAPTURE_CHUNK_EVENT_TYPE
+
+
+def is_server_event(event: dict) -> bool:
+    return event.get("source") == SERVER_EVENT_SOURCE
 
 
 def collect_sent_event_ids(session_results: list[VirtualUserSessionResult]) -> set[str]:
@@ -149,7 +159,7 @@ def evaluate_delivery(session_results: list[VirtualUserSessionResult], records: 
         if is_capture_event(event):
             report.capture_event_count += 1
             continue
-        if event.get("eventType") != "seat_select":
+        if is_server_event(event):  # 출처가 서버인 것만 · 브라우저 화면 이벤트 제외
             report.server_event_count += 1
             if attempt_id:
                 server_event_types_by_attempt[attempt_id].add(event.get("eventType"))
@@ -188,7 +198,7 @@ def wait_for_late_server_events(
 def build_message(report: DeliveryReport, session_results: list[VirtualUserSessionResult], late_wait_sec: float = 0.0) -> str:
     """한 줄 = 한 항목 · FAIL 줄 먼저 · 트래픽 오류는 참고 (트래픽 안정성은 예매 흐름 · 부하 테스트 판정)"""
     failures = [
-        (f"좌석 클릭 이벤트 누락 {len(report.missing_browser_event_ids)}건", report.missing_browser_event_ids),
+        (f"브라우저 이벤트 누락 {len(report.missing_browser_event_ids)}건", report.missing_browser_event_ids),
         (f"서버 이벤트 누락 {len(report.missing_server_events)}건", report.missing_server_events),
         (f"중복 {len(report.duplicate_event_ids)}건", report.duplicate_event_ids),
         (f"파티션 키 위반 {len(report.partition_violation_ids)}건", report.partition_violation_ids),
@@ -197,7 +207,7 @@ def build_message(report: DeliveryReport, session_results: list[VirtualUserSessi
     if report.invalid_record_count:
         lines.append(f"{FAIL_LINE_PREFIX}형식 오류 메시지 {report.invalid_record_count}건")
     received_count = report.sent_browser_event_count - len(report.missing_browser_event_ids)
-    lines.append(f"좌석 클릭 이벤트 {received_count}/{report.sent_browser_event_count}")
+    lines.append(f"브라우저 이벤트 {received_count}/{report.sent_browser_event_count} · 좌석 클릭 · 화면 진입 · 이탈")
     lines.append(f"서버 이벤트 {report.server_event_count} · 누락 {len(report.missing_server_events)}"
                  f" · 중복 {len(report.duplicate_event_ids)}")
     lines.append(f"관측 이벤트 {report.capture_event_count}")

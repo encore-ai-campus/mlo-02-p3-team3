@@ -34,9 +34,11 @@ def build_context(system_target, virtual_user_count: int = 20) -> SuiteContext:
 
 
 def record(event_type: str, attempt_id: str | None, partition: int = 0, event_id: str | None = None,
-           user_id: str = "qa-user-0001", timestamp_ms: int = OCCURRED_AT_MS + 40) -> StreamRecord:
-    event = {"schemaVersion": 1, "eventId": event_id or f"{attempt_id}-{event_type}", "eventType": event_type,
-             "occurredAt": OCCURRED_AT, "userId": user_id, "bookingAttemptId": attempt_id}
+           user_id: str = "qa-user-0001", timestamp_ms: int = OCCURRED_AT_MS + 40,
+           source: str | None = None, schema_version: int = 1) -> StreamRecord:
+    event = {"schemaVersion": schema_version, "eventId": event_id or f"{attempt_id}-{event_type}", "eventType": event_type,
+             "occurredAt": OCCURRED_AT, "userId": user_id, "bookingAttemptId": attempt_id,
+             "source": source or ("browser" if event_type == "seat_select" else "server")}
     return StreamRecord(partition, 0, attempt_id, timestamp_ms, event)
 
 
@@ -47,7 +49,7 @@ def booked_records(attempt_id: str, partition: int = 0) -> list[StreamRecord]:
 def test_mock_delivery_passes():
     result = EventDeliverySuite().run(build_context(build_fake_system_target()))
     assert result.outcome is SuiteOutcome.PASSED, result.message
-    assert "좌석 클릭 이벤트 40/40" in result.message
+    assert "브라우저 이벤트 40/40 · 좌석 클릭 · 화면 진입 · 이탈" in result.message
     assert result.metrics["event_delivery_missing_count"] == 0
 
 
@@ -124,15 +126,36 @@ def test_traffic_errors_are_reference_not_failure():
     assert result.outcome is SuiteOutcome.PASSED, result.message
     lines = result.message.split("\n")
     assert "참고: 트래픽 오류 VU 1명" in lines and "참고: connection · ConnectTimeout 1건" in lines
-    assert lines[0] == "좌석 클릭 이벤트 8/8"
+    assert lines[0] == "브라우저 이벤트 8/8 · 좌석 클릭 · 화면 진입 · 이탈"
 
 
 def test_delivery_failure_lines_come_first():
     session = VirtualUserSessionResult(SessionKey("a1"), 1.0, False, booking_outcome=BookingOutcome.BOOKED,
                                        sent_event_ids=("e1",))
     lines = build_message(evaluate_delivery([session], booked_records("a1")), [session]).split("\n")
-    assert lines[0] == "FAIL: 좌석 클릭 이벤트 누락 1건 · e1"
-    assert lines[1] == "좌석 클릭 이벤트 0/1"
+    assert lines[0] == "FAIL: 브라우저 이벤트 누락 1건 · e1"
+    assert lines[1] == "브라우저 이벤트 0/1 · 좌석 클릭 · 화면 진입 · 이탈"
+
+
+def test_browser_events_are_not_counted_as_server_events():
+    """화면 진입 · 좌석 클릭 = 출처 browser · 서버 이벤트 수에서 제외"""
+    session = VirtualUserSessionResult(SessionKey("a5"), 1.0, False, booking_outcome=BookingOutcome.BOOKED,
+                                       sent_event_ids=("e1", "e2"))
+    records = booked_records("a5") + [record("seat_select", "a5", event_id="e1"),
+                                      record("page_enter", "a5", event_id="e2", source="browser")]
+    report = evaluate_delivery([session], records)
+    assert report.server_event_count == len(BOOKED_SERVER_EVENT_TYPES)
+    assert report.missing_server_events == []
+
+
+def test_redacted_booking_event_stays_in_server_comparison():
+    """민감값 정제 · 16KB 초과 시 웹이 스키마 v2로 올려도 예매 이벤트는 관측 이벤트로 빼지 않음"""
+    session = VirtualUserSessionResult(SessionKey("a6"), 1.0, False, booking_outcome=BookingOutcome.BOOKED)
+    records = [record(event_type, "a6", schema_version=2 if event_type == "captcha_success" else 1)
+               for event_type in sorted(BOOKED_SERVER_EVENT_TYPES)]
+    report = evaluate_delivery([session], records)
+    assert report.missing_server_events == []
+    assert report.capture_event_count == 0
 
 
 def test_suite_skips_without_stream_reader():
