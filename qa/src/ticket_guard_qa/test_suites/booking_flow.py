@@ -3,7 +3,12 @@ from collections import Counter
 
 from ticket_guard_qa.answer_key.expected_verdicts import plan_virtual_users
 from ticket_guard_qa.domain.enums import BookingOutcome, SuiteOutcome
-from ticket_guard_qa.domain.models import MESSAGE_LINE_SEPARATOR, SuiteResult, VirtualUserSessionResult
+from ticket_guard_qa.domain.models import (
+    MESSAGE_LINE_SEPARATOR,
+    REFERENCE_LINE_PREFIX,
+    SuiteResult,
+    VirtualUserSessionResult,
+)
 from ticket_guard_qa.scoring.latency_metrics import calculate_p95
 from ticket_guard_qa.system_targets.target_interfaces import AccountPoolExhaustedError
 from ticket_guard_qa.test_suites.suite_interface import SuiteContext, SuiteGuide
@@ -39,16 +44,27 @@ def count_outcomes(session_results: list[VirtualUserSessionResult | None]) -> Co
     return Counter(result.booking_outcome for result in session_results if result and not result.is_error)
 
 
+def build_blocked_line(session_results: list[VirtualUserSessionResult]) -> str | None:
+    """즉시 차단 = 서버 오류 아님 · 시험 계정 구매 한도 · 일시 제한 · 참고 줄"""
+    blocked_counts = Counter(result.failed_step or "unknown" for result in session_results if result.is_blocked)
+    if not blocked_counts:
+        return None
+    listed = ", ".join(f"{step} {count}건" for step, count in blocked_counts.most_common())
+    return f"{REFERENCE_LINE_PREFIX}시스템 즉시 차단 {sum(blocked_counts.values())}건 · {listed} · 서버 오류 아님"
+
+
 def build_message(session_results: list[VirtualUserSessionResult], planned_count: int) -> str:
-    succeeded = [result for result in session_results if not result.is_error]
+    error_count = sum(1 for result in session_results if result.is_error)
+    completed = [result for result in session_results if result.is_completed]
     outcome_counts = count_outcomes(session_results)
+    blocked_text = f" · 차단 {outcome_counts[BookingOutcome.BLOCKED]}" if outcome_counts[BookingOutcome.BLOCKED] else ""
     parts = [
-        f"예매 완료 {outcome_counts[BookingOutcome.BOOKED]} · 매진 {outcome_counts[BookingOutcome.SOLD_OUT]}"
-        f" · 오류 {planned_count - len(succeeded)} / VU {planned_count}"
+        f"예매 완료 {outcome_counts[BookingOutcome.BOOKED]} · 매진 {outcome_counts[BookingOutcome.SOLD_OUT]}{blocked_text}"
+        f" · 오류 {error_count} / VU {planned_count}"
     ]
-    if succeeded:
-        parts.append(f"전체 p95 {calculate_p95([result.latency_ms for result in succeeded]):.0f}ms")
-        parts.extend(f"{STEP_TITLES.get(step, step)} {value:.0f}ms" for step, value in summarize_step_p95(succeeded).items())
+    if completed:
+        parts.append(f"전체 p95 {calculate_p95([result.latency_ms for result in completed]):.0f}ms")
+        parts.extend(f"{STEP_TITLES.get(step, step)} {value:.0f}ms" for step, value in summarize_step_p95(completed).items())
     fail_lines = []  # 실패 원인은 줄을 나눔 · 04 결론 · 원문 가독성
     double_sold = find_double_sold_seat_ids(session_results)
     if double_sold:
@@ -56,7 +72,8 @@ def build_message(session_results: list[VirtualUserSessionResult], planned_count
     failure_counts = Counter(result.failed_step or "unknown" for result in session_results if result.is_error)
     if failure_counts:
         fail_lines.append("FAIL: " + ", ".join(f"{step} {count}건" for step, count in failure_counts.most_common()))
-    return MESSAGE_LINE_SEPARATOR.join([*fail_lines, " · ".join(parts)])
+    blocked_line = build_blocked_line(session_results)
+    return MESSAGE_LINE_SEPARATOR.join([*fail_lines, " · ".join(parts), *([blocked_line] if blocked_line else [])])
 
 
 class BookingFlowSuite:
@@ -98,22 +115,25 @@ class BookingFlowSuite:
         except AccountPoolExhaustedError as error:
             return SuiteResult(self.suite_name, SuiteOutcome.FAILED, message=f"FAIL: {error}")
 
-        succeeded_latencies = [result.latency_ms for result in session_results if not result.is_error]
+        error_count = sum(1 for result in session_results if result.is_error)
+        succeeded_latencies = [result.latency_ms for result in session_results if result.is_completed]
         outcome_counts = count_outcomes(session_results)
         double_sold = find_double_sold_seat_ids(session_results)
-        is_passed = len(succeeded_latencies) == planned_count and not double_sold
+        is_passed = error_count == 0 and not double_sold  # 즉시 차단 = 오류 아님 · 참고 줄
         return SuiteResult(
             suite_name=self.suite_name,
             outcome=SuiteOutcome.PASSED if is_passed else SuiteOutcome.FAILED,
             metrics={
                 "booking_flow_success_count": float(len(succeeded_latencies)),
-                "booking_flow_failure_count": float(planned_count - len(succeeded_latencies)),
+                "booking_flow_failure_count": float(error_count),
+                "booking_flow_blocked_count": float(outcome_counts[BookingOutcome.BLOCKED]),
                 "booking_flow_booked_count": float(outcome_counts[BookingOutcome.BOOKED]),
                 "booking_flow_sold_out_count": float(outcome_counts[BookingOutcome.SOLD_OUT]),
                 "booking_flow_double_sold_seat_count": float(len(double_sold)),
                 **({"booking_flow_p95_latency_ms": calculate_p95(succeeded_latencies)} if succeeded_latencies else {}),
             },
             message=f"{build_message(session_results, planned_count)} · {reset_message}",
-            details={"step_p95_latency_ms": summarize_step_p95(session_results), "double_sold_seat_ids": double_sold,
+            details={"step_p95_latency_ms": summarize_step_p95([r for r in session_results if r.is_completed]),
+                     "double_sold_seat_ids": double_sold,
                      ACTOR_PROGRESS_DETAIL_KEY: build_funnel_progress(planned_users, session_results)},
         )

@@ -5,7 +5,12 @@ from dataclasses import dataclass, field
 from ticket_guard_qa.domain.enums import SuiteOutcome
 from ticket_guard_qa.domain.models import FAIL_LINE_PREFIX, MESSAGE_LINE_SEPARATOR, REFERENCE_LINE_PREFIX, SuiteResult
 from ticket_guard_qa.scoring.latency_metrics import calculate_p95
-from ticket_guard_qa.system_targets.target_interfaces import AccountPoolExhaustedError, AdmissionSample, BookingApi
+from ticket_guard_qa.system_targets.target_interfaces import (
+    AccountPoolExhaustedError,
+    AdmissionSample,
+    BookingApi,
+    is_policy_block,
+)
 from ticket_guard_qa.test_suites.suite_interface import SuiteContext, SuiteGuide
 from ticket_guard_qa.traffic_generators.virtual_user_traffic import reset_before_traffic
 
@@ -35,7 +40,14 @@ class LoadReport:
 
     @property
     def admission_errors(self) -> list[str]:
-        return [sample.error or "입장 실패" for sample in self.samples if sample.admitted_at_sec is None]
+        """입장 실패 중 서버 오류 · 즉시 차단 제외"""
+        return [sample.error or "입장 실패" for sample in self.samples
+                if sample.admitted_at_sec is None and not is_policy_block(sample.error)]
+
+    @property
+    def blocked_errors(self) -> list[str]:
+        """시스템 즉시 차단 정책 응답 · 시험 계정 구매 한도 · 일시 제한 · 서버 오류 아님"""
+        return [sample.error for sample in self.samples if sample.admitted_at_sec is None and is_policy_block(sample.error)]
 
     @property
     def peak_concurrent_admissions(self) -> int:
@@ -100,6 +112,8 @@ def build_message(report: LoadReport) -> str:
     lines.append(f"최대 동시 입장 {report.peak_concurrent_admissions}{limit_text} · 입장 {admitted_count}/{report.virtual_user_count}")
     lines.append(f"연속 요청 {BURST_REQUEST_COUNT}건 중 차단 {report.burst_status_codes.count(RATE_LIMITED_STATUS_CODE)}건"
                  f" · 정상 속도 {NORMAL_REQUEST_COUNT}건 중 차단 {report.normal_status_codes.count(RATE_LIMITED_STATUS_CODE)}건")
+    if report.blocked_errors:
+        lines.append(f"{REFERENCE_LINE_PREFIX}시스템 즉시 차단 {len(report.blocked_errors)}건 · {report.blocked_errors[0]} · 서버 오류 아님")
     if report.admitted_samples:
         lines.append(f"대기열 대기 p95 {calculate_p95([sample.wait_ms for sample in report.admitted_samples]):.0f}ms")
     if report.admission_limit is None:
@@ -156,6 +170,7 @@ class LoadCapacitySuite:
                 "virtual_user_count": virtual_user_count,
                 "admitted_count": len(report.admitted_samples),
                 "admission_errors": report.admission_errors[:MAX_LISTED_ERROR_COUNT],
+                "blocked_count": len(report.blocked_errors),
                 "burst_status_codes": report.burst_status_codes,
                 "normal_status_codes": report.normal_status_codes,
             },

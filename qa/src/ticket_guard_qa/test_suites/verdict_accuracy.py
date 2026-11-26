@@ -6,6 +6,7 @@ from collections.abc import Callable
 from ticket_guard_qa.answer_key.expected_verdicts import build_answer_key, plan_virtual_users
 from ticket_guard_qa.domain.enums import SessionStep, SuiteOutcome, TargetKind
 from ticket_guard_qa.domain.models import (
+    MESSAGE_LINE_SEPARATOR,
     AnswerKey,
     PlannedUser,
     SessionKey,
@@ -25,6 +26,12 @@ from ticket_guard_qa.scoring.detection_metrics import (
 )
 from ticket_guard_qa.scoring.latency_metrics import calculate_error_rate_percent, calculate_p95
 from ticket_guard_qa.test_suites.suite_interface import SuiteContext, SuiteGuide
+from ticket_guard_qa.test_suites.verdict_collection import (
+    collect_verdicts,
+    describe_blocked_sessions,
+    describe_verdict_collection,
+    select_judged_answer_key,
+)
 from ticket_guard_qa.traffic_generators.session_funnel import build_actor_progress, build_funnel_progress
 from ticket_guard_qa.traffic_generators.virtual_user_traffic import (
     build_planned_user_session_plans,
@@ -123,27 +130,36 @@ class VerdictAccuracySuite:
         context.answer_key_repository.save(context.run_id, answer_key)  # QA DB만
         context.report_progress(f"Ground Truth 저장 · {len(answer_key)}세션")
 
-        if context.system_target.kind is TargetKind.LIVE:
+        is_live = context.system_target.kind is TargetKind.LIVE
+        if is_live:
             context.report_progress(f"판정 반영 대기 · {self.live_settle_sec:.0f}초")
             self.sleep(self.live_settle_sec)  # 트래픽 끝 → 파이프라인 판정 저장까지
-        system_verdicts = context.system_target.verdict_reader.read_session_verdicts(context.run_id)
+        collection = collect_verdicts(
+            lambda: context.system_target.verdict_reader.read_session_verdicts(context.run_id),
+            select_judged_answer_key(answer_key, session_results), is_live, context.report_progress, self.sleep,
+        )
+        judged_key, system_verdicts = collection.judged_answer_key, collection.verdicts
         rule_hit_count_by_rule_id = read_rule_hit_counts_or_none(context)
-        context.report_progress(f"Verdict {len(system_verdicts)}", actor_progress=build_actor_progress(planned_users, {
+        context.report_progress(f"Verdict {collection.received_count}/{collection.judged_count}", actor_progress=build_actor_progress(planned_users, {
             SessionStep.ENTERED: Counter(answer_key.values()),
-            SessionStep.VERDICT_RECEIVED: Counter(answer_key[key] for key in answer_key if key in system_verdicts),
+            SessionStep.VERDICT_RECEIVED: Counter(judged_key[key] for key in judged_key if key in system_verdicts),
         }))
-        # 판정 API 응답 = 세션 시작 응답 · 실제 대상에서는 Locust 통계로 교체
-        latency_values_sec = [result.latency_ms / 1000 for result in session_results]
-        error_count = sum(1 for result in session_results if result.is_error)
+        # 판정 API 응답 = 세션 시작 응답 · 끝까지 진행한 세션만 · 즉시 차단은 오류율에서 제외 · 대상 0 = 측정 불가(값 없음)
+        latency_values_sec = [result.latency_ms / 1000 for result in session_results if result.is_completed]
+        judged_results = [result for result in session_results if not result.is_blocked]
+        error_count = sum(1 for result in judged_results if result.is_error)
         metrics = {
-            **calculate_detection_metrics(answer_key, system_verdicts),
-            **calculate_unlearned_metrics(answer_key, system_verdicts),
-            "api_latency_p95_sec": calculate_p95(latency_values_sec),
-            "api_error_rate_percent": calculate_error_rate_percent(len(session_results), error_count),
+            **(calculate_detection_metrics(judged_key, system_verdicts) if collection.is_measurable else {}),
+            **(calculate_unlearned_metrics(judged_key, system_verdicts) if collection.is_measurable else {}),
+            **({"api_latency_p95_sec": calculate_p95(latency_values_sec)} if latency_values_sec else {}),
+            **({"api_error_rate_percent": calculate_error_rate_percent(len(judged_results), error_count)} if judged_results else {}),
         }
+        blocked_line = describe_blocked_sessions(answer_key, session_results)
         return SuiteResult(
             suite_name=self.suite_name,
             outcome=SuiteOutcome.PASSED,  # 측정 완료 · 합격은 합격 기준이 판단
             metrics=metrics,
-            details={**build_result_details(answer_key, system_verdicts), "rule_hit_count_by_rule_id": rule_hit_count_by_rule_id},
+            message=MESSAGE_LINE_SEPARATOR.join([describe_verdict_collection(collection), *([blocked_line] if blocked_line else [])]),
+            details={**build_result_details(judged_key, system_verdicts), "rule_hit_count_by_rule_id": rule_hit_count_by_rule_id,
+                     "verdict_received_count": collection.received_count, "is_verdict_measurable": collection.is_measurable},
         )

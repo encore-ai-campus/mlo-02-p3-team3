@@ -49,8 +49,10 @@ def build_instant_plan(preferred_seat_ids: tuple[str, ...] = ALL_SEAT_IDS) -> Vi
 class FakeDjango:
     """예매 서버 흉내 · 받은 요청 기록 · heartbeat n번째에 입장 · 좌석 판매 상태"""
 
-    def __init__(self, login_status: int = 200, admit_on_heartbeat: int = 2, sold_seat_ids: set[str] | None = None) -> None:
+    def __init__(self, login_status: int = 200, admit_on_heartbeat: int = 2, sold_seat_ids: set[str] | None = None,
+                 restricted_start_count: int = 0) -> None:
         self.login_status = login_status
+        self.restricted_start_count = restricted_start_count  # 처음 n번 예매 시작 = 즉시 차단 정책 응답
         self.admit_on_heartbeat = admit_on_heartbeat
         self.sold_seat_ids = set(sold_seat_ids or ())
         self.actions: list[dict] = []
@@ -88,6 +90,9 @@ class FakeDjango:
             self.device_cookie_by_username[body["username"]] = cookies.get("tg_capture", "")
             return httpx.Response(self.login_status, json={} if self.login_status == 200 else {"code": "LOGIN_FAILED"})
         if body["action"] == "start":
+            if self.restricted_start_count:
+                self.restricted_start_count -= 1
+                return httpx.Response(429, json={"code": "TEMPORARILY_RESTRICTED"})
             return httpx.Response(200, json={"id": "attempt-1", "stage": "queue"})
         if body["action"] == "heartbeat":
             self.heartbeat_count += 1
@@ -344,3 +349,26 @@ def test_device_windows_log_in_with_one_shared_device_cookie():
     assert all(cookies) and len(set(cookies)) == 2  # 기기 2대 · 3창 + 1창
     assert sorted(cookies.count(cookie) for cookie in set(cookies)) == [1, 3]
     assert [result.device_key for result in results] == [plan.device_key for plan in plans]
+
+
+def test_policy_block_is_recorded_apart_from_errors():
+    fake_django = FakeDjango(admit_on_heartbeat=1, restricted_start_count=1)
+    booking_api = build_booking_api(fake_django, account_count=3)
+    blocked, booked = send_virtual_user_traffic(booking_api, [build_instant_plan(("A1", "A2")), build_instant_plan(("B1", "B2"))], 10)
+
+    assert (blocked.booking_outcome, blocked.is_error, blocked.failed_step) == (BookingOutcome.BLOCKED, False, "start · TEMPORARILY_RESTRICTED")
+    assert booked.booking_outcome is BookingOutcome.BOOKED and booked.is_completed and not blocked.is_completed
+    assert booking_api.virtual_user_capacity() == 2  # 차단된 1번은 5분 제외 · 2번(2매 구매) · 3번
+
+
+def test_booked_accounts_rotate_across_runs_and_stop_at_purchase_limit():
+    fake_django = FakeDjango(admit_on_heartbeat=1)
+    first_run = build_booking_api(fake_django, account_count=2)
+    send_virtual_user_traffic(first_run, [build_instant_plan(("A1", "A2"))], 10)
+    second_run = LiveDjangoBookingApi(BASE_URL, "ticketguard", "unused", VirtualUserAccountPool(2, PASSWORD, CAPTCHA_ANSWER),
+                                      transport=httpx.MockTransport(fake_django.handle), account_ledger=first_run.account_ledger)
+
+    assert second_run.acquire_account_number() == 2  # 다음 Run · 다음 번호부터
+    assert first_run.account_ledger.purchased_seat_count(1, time.time()) == 2  # 1번 = 예매 완료 2매
+    with pytest.raises(AccountPoolExhaustedError):  # 4매 시나리오 · 1번은 2 + 4 > 한도 4 · 2번 사용 중
+        second_run.acquire_account_number(4)
