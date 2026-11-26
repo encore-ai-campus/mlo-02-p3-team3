@@ -3,6 +3,11 @@
 # 원본 읽기·지표 쓰기·복구 상태를 기존 서비스와 분리한다.
 services:
   flow:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     image: ticket-guard-user-flow:dev
     build: ./pipeline
     command: [flow]
@@ -21,7 +26,7 @@ services:
       FLOW_PRESENCE_SECONDS: ${FLOW_PRESENCE_SECONDS:-30}
       FLOW_GRACE_SECONDS: ${FLOW_GRACE_SECONDS:-300}
       FLOW_MAX_EVENTS: ${FLOW_MAX_EVENTS:-250000}
-      SPARK_MAX_OFFSETS_PER_TRIGGER: ${SPARK_MAX_OFFSETS_PER_TRIGGER:-1000}
+      SPARK_MAX_OFFSETS_PER_TRIGGER: ${SPARK_MAX_OFFSETS_PER_TRIGGER:-2000}
       FLOW_READ_TIMEOUT_MS: ${FLOW_READ_TIMEOUT_MS:-1000}
       FLOW_RAW_WAIT_SECONDS: ${FLOW_RAW_WAIT_SECONDS:-10}
       EARLY_MONITOR_ENABLED: ${EARLY_MONITOR_ENABLED:-1}

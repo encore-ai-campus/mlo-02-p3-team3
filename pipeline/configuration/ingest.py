@@ -62,8 +62,8 @@ class Settings:
             raise ValueError('Checkpoint must be a directory under /checkpoints')
         return cls(kafka, group_id, topic, host, positive('SPARK_MONGO_PORT', 27017, 65535),
                    database, required('MONGO_WRITER_USERNAME'), required('MONGO_WRITER_PASSWORD'),
-                   checkpoint, positive('SPARK_TRIGGER_SECONDS', 5, 86400),
-                   positive('SPARK_MAX_OFFSETS_PER_TRIGGER', 1000, 10000000),
+                   checkpoint, positive('SPARK_TRIGGER_SECONDS', 1, 86400),
+                   positive('SPARK_MAX_OFFSETS_PER_TRIGGER', 2000, 10000000),
                    positive('SPARK_MONGO_BULK_SIZE', 200, 10000),
                    positive('SPARK_MONGO_TIMEOUT_MS', 10000, 300000),
                    positive('SPARK_MONGO_WRITE_ATTEMPTS', 3, 10))
