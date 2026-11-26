@@ -19,6 +19,7 @@ from ticket_guard_qa.system_targets.live_mongo_reader import (
 )
 from ticket_guard_qa.system_targets.live_raw_mongo_reader import LiveMongoRawEventReader
 from ticket_guard_qa.system_targets.target_interfaces import PIPELINE_SERVICE_NAME, SystemTarget
+from ticket_guard_qa.system_targets.test_account_ledger import find_shared_ledger
 
 
 def build_system_target(settings: Settings, target_kind: TargetKind | None = None) -> SystemTarget:
@@ -35,6 +36,7 @@ def build_system_target(settings: Settings, target_kind: TargetKind | None = Non
             queue_admission_limit=settings.queue_admission_limit,
             browser_executable_path=settings.browser_executable_path,
             max_concurrent_browsers=settings.max_concurrent_browsers,
+            account_ledger=find_shared_ledger(settings.system_base_url, settings.test_account_count),  # Run 사이 계정 이어 쓰기
         ),
         verdict_reader=LiveMongoVerdictReader(settings.system_mongo_uri) if has_mongo else LiveDjangoVerdictReader(),
         pipeline_reader=LiveMongoPipelineReader(settings.system_mongo_uri, settings.kafka_events_topic),

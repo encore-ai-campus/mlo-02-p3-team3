@@ -164,6 +164,14 @@ def build_booking_flow_view(result: SuiteResult) -> SuiteResultView:
     return view
 
 
+def read_measurable_verdict_details(summary: RunSummary | None) -> dict:
+    """판정 수신율 기준 미만 = 화면에서 판정 결과 없음으로 · 판정 없음을 정상으로 센 표 숨김 · 이전 기록 = 그대로"""
+    result = summary.find_suite_result(VERDICT_ACCURACY_SUITE_NAME) if summary else None
+    if result is None or result.details.get("is_verdict_measurable") is False:
+        return {}
+    return result.details
+
+
 def describe_missing_verdict(summary: RunSummary) -> str:
     """판정 결과 없는 이유 · 04 오분류 판정 · B3 종료 안내 · B4 빈 화면"""
     result = summary.find_suite_result(VERDICT_ACCURACY_SUITE_NAME)
@@ -173,6 +181,9 @@ def describe_missing_verdict(summary: RunSummary) -> str:
         return f"판정 정확도 건너뜀 · {result.message}"
     if result.outcome is SuiteOutcome.ERROR:
         return "판정 정확도 오류 · Run 리포트 확인"
+    if result.details.get("is_verdict_measurable") is False:
+        first_line = next(iter(split_message_lines(result.message)), ("info", "판정 수신율 기준 미만"))[1]
+        return f"판정 수신 부족 · {first_line}"
     return "판정 결과 없음"
 
 

@@ -245,6 +245,15 @@ class VirtualUserSessionResult:
     device_key: str = ""  # 계획의 기기 묶음 그대로 · 같은 기기 세션 대조
     capture_frames: tuple["BrowserCaptureFrame", ...] = ()  # 브라우저 세션 단계별 화면 · B3
 
+    @property
+    def is_blocked(self) -> bool:
+        return self.booking_outcome is BookingOutcome.BLOCKED
+
+    @property
+    def is_completed(self) -> bool:
+        """예매 흐름 끝까지 진행 · 응답 시간 · 판정 비교 대상 · 오류 · 즉시 차단 제외"""
+        return not self.is_error and not self.is_blocked
+
 
 @dataclass(frozen=True)
 class LiveMetrics:

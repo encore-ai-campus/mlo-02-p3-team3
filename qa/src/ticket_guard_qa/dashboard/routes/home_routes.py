@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ticket_guard_qa.dashboard.dependencies import get_run_service, redirect_to_page, render_screen
 from ticket_guard_qa.domain.pass_criteria import PASS_CRITERIA
 from ticket_guard_qa.test_runs.run_service import RunService
-from ticket_guard_qa.test_suites.verdict_accuracy import VERDICT_ACCURACY_SUITE_NAME
+from ticket_guard_qa.dashboard.suite_result_view import read_measurable_verdict_details
 
 RECENT_RUN_COUNT = 3  # 이어서 하기 3개
 
@@ -17,8 +17,7 @@ def show_home(request: Request, run_service: RunService = Depends(get_run_servic
     repository = run_service.run_repository
     recent_summaries = [repository.get_summary(run_id) for run_id in repository.list_recent_run_ids(RECENT_RUN_COUNT)]
     latest_summary = recent_summaries[0] if recent_summaries else None
-    latest_verdict_result = latest_summary.find_suite_result(VERDICT_ACCURACY_SUITE_NAME) if latest_summary else None
-    verdict_details = latest_verdict_result.details if latest_verdict_result else {}
+    verdict_details = read_measurable_verdict_details(latest_summary)
     missed_session_keys = verdict_details.get("missed_bot_session_keys", [])
     return render_screen(request, "screen_01_home.html", {
         "active_tab": "home",

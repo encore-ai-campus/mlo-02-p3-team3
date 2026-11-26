@@ -19,6 +19,7 @@ from ticket_guard_qa.domain.models import (
     VirtualUserSessionResult,
 )
 from ticket_guard_qa.system_targets.live_booking_client import (
+    SEATS_PER_BOOKING,
     BookingFlowError,
     LiveBookingClient,
     build_test_account_username,
@@ -34,7 +35,9 @@ from ticket_guard_qa.system_targets.live_browser_client import (
     summarize_browser_error,
     open_browser,
 )
+from ticket_guard_qa.system_targets.test_account_ledger import PURCHASE_LIMIT_PER_ACCOUNT, TestAccountLedger
 from ticket_guard_qa.system_targets.target_interfaces import (
+    POLICY_BLOCK_ERROR_CODES,
     AccountPoolExhaustedError,
     AdmissionSample,
     ConfirmResponse,
@@ -113,7 +116,8 @@ class LiveDjangoBookingApi:
                  transport: httpx.AsyncBaseTransport | None = None,
                  queue_admission_limit: int = 0,
                  browser_executable_path: str = "",
-                 max_concurrent_browsers: int = DEFAULT_MAX_CONCURRENT_BROWSERS) -> None:
+                 max_concurrent_browsers: int = DEFAULT_MAX_CONCURRENT_BROWSERS,
+                 account_ledger: TestAccountLedger | None = None) -> None:
         self.max_concurrent_browsers = max(max_concurrent_browsers, 1)
         self.queue_admission_limit = queue_admission_limit  # 시스템 동시 입장 상한 · 0 = 모름
         self.base_url = base_url.rstrip("/")
@@ -133,8 +137,9 @@ class LiveDjangoBookingApi:
         self.window_slots: asyncio.Semaphore | None = None
         self.browser_opener = partial(open_browser, executable_path=browser_executable_path,
                                       trusted_origin=build_trusted_origin(self.base_url))  # 시험에서 가짜 브라우저로 교체
-        self.issued_account_count = 0  # 처음 쓰는 계정 번호
-        self.free_account_numbers: list[int] = []  # 정리 끝난 계정 · 다시 사용 · 계정당 진행 중 예매 1건
+        # 시스템 구매 기록 · 차단은 QA 초기화로 안 지워짐 → Run 사이 공용 기록(target_factory) · 없으면 이 대상 전용
+        self.account_ledger = account_ledger or TestAccountLedger(self.test_accounts.count)
+        self.accounts_in_use: set[int] = set()  # 진행 중 예매 정리 전 · 다른 VU에 주지 않음(DUPLICATE_PAGE)
 
     def check_health(self) -> bool:
         try:
@@ -152,35 +157,45 @@ class LiveDjangoBookingApi:
         return self.contract_runner.run(self.contract_client.post_json("/api/events/", event))
 
     def virtual_user_capacity(self) -> int | None:
-        return self.test_accounts.count - self.issued_account_count + len(self.free_account_numbers)
+        return self.account_ledger.count_usable(self.accounts_in_use, SEATS_PER_BOOKING)
 
-    def acquire_account_number(self) -> int:
-        """새 계정 먼저 · 다 쓰면 정리 끝난 계정 · 계정당 진행 중 예매 1건(DUPLICATE_PAGE) · 나눠서 진입 회차 사이 재사용 최소화"""
-        if self.issued_account_count < self.test_accounts.count:
-            self.issued_account_count += 1
-            return self.issued_account_count
-        if self.free_account_numbers:
-            return self.free_account_numbers.pop(0)
-        raise AccountPoolExhaustedError(
-            f"시험 계정 부족 · {self.test_accounts.count}개 · 저장소 .env QA_TEST_ACCOUNT_COUNT 확인"
-        )
+    def acquire_account_number(self, seats_needed: int = SEATS_PER_BOOKING) -> int:
+        """지난 Suite · Run 다음 번호부터 순환 · 사용 중 · 구매 한도 · 차단 계정 제외"""
+        account_number = self.account_ledger.take_usable(self.accounts_in_use, seats_needed)
+        if account_number is None:
+            raise AccountPoolExhaustedError(
+                f"시험 계정 부족 · 사용 가능 0/{self.test_accounts.count}개 · 구매 한도 {PURCHASE_LIMIT_PER_ACCOUNT}매 · 일시 제한 계정 제외"
+                " · 저장소 .env QA_TEST_ACCOUNT_COUNT 늘리기 또는 판매 회차(1시간) 뒤 재실행"
+            )
+        self.accounts_in_use.add(account_number)
+        return account_number
+
+    def return_account(self, account_number: int) -> None:
+        self.accounts_in_use.discard(account_number)
+
+    def record_policy_block(self, account_number: int, error_code: str | None) -> bool:
+        """즉시 차단 응답 = 계정 5분 제외 · True = 차단"""
+        if error_code not in POLICY_BLOCK_ERROR_CODES:
+            return False
+        self.account_ledger.record_block(account_number)
+        return True
 
     async def release_client(self, client: LiveBookingClient, account_number: int) -> None:
         """예매 취소로 진행 중 예매 정리 → 계정 반환 · 정리 실패 계정은 이번 Run에서 다시 쓰지 않음"""
         try:
             await client.cancel_booking()
-            self.free_account_numbers.append(account_number)
+            self.return_account(account_number)
         except httpx.HTTPError:
             pass  # 60초 뒤 시스템이 만료 처리
         finally:
             await client.close()
 
     def reset_test_data(self) -> bool:
+        """좌석 · 진행 중 예매 초기화 · 시스템 구매 기록 · 즉시 차단은 그대로 → 계정 번호는 이어서"""
         if not self.admin_account.username or not self.admin_account.password:
             return False
         asyncio.run(self._reset_as_admin())
-        self.issued_account_count = 0  # 진행 중 예매 전부 정리됨 · 계정 처음부터
-        self.free_account_numbers.clear()
+        self.accounts_in_use.clear()  # 진행 중 예매 전부 정리됨
         return True
 
     async def _reset_as_admin(self) -> None:
@@ -281,16 +296,20 @@ class LiveDjangoBookingApi:
             return VirtualUserSessionResult(SessionKey(f"failed-{username}"), 0.0, is_error=True,
                                             failed_step=f"browser · 실행 환경 없음 · {error}", device_key=session_plan.device_key)
         except BookingFlowError as error:
-            return VirtualUserSessionResult(SessionKey(attempt_id or f"failed-{username}"), 0.0, is_error=True,
+            is_blocked = self.record_policy_block(account_number, error.error_code)
+            return VirtualUserSessionResult(SessionKey(attempt_id or f"failed-{username}"), 0.0, is_error=not is_blocked,
                                             failed_step=f"browser {error.step} · {error.error_code or error.status_code}",
+                                            booking_outcome=BookingOutcome.BLOCKED if is_blocked else None,
                                             device_key=session_plan.device_key)
         except Exception as error:  # noqa: BLE001 · 브라우저 오류 하나가 Run 전체를 멈추지 않게
             return VirtualUserSessionResult(SessionKey(attempt_id or f"failed-{username}"), 0.0, is_error=True,
                                             failed_step=f"browser {current_step} · {type(error).__name__} · {summarize_browser_error(error)}",
                                             device_key=session_plan.device_key)
         finally:
+            if is_booked:
+                self.account_ledger.record_purchase(account_number, len(flow_result.booked_seat_ids))
             if is_booked or not attempt_id:
-                self.free_account_numbers.append(account_number)
+                self.return_account(account_number)
         return VirtualUserSessionResult(
             SessionKey(flow_result.booking_attempt_id), sum(flow_result.step_latency_ms.values()), is_error=False,
             step_latency_ms=flow_result.step_latency_ms, booking_outcome=flow_result.booking_outcome,
@@ -313,8 +332,10 @@ class LiveDjangoBookingApi:
                 username, self.test_accounts.password, self.test_accounts.captcha_answer, session_plan, open_at_monotonic
             )
         except BookingFlowError as error:
-            return VirtualUserSessionResult(SessionKey(client.booking_attempt_id or f"failed-{username}"), 0.0, is_error=True,
+            is_blocked = self.record_policy_block(account_number, error.error_code)
+            return VirtualUserSessionResult(SessionKey(client.booking_attempt_id or f"failed-{username}"), 0.0, is_error=not is_blocked,
                                             failed_step=f"{error.step} · {error.error_code or error.status_code}",
+                                            booking_outcome=BookingOutcome.BLOCKED if is_blocked else None,
                                             sent_event_ids=tuple(client.sent_event_ids), device_key=session_plan.device_key)
         except httpx.HTTPError as error:
             return VirtualUserSessionResult(SessionKey(client.booking_attempt_id or f"failed-{username}"), 0.0, is_error=True,
@@ -322,6 +343,8 @@ class LiveDjangoBookingApi:
                                             sent_event_ids=tuple(client.sent_event_ids), device_key=session_plan.device_key)
         finally:
             await self.release_client(client, account_number)
+        if flow_result.booking_outcome is BookingOutcome.BOOKED:
+            self.account_ledger.record_purchase(account_number, len(flow_result.booked_seat_ids))
         return VirtualUserSessionResult(
             SessionKey(flow_result.booking_attempt_id), flow_result.total_latency_ms, is_error=False,
             step_latency_ms=flow_result.step_latency_ms, booking_outcome=flow_result.booking_outcome,
@@ -331,15 +354,19 @@ class LiveDjangoBookingApi:
 
 
     async def prepare_seat_contender(self, show_id: str) -> SeatContender:
-        """시험 계정 하나 → 좌석 선택 단계 · 실패해도 계정 정리"""
-        account_number = self.acquire_account_number()
+        """시험 계정 하나 → 좌석 선택 단계 · 실패해도 계정 정리 · 최대 4석 확정 시나리오 → 구매 기록 없는 계정"""
+        account_number = self.acquire_account_number(PURCHASE_LIMIT_PER_ACCOUNT)
         client = LiveBookingClient(self.base_url, self.transport)
         try:
             entered = await client.enter_seat_selection(
                 build_test_account_username(account_number), self.test_accounts.password,
                 self.test_accounts.captcha_answer, show_id,
             )
-        except (BookingFlowError, httpx.HTTPError):
+        except BookingFlowError as error:
+            self.record_policy_block(account_number, error.error_code)
+            await self.release_client(client, account_number)
+            raise
+        except httpx.HTTPError:
             await self.release_client(client, account_number)
             raise
         inventory = InventorySnapshot(frozenset(entered.body.get("sold") or ()), int(entered.body.get("remaining") or 0))
@@ -363,7 +390,14 @@ class LiveDjangoBookingApi:
                 raise result
             else:
                 responses.append(to_confirm_response(result))
+        self.record_confirmed_purchase(contender, quantity, responses)
         return responses
+
+    def record_confirmed_purchase(self, contender: SeatContender, quantity: int, responses: list[ConfirmResponse]) -> None:
+        """확정 성공 예매 번호당 매수 기록 · 같은 예매 번호 재전송은 한 번"""
+        booking_ids = {response.booking_id for response in responses if response.status_code == 200 and response.booking_id}
+        for _ in booking_ids:
+            self.account_ledger.record_purchase(contender.handle.account_number, quantity)
 
     async def release_seat_contender(self, contender: SeatContender) -> None:
         await self.release_client(contender.handle.client, contender.handle.account_number)
@@ -375,7 +409,9 @@ class LiveDjangoBookingApi:
         if not is_same_sequence:
             client.confirm_sequence += 1
         try:
-            return to_confirm_response(await client.post_confirm(list(seat_ids), quantity, client.confirm_sequence))
+            response = to_confirm_response(await client.post_confirm(list(seat_ids), quantity, client.confirm_sequence))
+            self.record_confirmed_purchase(contender, quantity, [response])
+            return response
         except httpx.HTTPError as error:
             return ConfirmResponse(0, f"connection · {type(error).__name__}", None, None, 0.0)
 
@@ -396,6 +432,7 @@ class LiveDjangoBookingApi:
             await asyncio.sleep(hold_sec)
             return AdmissionSample(admitted_at, time.monotonic(), (admitted_at - entered_at) * 1000)
         except BookingFlowError as error:
+            self.record_policy_block(account_number, error.error_code)
             return AdmissionSample(None, None, 0.0, f"{error.step} · {error.error_code or error.status_code}")
         except httpx.HTTPError as error:
             return AdmissionSample(None, None, 0.0, f"connection · {type(error).__name__}")
