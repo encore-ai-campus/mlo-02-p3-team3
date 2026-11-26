@@ -16,7 +16,7 @@ resource "aws_security_group" "staging" {
   }
 }
 
-# 인바운드 HTTP · 전체 공개 (서비스 공개 의도 확인 필요 · WORK_PLAN 7절)
+# 인바운드 HTTP · 전체 공개 (공개 범위 재검토 대상 · README 현재 한계 참고)
 resource "aws_vpc_security_group_ingress_rule" "http" {
   security_group_id = aws_security_group.staging.id
   ip_protocol       = "tcp"
