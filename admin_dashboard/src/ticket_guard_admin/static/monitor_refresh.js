@@ -1,15 +1,16 @@
-/* 실제 관리자 화면의 공개 지표만 30초마다 재조회한다. */
+/* 실제 관리자 화면의 공개 지표만 1초마다 재조회한다. */
 (() => {
   'use strict';
   const status=document.getElementById('monitor-refresh-status');
   if(!status || document.body.dataset.monitorMode!=='live') return;
   const host=document.getElementById('monitor-metrics');
   let active=false;
+  let chartAt=Date.now(), chartScope=location.search;
   async function refresh() {
     if(active) return;
     active=true;
     const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),25000);
+    const timeout=setTimeout(()=>controller.abort(),10000);
     try {
       const url=new URL(status.dataset.url,location.origin);
       url.search=location.search;
@@ -29,6 +30,17 @@
         return e ? [attr,e.getAttribute(attr),e.textContent] : null;
       });
       const scrolls=[...host.querySelectorAll('[class*="scroll"]')].map(e=>[e.scrollLeft,e.scrollTop]);
+      const longCharts=[...host.querySelectorAll('.an-box.an-chart-box')];
+      const scopeChanged=chartScope!==location.search;
+      const refreshLong=scopeChanged || Date.now()-chartAt>=30000;
+      if(!refreshLong) {
+        const oldData=JSON.parse(document.querySelector('[data-monitor-data]').textContent || '{}');
+        if(oldData.anomaly) parsed.anomaly.series=oldData.anomaly.series;
+        doc.querySelectorAll('.an-box.an-chart-box').forEach((node,i)=>{
+          if(longCharts[i]) node.replaceWith(longCharts[i]);
+        });
+      } else { chartAt=Date.now(); chartScope=location.search; }
+
       data.remove();
       document.querySelector('[data-monitor-data]').textContent=JSON.stringify(parsed);
       host.replaceChildren(...doc.body.childNodes);
@@ -40,7 +52,7 @@
         button?.click();
       });
       host.querySelectorAll('[class*="scroll"]').forEach((e,i)=>{if(scrolls[i])[e.scrollLeft,e.scrollTop]=scrolls[i];});
-      status.textContent=`30초 간격 자동 갱신 · 마지막 조회 ${new Date().toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})} KST`;
+      status.textContent=`1초 갱신 · 최근 10초 · 1초 집계 · 긴 이상 추이 30초 갱신 · 마지막 조회 ${new Date().toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})} KST`;
     } catch {
       status.textContent='자동 갱신 실패 · 이전 화면 유지 · 다음 주기에 재시도';
     } finally {
@@ -48,5 +60,5 @@
       active=false;
     }
   }
-  setInterval(refresh,30000);
+  setInterval(refresh,1000);
 })();

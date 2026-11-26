@@ -7,24 +7,24 @@
 <title>DB 대시보드 · 사용자 흐름 | 티켓가드</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 {% for filename in ('theme_tokens.css','dashboard.css','shell.css','monitor_common.css','monitor_flow.css','monitor_live.css') %}<link rel="stylesheet" href="{{ base_path }}/admin-static/{{ filename }}{% if filename == 'monitor_common.css' %}?v=queue-card{% endif %}">{% endfor %}
-{% for filename in ('monitor_charts.js','monitor_flow.js','monitor_navigation.js','monitor_refresh.js') %}<script src="{{ base_path }}/admin-static/{{ filename }}?v=refresh-30s" defer></script>{% endfor %}
+{% for filename in ('monitor_charts.js','monitor_flow.js','monitor_navigation.js','monitor_refresh.js') %}<script src="{{ base_path }}/admin-static/{{ filename }}?v=refresh-1s-v1" defer></script>{% endfor %}
 <link rel="stylesheet" href="{{ base_path }}/admin-static/monitor_network.css?v=server-metrics">
 <link rel="stylesheet" href="{{ base_path }}/admin-static/stage_detections.css?v=2">
-<script src="{{ base_path }}/admin-static/stage_detections.js?v=refresh-30s" defer></script>
-<link rel="stylesheet" href="{{ base_path }}/admin-static/anomaly.css"><script src="{{ base_path }}/admin-static/anomaly.js?v=refresh-30s" defer></script>
+<script src="{{ base_path }}/admin-static/stage_detections.js?v=refresh-1s-v1" defer></script>
+<link rel="stylesheet" href="{{ base_path }}/admin-static/anomaly.css"><script src="{{ base_path }}/admin-static/anomaly.js?v=refresh-1s-v1" defer></script>
 <link rel="stylesheet" href="{{ base_path }}/admin-static/dashboard_shell.css?v=shared-shell-1">
 </head><body class="monitor-preview monitoring-live" data-monitor-mode="live">
 <a class="mp-skip" href="#preview-content">본문 바로가기</a>
 {% include 'header.html' %}{% include 'monitor_navigation.html' %}
 <main id="preview-content" class="mp-main" tabindex="-1">
 <div id="monitor-metrics">
-{% if not flow.unpublished %}<div class="mp-live-meta"><span class="mp-pill mp-confirmed">검증 공개 결과</span><span>기준 {{ flow.as_of_label }}</span><details><summary>집계 범위·게시 정보</summary><p>집계 범위 {{ flow.window_label }}</p><p>공개 {{ flow.published_label }}</p><p>접속 집계 단위: {{ flow.counting_label }} · 시계열은 현재 시각 기준 최근 12시간</p></details></div>{% endif %}
+{% if not flow.unpublished %}<div class="mp-live-meta"><span class="mp-pill mp-confirmed">검증 공개 결과</span><span>기준 {{ flow.as_of_label }}</span><details><summary>집계 범위·게시 정보</summary><p>집계 범위 {{ flow.window_label }}</p><p>공개 {{ flow.published_label }}</p><p>접속 집계 단위: {{ flow.counting_label }} · 시계열은 현재 시각 기준 최근 10초</p></details></div>{% endif %}
   {% include 'monitor_user_flow.html' %}
   {% include 'monitor_network.html' %}
   {% include 'monitor_anomaly.html' %}
 </div>
   <noscript><p class="mp-warning">수치는 서버에서 조회되었습니다. 그래프와 관점 전환에는 JavaScript가 필요합니다.</p></noscript>
-  <footer class="mp-footer">TicketGuard DB 대시보드 · 공개 지표 조회 <span id="monitor-refresh-status" data-url="{{ base_path }}/metrics" role="status">30초 간격 자동 갱신</span></footer>
+  <footer class="mp-footer">TicketGuard DB 대시보드 · 공개 지표 조회 <span id="monitor-refresh-status" data-url="{{ base_path }}/metrics" role="status">1초 갱신 · 최근 10초 · 1초 집계 · 긴 이상 추이 30초 갱신</span></footer>
 </main>
 <script id="monitor-live-data" data-monitor-data type="application/json">{{ dashboard_data|tojson }}</script>
 <div id="mp-view-status" class="mp-sr" role="status" aria-live="polite"></div>

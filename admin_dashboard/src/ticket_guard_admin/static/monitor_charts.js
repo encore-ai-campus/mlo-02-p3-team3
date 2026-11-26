@@ -11,7 +11,7 @@
     if (text !== null) node.textContent = text;
     return node;
   }
-  const timeLabel = value => new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', hour12:false}).format(new Date(value));
+  const timeLabel = value => new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).format(new Date(value));
   function draw(id, points, {label, unit, color = '#3971ed', percent = false, range = null}) {
     const host = document.getElementById(id);
     if (!host || !host.getBoundingClientRect().width) return;
@@ -43,9 +43,11 @@
       svg.append(svgElement('line', {x1:left, y1:yy, x2:width-right, y2:yy, class:'mp-grid-line'}));
       svg.append(svgElement('text', {x:left-10, y:yy+4, 'text-anchor':'end', class:'mp-axis-label'}, String(ceiling-i*ceiling/4)));
     }
-    for(let tick=0;tick<=6;tick++) {
-      const time=start+(end-start)*tick/6;
-      svg.append(svgElement('text',{x:left+plotWidth*tick/6,y:height-9,'text-anchor':'middle',class:'mp-axis-label'},timeLabel(time)));
+    const shortRange=end-start<=10000;
+    const ticks=shortRange?9:6;
+    for(let tick=0;tick<=ticks;tick++) {
+      const time=start+(end-start)*tick/ticks;
+      svg.append(svgElement('text',{x:left+plotWidth*tick/6,y:height-9,'text-anchor':'middle',class:'mp-axis-label'},shortRange ? new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',second:'2-digit'}).format(new Date(time))+'초' : timeLabel(time)));
     }
     if (axesOnly) {
       svg.append(svgElement('path', {d:`M${left},${top} V${top+plotHeight} H${width-right}`, fill:'none', stroke:'#a6b5cb'}));

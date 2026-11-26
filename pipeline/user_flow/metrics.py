@@ -12,7 +12,7 @@ def ratio(n, d):
     return {'numerator': n, 'denominator': d, 'ratio': n / d if d else None}
 
 
-def calculate(observations, now, presence_seconds=30, retention=3600, bucket=5):
+def calculate(observations, now, presence_seconds=30, retention=3600, bucket=1):
     rows = sorted((r for r in observations if r['time'] <= now), key=lambda r: (r['time'], r['id']))
     cutoff = now - retention
     # 같은 브라우저의 시작 전 화면은 다음 시작 시도에만 연결한다. 브라우저 간 추정 연결은 하지 않는다.

@@ -26,7 +26,8 @@ def scope_label(value):
 
 def for_display(result, now=None):
     now = now or datetime.now(timezone.utc)
-    cutoff = now - timedelta(hours=12)
+    end = now.replace(microsecond=0)
+    cutoff = end - timedelta(seconds=9)
     m = result['metrics']; h = result['history']
     nodes = [dict(id=n['id'], label=n['label'], order=n['order'], current=n['current'], entered=n['entered'],
                   ongoing=n['ongoing'], mean=n['dwell']['meanSeconds'], median=n['dwell']['medianSeconds'],
@@ -42,22 +43,25 @@ def for_display(result, now=None):
             else:
                 item.update(value=p['ratio'], numerator=p['numerator'], denominator=p['denominator'], ongoing=p.get('ongoing'))
             points.append(item)
-        return points
+        by_time = {moment(p['at']): p for p in points}
+        return [by_time.get(cutoff + timedelta(seconds=i),
+                dict(at=(cutoff + timedelta(seconds=i)).isoformat(), observed=False, value=None)) for i in range(10)]
     return dict(current=m['current'], starts=m['booking']['denominator'], completed=m['booking']['numerator'],
                 ratio=m['booking']['ratio'], nodes=nodes, edges=[dict(e) for e in m['edges']], secondary=[],
                 presence=series('presence'), booking=series('booking'), count_unit='개', counting_label='브라우저 세션',
                 presence_note=f"브라우저 세션 단위 · 최근 {m['presenceTimeoutSeconds']}초 활동 신호 기준 추정",
                 as_of_label=korean_time(m['asOf']), window_label=f"{korean_time(m['windowStart'])} ~ {korean_time(m['asOf'])}",
                 published_label=korean_time(result['published_at']), version=result['version'],
-                chart_range={'start': cutoff.isoformat(), 'end': now.isoformat()})
+                chart_range={'start': cutoff.isoformat(), 'end': end.isoformat()})
 
 
 def unpublished_layout():
     now = datetime.now(timezone.utc)
+    end = now.replace(microsecond=0)
     return dict(
         unpublished=True, current=None, starts=None, completed=None, ratio=None,
         count_unit='개', presence=[], booking=[],
-        chart_range={'start': (now - timedelta(hours=12)).isoformat(), 'end': now.isoformat()},
+        chart_range={'start': (now.replace(microsecond=0) - timedelta(seconds=9)).isoformat(), 'end': end.isoformat()},
         nodes=[dict(id=id_, label=label, current=None, mean=None, median=None, samples=None)
                for id_, label in FLOW_STAGES],
         edges=[dict(source=left[0], target=right[0], ratio=None)

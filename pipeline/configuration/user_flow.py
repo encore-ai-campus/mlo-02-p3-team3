@@ -20,7 +20,7 @@ class FlowConfig:
     presence: int = 30
     retention: int = 3600
     grace: int = 300
-    max_offsets: int = 2000
+    max_offsets: int = 1000
     timeout_ms: int = 1000
     max_events: int = 250000
     raw_wait_seconds: int = 10
@@ -47,6 +47,6 @@ class FlowConfig:
                    required('RAW_SOURCE_ID'), checkpoint,
                    number('FLOW_TRIGGER_SECONDS', 1, 60), number('FLOW_PRESENCE_SECONDS', 30, 3600),
                    3600, number('FLOW_GRACE_SECONDS', 300, 3600),
-                   number('SPARK_MAX_OFFSETS_PER_TRIGGER', 2000, 10000),
+                   number('SPARK_MAX_OFFSETS_PER_TRIGGER', 1000, 10000),
                    number('FLOW_READ_TIMEOUT_MS', 1000, 10000), number('FLOW_MAX_EVENTS', 250000, 1000000),
                    number('FLOW_RAW_WAIT_SECONDS', 10, 120))

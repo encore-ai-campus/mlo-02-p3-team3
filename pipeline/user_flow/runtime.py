@@ -176,14 +176,14 @@ class Processor:
             metrics['liveCoverageStart'] = iso(coverage_start)
             key = 'history:' + scope
             history = state.get_meta(key, [])
-            at = int(now // 5) * 5
-            history = [h for h in history if now - self.config.retention <= h['epoch'] and h['epoch'] != at]
+            at = int(now)
+            history = [h for h in history if at - 9 <= h['epoch'] and h['epoch'] != at]
             history.append({'epoch': at, 'at': iso(at), 'asOf': iso(now), 'current': metrics['current'], 'observed': True})
             # 중단 구간을 0으로 채우지 않는다. 12시간 격자에서 명시적 미관측값으로 제공한다.
             # [홍석환] 현재 설정은 한 시간이며 중단된 구간은 접속·예매 모두 미관측이다.
             from user_flow.events import stamp
-            first = (int((now-self.config.retention)//5)+1)*5
-            grid = range(first, at+1, 5)
+            first = at - 9
+            grid = range(first, at+1)
             known_presence = {h['epoch']: h for h in history}
             metrics['presenceSeries'] = [known_presence.get(t, {'at': iso(t), 'current': None, 'observed': False}) for t in grid]
             known_booking = {int(stamp(h['at'])): h for h in metrics['bookingSeries']}
@@ -191,6 +191,8 @@ class Processor:
                 'numerator': 0 if t in known_presence else None,
                 'denominator': 0 if t in known_presence else None, 'ratio': None,
                 'ongoing': 0 if t in known_presence else None, 'observed': t in known_presence}) for t in grid]
+            metrics['seriesBucketSeconds'] = 1
+            metrics['seriesWindowSeconds'] = 10
             metrics['scope'] = scope
             metrics['verifiedAt'] = iso(self.clock())
             # 공개 시각은 기준 시각과 달리 실제 저장 직전의 시각이다.
