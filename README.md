@@ -64,18 +64,20 @@ Raw Consumer와 Spark가 Kafka를 각각 소비하므로 모든 데이터가 원
 
 **Kafka 전달 확인, 원본 저장, 분석 처리, 결과 공개, 브라우저 표시는 서로 다른 완료 단계**입니다. `delivered` 응답만으로 DB 저장이나 전체 분석 완료를 판단하지 않습니다.
 
-### 2.2 기술 선택과 역할
+### 2.2 기술 스택
 
-| 기술 | 프로젝트에서 맡은 역할 | 선택한 이유 |
-|---|---|---|
-| Python·Django | 예매 업무 API, 인증, 예매 화면 | 동일 서비스에서 업무 상태와 서버 관측을 연결하고 시험 가능한 예매 흐름 구현 |
-| Kafka·confluent-kafka | 공통 이벤트 전달과 소비 경로 분리 | 원본 보관과 분석이 서로 다른 속도로 처리하면서 동일 이벤트를 소비할 수 있는 구조 |
-| Spark Structured Streaming | 마이크로배치 정제·집계·관측 | 연속 입력을 배치 단위로 처리하고 체크포인트와 재처리 경로 구성 |
-| MongoDB·PyMongo | 업무 상태, 원본, 분석 결과, 복구 상태, QA 자료 저장 | 이벤트·근거 문서와 버전별 결과를 보관하고 용도별 DB·권한 분리 |
-| FastAPI·Jinja2 | 관리자 앱과 QA 앱 | 결과 조회와 시험 실행을 예매 업무 및 서로의 저장소에서 분리 |
-| pytest·HTTPX·Playwright·Locust | 자동 검사와 HTTP·브라우저 트래픽 | 업무·이벤트 계약 검사와 여러 사용자 행동의 반복 재현 |
-| Docker Compose·Nginx | 서비스 실행과 공통 진입점 | 구성요소의 실행 환경을 분리하고 기존 관리자 인증 경로 연결 |
-| GitHub Actions | 자동 검사 실행 경로 | 코드 변경에 따른 회귀 검사 구성 |
+| 영역 | 기술 |
+|---|---|
+| Frontend | HTML5, CSS3, JavaScript, Django Templates, Jinja2 |
+| Backend | Python, Django, FastAPI, Uvicorn |
+| Database | MongoDB, PyMongo |
+| Messaging | Apache Kafka, confluent-kafka |
+| Data Processing | Apache Spark, PySpark, Structured Streaming |
+| Infrastructure | Docker, Docker Compose, Nginx |
+| Testing & QA | pytest, HTTPX, Playwright, Locust |
+| CI | GitHub Actions |
+
+Frontend는 HTML·CSS·JavaScript와 서버 템플릿으로 예매·관리자·QA 화면을 구성합니다. Backend는 Django의 예매 업무·인증과 FastAPI의 관리자·QA 앱으로 역할을 나눕니다. Kafka는 이벤트 전달과 소비 경로 분리를, Spark는 정제·집계·이상 관측을 담당하며, MongoDB는 업무 상태·원본·분석 결과·복구 상태·QA 자료를 용도별로 보관합니다.
 
 현재 저장 대상은 MongoDB입니다. 원본·정제·분석 결과를 단계별로 관리하지만 Delta Lake 테이블이나 트랜잭션 로그를 사용하는 구현은 포함하지 않습니다.
 
