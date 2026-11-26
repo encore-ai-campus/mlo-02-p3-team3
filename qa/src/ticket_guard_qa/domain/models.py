@@ -232,6 +232,9 @@ class QuarantineRecord:
     quarantined_at: datetime
 
 
+API_RESPONSE_STEP = "start"  # 판정 API 지연 측정 단계
+
+
 @dataclass(frozen=True)
 class VirtualUserSessionResult:
     session_key: SessionKey
@@ -253,6 +256,11 @@ class VirtualUserSessionResult:
     def is_completed(self) -> bool:
         """예매 흐름 끝까지 진행 · 응답 시간 · 판정 비교 대상 · 오류 · 즉시 차단 제외"""
         return not self.is_error and not self.is_blocked
+
+    @property
+    def api_response_latency_ms(self) -> float:
+        """판정 API 응답 = 예매 시작 응답 · 봇이 일부러 쉬는 시간 · 대기열 대기 제외 · Mock = 응답 시간 그대로"""
+        return self.step_latency_ms.get(API_RESPONSE_STEP, self.latency_ms)
 
 
 @dataclass(frozen=True)
