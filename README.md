@@ -132,11 +132,11 @@ TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로�
 | Database | ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) ![PyMongo](https://img.shields.io/badge/PyMongo-3F8F3E?style=flat-square) |
 | Messaging | ![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=flat-square&logo=apachekafka&logoColor=white) ![confluent-kafka](https://img.shields.io/badge/confluent--kafka-FF5E1E?style=flat-square&logo=confluent&logoColor=white) |
 | Data Processing | ![Apache Spark](https://img.shields.io/badge/Apache%20Spark-E25A1C?style=flat-square&logo=apachespark&logoColor=white) ![PySpark](https://img.shields.io/badge/PySpark-F29D38?style=flat-square) ![Structured Streaming](https://img.shields.io/badge/Structured%20Streaming-D76B18?style=flat-square) |
-| Infrastructure | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white) ![Nginx](https://img.shields.io/badge/Nginx-009639?style=flat-square&logo=nginx&logoColor=white) |
+| Infrastructure | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white) ![Nginx](https://img.shields.io/badge/Nginx-009639?style=flat-square&logo=nginx&logoColor=white) ![AWS EC2](https://img.shields.io/badge/AWS%20EC2-FF9900?style=flat-square&logo=amazonec2&logoColor=white) ![Terraform](https://img.shields.io/badge/Terraform-844FBA?style=flat-square&logo=terraform&logoColor=white) |
 | Testing & QA | ![pytest](https://img.shields.io/badge/pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) ![HTTPX](https://img.shields.io/badge/HTTPX-3B82F6?style=flat-square) ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat-square) ![Locust](https://img.shields.io/badge/Locust-4A8B35?style=flat-square) |
 | CI | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) |
 
-Frontend는 HTML·CSS·JavaScript와 서버 템플릿으로 예매·관리자·QA 화면을 구성합니다. Backend는 Django의 예매 업무·인증과 FastAPI의 관리자·QA 앱으로 역할을 나눕니다. Kafka는 이벤트 전달을, Spark는 정제·집계·이상 관측을 담당하며, MongoDB는 데이터를 용도별로 보관합니다.
+Frontend는 HTML·CSS·JavaScript와 서버 템플릿으로 예매·관리자·QA 화면을 구성합니다. Backend는 Django의 예매 업무·인증과 FastAPI의 관리자·QA 앱으로 역할을 나눕니다. Kafka는 이벤트 전달을, Spark는 정제·집계·이상 관측을 담당하며, MongoDB는 데이터를 용도별로 보관합니다. 스테이징 서버는 AWS EC2에서 운영하며, AWS 리소스 구성은 Terraform 코드로 관리합니다([`infra/terraform`](infra/terraform/README.md)).
 
 ### 2.3 데이터 수집과 Kafka 전달
 

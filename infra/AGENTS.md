@@ -1,7 +1,7 @@
 # AGENTS.md · 티켓가드 인프라
 
 `infra/` 폴더에서 일하는 사람과 AI 에이전트가 지켜야 할 규칙이에요.
-작업 순서와 리소스 목록은 [`WORK_PLAN.md`](WORK_PLAN.md)를 따라요. WORK_PLAN은 가이드라인이고, 더 나은 방법이 확인되면 이 규칙 안에서 수정해요.
+구성 · 설계 결정 · 사용법은 [`terraform/README.md`](terraform/README.md)를 기준으로 해요.
 
 ---
 
@@ -47,4 +47,3 @@
 
 - 코드를 바꿀 때마다 `terraform fmt -check` · `terraform validate` · `terraform plan`을 실행해요.
 - 보고에 포함: 바뀐 파일 · 대상 리소스 · plan 요약 · 남은 차이 · 커밋 · 푸시 여부.
-- 시간 기준은 WORK_PLAN 9절이에요. 크게 넘길 것 같으면 먼저 알려요.
