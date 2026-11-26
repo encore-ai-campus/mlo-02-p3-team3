@@ -43,53 +43,58 @@ TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로�
 
 <table width="100%">
   <tr>
-    <th align="center" width="25%">팀원</th>
-    <th align="left">담당 역할 및 주요 작업</th>
+    <th align="center" width="220">팀원</th>
+    <th align="left" width="780">담당 역할 및 주요 작업</th>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" width="220">
       <a href="https://github.com/callijee22-ship-it">
-        <img src="https://github.com/callijee22-ship-it.png" width="64" height="64" alt="류지예 프로필" /><br />
+        <img src="https://github.com/callijee22-ship-it.png" width="80" height="80" alt="류지예 프로필" /><br />
         <strong>류지예</strong>
       </a><br />
       <sub>팀장</sub>
     </td>
-    <td>
+    <td width="780">
+      <br />
       <strong>Frontend · UI · 문서화</strong><br /><br />
       예매·관리자 화면 및 공통 테마 구성<br />
       웹 기능 개선, README·구조도·발표자료 작성
+      <br /><br />
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" width="220">
       <a href="https://github.com/seoloo">
-        <img src="https://github.com/seoloo.png" width="64" height="64" alt="설호현 프로필" /><br />
+        <img src="https://github.com/seoloo.png" width="80" height="80" alt="설호현 프로필" /><br />
         <strong>설호현</strong>
       </a>
     </td>
-    <td>
+    <td width="780">
+      <br />
       <strong>QA · 매크로 봇 · 배포</strong><br /><br />
       QA 대시보드·자동화 시험·매크로 봇 구현<br />
       QA DB 및 AWS 실행 환경 구성
+      <br /><br />
     </td>
   </tr>
   <tr>
-    <td align="center">
+    <td align="center" width="220">
       <a href="https://github.com/SeokHwanHong">
-        <img src="https://github.com/SeokHwanHong.png" width="64" height="64" alt="홍석환 프로필" /><br />
+        <img src="https://github.com/SeokHwanHong.png" width="80" height="80" alt="홍석환 프로필" /><br />
         <strong>홍석환</strong>
       </a>
     </td>
-    <td>
+    <td width="780">
+      <br />
       <strong>DB · 데이터 파이프라인 · 이상탐지</strong><br /><br />
       MongoDB·Kafka·Spark 연결 및 데이터 적재<br />
       이상탐지 로직·관리자 지표 구현
+      <br /><br />
     </td>
   </tr>
 </table>
 
 프로젝트 흐름과 웹페이지 기획·구성은 팀이 함께 논의하고, 각 담당 영역을 연결해 예매·수집·분석·조회·검증 흐름을 구성했습니다.
-
 ## 2. 과정
 
 ### 2.1 전체 아키텍처와 설계 의도
