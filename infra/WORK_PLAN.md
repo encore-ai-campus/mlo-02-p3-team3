@@ -1,7 +1,8 @@
 # TicketGuard AWS 인프라 코드화 작업 계획
 
 - 목적: 콘솔에서 만든 AWS 리소스를 Terraform 코드로 저장소에 기록 · 변경 이력 추적 · 재현 가능 구성 확보 · 발표에서 AWS 설계·운영 역량 제시
-- 브랜치: `infra` (develop 기준) → 완료 후 `develop` 대상 PR
+- 브랜치: `infra` (main 기준) → 완료 후 `main` 대상 PR (`develop`은 갱신되지 않음 · 2026-11-26 확인)
+- 진행 상태: 0~9단계 완료 · import 32개 · apply 후 plan `No changes` · CI 통과 (2026-11-26)
 - 범위: 기존 스테이징 리소스를 **새로 만들지 않고 import로 연결** · 첫 목표는 `terraform plan` 결과 `No changes`
 - 기준 시점: 2026-11-26 AWS CLI 조회 결과
 - 작업 규칙: [`AGENTS.md`](AGENTS.md) · 이 문서는 가이드라인이며 더 나은 방법이 확인되면 수정
@@ -94,16 +95,20 @@ infra/
 └── terraform/
     ├── README.md         # 사용법 · 아키텍처 그림 · 보안 설계 표
     ├── versions.tf       # terraform · aws provider 버전
-    ├── provider.tf       # region · 기본 태그
+    ├── backend.tf        # state 저장 위치 (로컬 → S3 전환 지점)
+    ├── provider.tf       # region · 기본 태그 (변수 · 기본 빈 값)
     ├── variables.tf      # admin_cidr · instance_type 등
-    ├── data.tf           # 기본 VPC · 서브넷
+    ├── locals.tf         # 이름 규칙 · SSM 문서 · 팀원 · 정책 목록
+    ├── data.tf           # 계정 · 기본 VPC · 서브넷 · 팀원 사용자
     ├── network.tf        # 보안 그룹 · 규칙
     ├── ec2.tf            # 인스턴스 · EIP · EIP 연결
     ├── iam_ec2.tf        # EC2 역할 · 인스턴스 프로파일 · 정책 연결
     ├── ssm_documents.tf  # 포트 포워딩 문서 4개
     ├── iam_team.tf       # 팀원 정책 · 연결
-    ├── imports.tf        # import 블록 (No changes 확인 후 삭제 가능)
-    ├── outputs.tf        # instance_id · public_ip
+    ├── monitoring.tf     # CloudWatch 알람 자리 (기본 꺼짐)
+    ├── backup.tf         # S3 백업 자리 (기본 꺼짐)
+    ├── imports.tf        # import 블록 (적용 후에도 이력으로 유지)
+    ├── outputs.tf        # 계정 · 네트워크 · instance_id · public_ip · SSM 접속 명령
     ├── policies/         # 정책 JSON (aws CLI로 내려받은 원문)
     ├── documents/        # SSM 문서 JSON (aws CLI로 내려받은 원문)
     └── terraform.tfvars.example
@@ -247,18 +252,18 @@ import { to = aws_iam_policy.mongo_port_forward                 id = "arn:aws:ia
 
 ## 6. 진행 순서
 
-| 단계 | 내용 | 완료 기준 |
-|---|---|---|
-| 0 | 설치 · 로그인 · 실행 계정 권한 확인 (1절) · 원문 JSON 내려받기 (4절) | 조회 명령 전부 성공 |
-| 1 | `versions.tf` · `provider.tf` · `data.tf` 작성 → `terraform init` | `.terraform.lock.hcl` 생성 |
-| 2 | 보안 그룹 · 규칙 + import | 해당 리소스 plan 차이 0 |
-| 3 | EC2 · EIP + import | 차이 0 · **replace 계획이 하나라도 나오면 apply 금지** |
-| 4 | EC2용 IAM 역할 · 프로파일 + import | 차이 0 |
-| 5 | SSM 문서 4개 + import | 차이 0 |
-| 6 | 팀원 정책 · 연결 + import | 차이 0 |
-| 7 | 전체 `terraform plan` | `No changes` 또는 `N to import, 0 to add, 0 to change, 0 to destroy` |
-| 8 | `terraform apply` (import만 반영) | state에 전체 리소스 기록 · 이후 plan `No changes` |
-| 9 | README · 아키텍처 그림 · CI(`fmt -check` · `validate`) | PR 준비 |
+| 단계 | 내용 | 완료 기준 | 결과 (2026-11-26) |
+|---|---|---|---|
+| 0 | 설치 · 로그인 · 실행 계정 권한 확인 (1절) · 원문 JSON 내려받기 (4절) | 조회 명령 전부 성공 | 완료 · JSON 10개 |
+| 1 | `versions.tf` · `provider.tf` · `data.tf` 작성 → `terraform init` | `.terraform.lock.hcl` 생성 | 완료 · Windows · Linux 해시 기록 |
+| 2 | 보안 그룹 · 규칙 + import | 해당 리소스 plan 차이 0 | 완료 · 5개 |
+| 3 | EC2 · EIP + import | 차이 0 · **replace 계획이 하나라도 나오면 apply 금지** | 완료 · 3개 · replace 없음 |
+| 4 | EC2용 IAM 역할 · 프로파일 + import | 차이 0 | 완료 · 3개 |
+| 5 | SSM 문서 4개 + import | 차이 0 | 완료 · 4개 · 원문 가공 금지로 수정 |
+| 6 | 팀원 정책 · 연결 + import | 차이 0 | 완료 · 17개 |
+| 7 | 전체 `terraform plan` | `No changes` 또는 `N to import, 0 to add, 0 to change, 0 to destroy` | 완료 · 32 to import · 32개 no-op |
+| 8 | `terraform apply` (import만 반영) | state에 전체 리소스 기록 · 이후 plan `No changes` | 완료 · 32 imported · `No changes` |
+| 9 | README · 아키텍처 그림 · CI(`fmt -check` · `validate`) | PR 준비 | 완료 · CI 통과 |
 
 ### EC2 import 시 차이 줄이기
 

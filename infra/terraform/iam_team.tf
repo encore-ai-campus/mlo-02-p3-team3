@@ -26,4 +26,7 @@ resource "aws_iam_user_policy_attachment" "team" {
 
   user       = data.aws_iam_user.team[each.value.user].user_name
   policy_arn = each.value.policy_arn
+
+  # ARN을 문자열로 받으므로 생성 순서 명시 · 새로 구축 시 팀 관리형 정책 생성 후 연결
+  depends_on = [aws_iam_policy.mongo_port_forward]
 }

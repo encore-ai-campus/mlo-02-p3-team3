@@ -8,7 +8,7 @@ on:
       - "infra/terraform/**"
       - ".github/workflows/infra.yml"
   push:
-    branches: [develop, infra]
+    branches: [main, infra]
     paths:
       - "infra/terraform/**"
       - ".github/workflows/infra.yml"

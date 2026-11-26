@@ -29,5 +29,6 @@ infra/terraform/*.tfplan
 infra/terraform/generated.tf
 infra/terraform/crash.log
 *_accessKeys*
+ticketguard-aws-*
 *credentials*.csv
 .aws/

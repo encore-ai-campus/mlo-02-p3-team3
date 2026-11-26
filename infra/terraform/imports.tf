@@ -65,6 +65,14 @@ import {
   id = "ticketguard-ec2-ssm/arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# ---------- 5단계 · SSM 포트 포워딩 문서 ----------
+
+import {
+  for_each = toset(local.ssm_documents)
+  to       = aws_ssm_document.port_forward[each.key]
+  id       = each.key
+}
+
 # ---------- 6단계 · 팀원 정책 ----------
 
 import {
@@ -83,13 +91,5 @@ import {
 import {
   for_each = local.team_attached
   to       = aws_iam_user_policy_attachment.team[each.key]
-  id       = each.key
-}
-
-# ---------- 5단계 · SSM 포트 포워딩 문서 ----------
-
-import {
-  for_each = toset(local.ssm_documents)
-  to       = aws_ssm_document.port_forward[each.key]
   id       = each.key
 }

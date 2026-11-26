@@ -8,7 +8,8 @@
 ## 0. 적용 범위
 
 - 이 문서는 **`infra/` 폴더 안에서만** 적용돼요. 다른 폴더는 각 팀 규칙(`AGENTS.md`, `qa/AGENTS.md`)을 따라요.
-- 작업 브랜치: `infra` (develop 기준) → 완료 후 `develop` 대상 PR.
+- 작업 브랜치: `infra` (main 기준) → 완료 후 `main` 대상 PR.
+  - 팀 PR은 main에 병합됨 · `develop`은 갱신되지 않아 대상으로 쓰면 다른 팀 변경이 섞임 (2026-11-26 확인)
 - 목표: 콘솔에서 만든 스테이징 AWS 리소스를 Terraform으로 **import**해 코드로 기록하고 `terraform plan` 결과 `No changes`를 확인해요.
 
 ## 1. 절대 규칙
