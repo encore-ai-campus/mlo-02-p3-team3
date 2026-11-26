@@ -20,9 +20,9 @@ from ticket_guard_qa.dashboard.dependencies import (
     redirect_to_page,
     render_screen,
 )
-from ticket_guard_qa.domain.enums import AlertPolicy, Comparison, RunStatus, TargetKind
+from ticket_guard_qa.domain.enums import ActorType, AlertPolicy, Comparison, RunStatus, TargetKind
 from ticket_guard_qa.domain.models import LEGACY_TRAFFIC_FIELD_TO_ACTOR, CriterionResult, RunConfig, RunSummary, TrafficMix
-from ticket_guard_qa.macro_bots.bot_catalog import BotTypeInfo, list_bot_types
+from ticket_guard_qa.macro_bots.bot_catalog import BotRole, BotTypeInfo, list_bot_types
 from ticket_guard_qa.domain.pass_criteria import PASS_CRITERIA, PassCriterion
 from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
 from ticket_guard_qa.test_runs.run_service import RunAlreadyActiveError, RunDeleteError, RunService
@@ -111,13 +111,22 @@ def _render_test_setup(
     }, status_code)
 
 
+SETUP_BOT_PERCENT = 7  # 02 처음 화면 · 탐지 대상 봇 7종 각 7% · 나머지 정상 · 미학습 · 추가 유형 0
+
+
+def build_setup_traffic_percents() -> dict[str, int]:
+    bot_ids = [info.actor_type.value for info in list_bot_types() if info.role is BotRole.DETECTION_TARGET]
+    return {ActorType.HUMAN.value: 100 - SETUP_BOT_PERCENT * len(bot_ids), **{bot_id: SETUP_BOT_PERCENT for bot_id in bot_ids}}
+
+
 @router.get("/runs/new", response_class=HTMLResponse)
 def show_test_setup(request: Request, from_run_id: str | None = None, run_service: RunService = Depends(get_run_service)) -> HTMLResponse:
     previous_summary = run_service.run_repository.get_summary(from_run_id) if from_run_id else None
     run_config = previous_summary.run_config if previous_summary else RunConfig(
         target_kind=run_service.settings.target_kind,
-        suite_names=(),  # 처음 화면 · 선택 없음
+        suite_names=tuple(suite.suite_name for suite in list_suites()),  # 처음 화면 · Suite 전부 선택
         duration_sec=AUTO_TIME_LIMIT_VALUE,
+        traffic_mix=TrafficMix(build_setup_traffic_percents()),
         random_seed=run_service.settings.random_seed,
     )
     return _render_test_setup(request, run_service, run_config)
