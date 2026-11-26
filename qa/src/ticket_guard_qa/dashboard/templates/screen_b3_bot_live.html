@@ -160,18 +160,17 @@
     document.getElementById("behavior-log").prepend(item);
   }
 
-  const progressEvents = new EventSource("{{ base_path }}/runs/{{ summary.run_id }}/events");
-  progressEvents.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    if (message.actor_progress) updateActorProgress(message.actor_progress);
-    if (message.elapsed_sec === null) addLog(message.text);  // 1초마다 오는 측정 메시지는 기록에서 뺌
-    if (message.is_finished) {
-      progressEvents.close();
-      document.getElementById("live-badge").hidden = true;
-      document.getElementById("finished-notice").hidden = false;
-      document.getElementById("detection-link").hidden = false;
-    }
-  };
+  openRunProgressEvents("{{ base_path }}/runs/{{ summary.run_id }}/events", {
+    onMessage: (message) => {
+      if (message.actor_progress) updateActorProgress(message.actor_progress);
+      if (message.elapsed_sec === null) addLog(message.text);  // 1초마다 오는 측정 메시지는 기록에서 뺌
+      if (message.is_finished) {
+        document.getElementById("live-badge").hidden = true;
+        document.getElementById("finished-notice").hidden = false;
+        document.getElementById("detection-link").hidden = false;
+      }
+    },
+  });
 </script>
 {% endif %}
 {% endblock %}

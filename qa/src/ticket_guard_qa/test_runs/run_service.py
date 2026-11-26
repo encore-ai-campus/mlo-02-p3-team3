@@ -1,4 +1,5 @@
 """실행 시작 · 중지 · 동시 실행 잠금 · 결과 판정 · 저장 · 보고서"""
+import logging
 import secrets
 import shutil
 import threading
@@ -26,6 +27,8 @@ from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
 from ticket_guard_qa.test_runs.run_repository import RunRepository
 from ticket_guard_qa.test_suites.suite_interface import QaSuite, SuiteContext
 from ticket_guard_qa.test_suites.suite_registry import get_suite
+
+logger = logging.getLogger(__name__)
 
 
 PROGRESS_TICK_SEC = 1.0
@@ -286,3 +289,6 @@ def read_live_metrics_or_none(system_target: SystemTarget, run_id: str, elapsed_
         return system_target.live_metrics_reader.read_live_metrics(run_id, elapsed_sec)
     except NotImplementedError:
         return None  # 실제 대상 · 아직 측정 못 함 → 화면에 "측정 전"
+    except Exception:  # 시스템 DB 조회 실패 · 경과 시간 전달은 계속
+        logger.warning("실시간 지표 조회 실패 · run %s", run_id, exc_info=True)
+        return None
