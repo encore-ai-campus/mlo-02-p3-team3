@@ -41,84 +41,49 @@ TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로�
 
 ### 1.4 팀 구성과 역할
 
-### 1.4 팀원 소개
-
-### 1.4 팀원 소개
-
-### 1.4 팀원 소개
-
 <table width="100%">
   <tr>
-    <td align="center" width="33%">
-      <br />
+    <th align="center" width="25%">팀원</th>
+    <th align="left">담당 역할 및 주요 작업</th>
+  </tr>
+  <tr>
+    <td align="center">
       <a href="https://github.com/callijee22-ship-it">
-        <img src="https://github.com/callijee22-ship-it.png" width="90" height="90" alt="류지예 프로필" />
-      </a>
-      <p><strong>류지예</strong></p>
-      <p><sub>팀장 · Frontend & UI</sub></p>
-      <a href="https://github.com/callijee22-ship-it">
-        <img src="https://img.shields.io/badge/GitHub-8B5CF6?style=flat-square&logo=github&logoColor=white" alt="류지예 GitHub" />
-      </a>
-      <br /><br />
+        <img src="https://github.com/callijee22-ship-it.png" width="64" height="64" alt="류지예 프로필" /><br />
+        <strong>류지예</strong>
+      </a><br />
+      <sub>팀장</sub>
     </td>
-    <td align="center" width="33%">
-      <br />
-      <a href="https://github.com/seoloo">
-        <img src="https://github.com/seoloo.png" width="90" height="90" alt="설호현 프로필" />
-      </a>
-      <p><strong>설호현</strong></p>
-      <p><sub>QA & Automation</sub></p>
-      <a href="https://github.com/seoloo">
-        <img src="https://img.shields.io/badge/GitHub-2563EB?style=flat-square&logo=github&logoColor=white" alt="설호현 GitHub" />
-      </a>
-      <br /><br />
-    </td>
-    <td align="center" width="33%">
-      <br />
-      <a href="https://github.com/SeokHwanHong">
-        <img src="https://github.com/SeokHwanHong.png" width="90" height="90" alt="홍석환 프로필" />
-      </a>
-      <p><strong>홍석환</strong></p>
-      <p><sub>Data Engineering</sub></p>
-      <a href="https://github.com/SeokHwanHong">
-        <img src="https://img.shields.io/badge/GitHub-0D9488?style=flat-square&logo=github&logoColor=white" alt="홍석환 GitHub" />
-      </a>
-      <br /><br />
+    <td>
+      <strong>Frontend · UI · 문서화</strong><br /><br />
+      예매·관리자 화면 및 공통 테마 구성<br />
+      웹 기능 개선, README·구조도·발표자료 작성
     </td>
   </tr>
   <tr>
-    <td align="center" valign="top">
-      <br />
-      <strong>화면 구성 · 사용자 경험</strong>
-      <br /><br />
-      사용자·관리자 UI 및 테마<br />
-      회원가입·로그인·예매 화면<br />
-      예외 상황 안내 및 화면 동작<br />
-      예매 일정·좌석 초기화<br />
-      README·구조도·발표자료
-      <br /><br />
+    <td align="center">
+      <a href="https://github.com/seoloo">
+        <img src="https://github.com/seoloo.png" width="64" height="64" alt="설호현 프로필" /><br />
+        <strong>설호현</strong>
+      </a>
     </td>
-    <td align="center" valign="top">
-      <br />
-      <strong>자동화 시험 · 결과 검증</strong>
-      <br /><br />
-      QA 대시보드·시험 항목<br />
-      정상·매크로 트래픽<br />
-      Mock·Live 실행 및 결과 UI<br />
-      QA MongoDB 구성<br />
-      AWS 업로드·실행 환경
-      <br /><br />
+    <td>
+      <strong>QA · 매크로 봇 · 배포</strong><br /><br />
+      QA 대시보드·자동화 시험·매크로 봇 구현<br />
+      QA DB 및 AWS 실행 환경 구성
     </td>
-    <td align="center" valign="top">
-      <br />
-      <strong>데이터 처리 · 이상 관측</strong>
-      <br /><br />
-      MongoDB 구조·계정 구성<br />
-      Kafka·Spark 및 원본 적재<br />
-      사용자 흐름·네트워크 지표<br />
-      사전 탐지·사후 처리<br />
-      관리자 지표 연결·UI 개선
-      <br /><br />
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/SeokHwanHong">
+        <img src="https://github.com/SeokHwanHong.png" width="64" height="64" alt="홍석환 프로필" /><br />
+        <strong>홍석환</strong>
+      </a>
+    </td>
+    <td>
+      <strong>DB · 데이터 파이프라인 · 이상탐지</strong><br /><br />
+      MongoDB·Kafka·Spark 연결 및 데이터 적재<br />
+      이상탐지 로직·관리자 지표 구현
     </td>
   </tr>
 </table>
