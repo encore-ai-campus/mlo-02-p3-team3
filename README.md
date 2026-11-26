@@ -49,8 +49,6 @@ TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로�
 
 ![TicketGuard 전체 시스템 구조](docs/images/01-system.png)
 
-[확대·편집용 SVG](docs/images/01-system.svg)
-
 예매 웹은 업무 요청을 처리하며 Kafka의 공통 토픽 `ticketguard.events.v1`로 이벤트를 발행합니다. Kafka 이후에는 Raw Consumer와 Spark 작업이 병렬로 이벤트를 소비합니다.
 
 | 구성요소 | 담당 역할 |
@@ -138,8 +136,6 @@ Raw Consumer는 원문 바이트와 Kafka 전송 위치를 보존합니다. 이�
 기본 논리 DB 6개와 선택적 전달 DB 1개를 구성하고, 역할별 연결과 권한을 분리했습니다. 실제 DB 이름과 접속 대상은 환경 설정으로 관리합니다.
 
 ![TicketGuard 웹 업무 컬렉션 관계](docs/images/03-web-relations.png)
-
-[확대·편집용 SVG](docs/images/03-web-relations.svg)
 
 위 그림은 주요 예매·구매·정책 컬렉션의 논리 참조 관계입니다. 계정·가입 기록은 `accounts`·`account_events`, 재고는 `booking_inventory`, 로그인 세션은 `web_sessions`, 전송 대기 이벤트는 `outbox`에서 관리합니다. 구매 원장과 취소·환불 수량 조정을 연결하는 저장 계약도 구현했습니다.
 
@@ -240,8 +236,6 @@ Spark 체크포인트는 소비 진행 위치를, 전용 MongoDB 상태는 파�
 
 ![TicketGuard QA 검증 흐름](docs/images/02-qa-workflow.png)
 
-[확대·편집용 SVG](docs/images/02-qa-workflow.svg)
-
 1. **시험 구성:** Run의 시험 항목, 사용자 수, 봇 유형과 행동 버전 선택
 2. **정답 보관:** 정상·봇 여부를 QA DB의 정답표에 기록
 3. **예매 수행:** 시험 계정으로 로그인 후 공연·회차 확인, 대기열, 보안문자, 좌석·인원 선택, 예매 확정 진행
@@ -266,8 +260,6 @@ Spark 체크포인트는 소비 진행 위치를, 전용 MongoDB 상태는 파�
 보안문자 시험은 시험용 조건에서 반복 시도와 제한 동작을 확인하도록 구성했습니다.
 
 ![TicketGuard QA 컬렉션 관계](docs/images/04-qa-relations.png)
-
-[확대·편집용 SVG](docs/images/04-qa-relations.svg)
 
 정답표·봇 설정·진행 중 시험은 QA 전용 영역에 보관합니다. 승인된 종료 시험의 전달은 별도 영역으로 관리하며, 전달할 정답표와 봇 버전을 선택하는 절차를 구현했습니다.
 
