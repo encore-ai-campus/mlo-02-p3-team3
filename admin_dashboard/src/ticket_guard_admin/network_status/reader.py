@@ -26,10 +26,12 @@ def validate(current, series):
         check(isinstance(version, str) and 0 < len(version) <= 128)
         check(current['_id'] == series['_id'] == 'all')
         check(version == series['version'] == current['result']['_id'] == history['_id'])
-        check(type(data['contractVersion']) is int and data['contractVersion'] == 1 and data['bucketSeconds'] == 300)
+        check(type(data['contractVersion']) is int and data['contractVersion'] in (1, 2))
+        bucket_seconds, window_seconds = (1, 10) if data['contractVersion'] == 2 else (300, 3600)
+        check(data['bucketSeconds'] == bucket_seconds)
         check(data['windowStart'] == history['windowStart'] and data['windowEnd'] == history['windowEnd'])
         start, end = moment(data['windowStart']), moment(data['windowEnd'])
-        check(end - start == timedelta(hours=1) and start.timestamp() % 300 == 0)
+        check(end - start == timedelta(seconds=window_seconds) and start.timestamp() % bucket_seconds == 0)
         published = moment(current['result']['publishedAt'])
         latest = data['latestRequestIngestedAt']
         if latest is not None:
@@ -52,11 +54,11 @@ def validate(current, series):
             return selected
 
         buckets = history['buckets']
-        check(isinstance(buckets, list) and len(buckets) == 12)
+        check(isinstance(buckets, list) and len(buckets) == window_seconds // bucket_seconds)
         clean_buckets = []
         for index, bucket in enumerate(buckets):
             at, observed = bucket['at'], bucket['observed']
-            check(moment(at) == start + timedelta(minutes=5 * index) and type(observed) is bool)
+            check(moment(at) == start + timedelta(seconds=bucket_seconds * index) and type(observed) is bool)
             check(bucket['gateway'] is None)
             clean_buckets.append(dict(at=at, observed=observed, gateway=None, **counts(bucket, observed)))
         observed = [bucket for bucket in clean_buckets if bucket['observed']]
@@ -72,7 +74,7 @@ def validate(current, series):
             if total is not None:
                 check(total == sum(bucket[key] for bucket in observed) == sum(row[key] for row in features))
         return dict(version=version, start=start, end=end, published=published, latest=latest,
-                    threshold=threshold, summary=summary, features=features, buckets=clean_buckets)
+                    threshold=threshold, summary=summary, features=features, buckets=clean_buckets, bucket_seconds=bucket_seconds)
     except (KeyError, TypeError, OverflowError, FlowError) as exc:
         raise NetworkReadError('Invalid network publication') from exc
 

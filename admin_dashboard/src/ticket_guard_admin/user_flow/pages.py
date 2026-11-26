@@ -54,7 +54,7 @@ def render_published_dashboard(request, mongo_uri, *, fragment=False) -> HTMLRes
     except ObservationReadError as exc:
         context['early'] = display_early(error=str(exc), selected=early_scope, previous_as_of=exc.previous_as_of)
     context['detection_stages'] = build_stage_detections(context['early'],context['anomaly'],legacy_scope=context['scope'])
-    context['dashboard_data'] = {'flow': context['flow'], 'anomaly': context['anomaly']}
+    context['dashboard_data'] = {'flow': context['flow'], 'anomaly': context['anomaly'], 'network': context['network']}
     response = templates.TemplateResponse(request, 'monitor_metrics.html' if fragment else 'monitor_live.html', context)
     response.headers['Cache-Control'] = 'no-store'
     return response

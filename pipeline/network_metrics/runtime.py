@@ -102,7 +102,7 @@ def run():
     if threshold is not None and (not math.isfinite(threshold) or threshold <= 0):
         raise ValueError('NETWORK_HEADERS_THRESHOLD_MS must be positive and finite')
     grace = int(os.environ.get('NETWORK_GRACE_SECONDS', '300'))
-    if not 0 <= grace <= WINDOW_SECONDS:
+    if not 0 <= grace <= 3600:
         raise ValueError('NETWORK_GRACE_SECONDS is out of range')
     raw_uri = os.environ['NETWORK_RAW_MONGO_URI']
     target_uri = os.environ['NETWORK_TARGET_MONGO_URI']
@@ -133,10 +133,10 @@ def run():
                       .option('maxOffsetsPerTrigger', 1000).load())
             query = (stream.writeStream.foreachBatch(processor.batch)
                      .option('checkpointLocation', str(Path(checkpoint) / 'spark'))
-                     .trigger(processingTime='5 seconds').start())
+                     .trigger(processingTime='1 second').start())
 
             def tick():
-                while not stop.wait(15):
+                while not stop.wait(1):
                     try:
                         processor.tick()
                     except Exception as exc:

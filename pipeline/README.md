@@ -51,10 +51,10 @@ pipeline/
 ## AWS staging 실행 기본값
 
 - 기준 사양: t3.medium, 2 vCPU, RAM 4 GiB, gp3 30 GiB. 아래 값은 초기 설정이며 200 VU 처리 성능을 보장하지 않는다.
-- ingest: `SPARK_TRIGGER_SECONDS=1`, `SPARK_MAX_OFFSETS_PER_TRIGGER=2000`.
-- flow: `FLOW_TRIGGER_SECONDS=1`, `SPARK_MAX_OFFSETS_PER_TRIGGER=2000`.
+- ingest: `SPARK_TRIGGER_SECONDS=1`, `SPARK_MAX_OFFSETS_PER_TRIGGER=1000`.
+- flow: `FLOW_TRIGGER_SECONDS=1`, `SPARK_MAX_OFFSETS_PER_TRIGGER=1000`.
 - 두 모드는 Compose 서비스 환경에서 값을 받는다. 명시한 환경 값이 기본값보다 우선하며, 별도 프로젝트 실행 시 서비스별 환경 파일로 조정할 수 있다.
-- network 모드의 5초 주기·최대 offsets 1000은 유지한다.
+- network 모드는 1초 주기·최대 offsets 1000이며, 최근 완료된 10개의 1초 구간을 게시한다.
 - 공통 Spark 이미지: `local[2]`, `--driver-memory 1g`. driver heap 외 Python·JVM 부가 메모리는 별도이며, 컨테이너 전체 메모리 제한을 뜻하지 않는다.
 - Kafka와 Spark 서비스(ingest/flow/network)는 Docker `json-file`, `max-size: 10m`, `max-file: 3`으로 로그를 회전한다. Kafka 토픽 보존과는 별개다.
 - 입장 제한 40명 / 5초, Kafka heap 512 MiB·3 partitions·RF 1, Mongo bulk 200과 기존 체크포인트·consumer group은 유지한다.

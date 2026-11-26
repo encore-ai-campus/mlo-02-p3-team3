@@ -35,6 +35,9 @@
   }));
   function chart(){
     const host=$('an-chart');if(!host||!host.getBoundingClientRect().width)return;
+    const signature=JSON.stringify([data.series,data.policy,host.clientWidth]);
+    if(host.dataset.signature===signature)return;
+    host.dataset.signature=signature;
     const points=data.series;if(!points.length){host.textContent='표시 가능한 관측 자료 없음';host.className='an-chart-empty';return;}
     const NS='http://www.w3.org/2000/svg',make=(tag,attrs,text)=>{const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));if(text)e.textContent=text;return e;};
     const width=Math.max(300,host.clientWidth),height=165,left=35,right=15,top=15,bottom=30;

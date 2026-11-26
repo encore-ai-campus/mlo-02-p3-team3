@@ -2,7 +2,7 @@
   {{ '—' if number is none else "{:,}".format(number) }}
 {%- endmacro %}
 {% macro graph(chart, title) %}
-<svg class="mp-network-graph" viewBox="0 0 982 152" role="img" aria-label="{{ title }} · 5분 단위 KST · 건">
+<svg class="mp-network-graph" viewBox="0 0 982 152" role="img" aria-label="{{ title }} · {{ '1초' if network.bucket_seconds == 1 else '구버전 5분' }} 단위 KST · 건">
   {% for tick in chart.ticks %}
   <line x1="47" x2="959" y1="{{ tick.y }}" y2="{{ tick.y }}" class="mp-grid-line"/>
   <text x="38" y="{{ tick.y+4 }}" text-anchor="end">{{ tick.value }}</text>
@@ -56,13 +56,13 @@
     <div class="mp-network-scroll" role="region" aria-label="웹 서버 요청량과 응답 오류 추이" tabindex="0">
       <div class="mp-network-plots">
         <div class="mp-card-heading"><h2 id="network-requests-title">웹 서버 요청량</h2><span>총 {{ value(network.summary.requests) }} · 단위: 건</span></div>
-        {{ graph(network.requests, '웹 서버 요청량') }}
+        <div class="mp-chart" id="mp-requests-chart">{{ graph(network.requests, "웹 서버 요청량") }}</div>
         <div class="mp-card-heading mp-network-divider">
           <h2>응답 오류 추이</h2>
           <div class="mp-network-legend"><span class="gateway">게이트웨이 오류 · 미관측</span><span class="http5xx">웹 서버 5xx · {{ value(network.summary.http5xx) }}</span></div>
         </div>
-        {{ graph(network.errors, '응답 오류 추이') }}
-        <p class="mp-network-chart-note">○ 관측값 0건 · 시간축 KST</p>
+        <div class="mp-chart" id="mp-errors-chart">{{ graph(network.errors, "응답 오류 추이") }}</div>
+        <p class="mp-network-chart-note">{% if network.bucket_seconds != 1 %}구버전 집계 · network Spark 재배포 필요. {% endif %}최근 10초 · 1초 단위 서버 요청·오류 집계 · 미관측 구간은 0으로 채우지 않음 · KST</p>
       </div>
     </div>
   </section>

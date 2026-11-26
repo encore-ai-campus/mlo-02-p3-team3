@@ -7,8 +7,8 @@ from urllib.parse import urlsplit
 
 from user_flow.events import iso, stamp
 
-BUCKET_SECONDS = 300
-WINDOW_SECONDS = 3600
+BUCKET_SECONDS = 1
+WINDOW_SECONDS = 10
 FEATURES = ('shows', 'detail', 'booking_api', 'other')
 COUNTS = ('requests', 'http4xx', 'http5xx', 'measured', 'slow')
 
@@ -85,7 +85,7 @@ def calculate(observations, now, threshold=None, *, covered=()):
         features = [dict(id=key, **count_requests(by_feature[key], threshold)) for key in FEATURES if by_feature[key]]
     latest = max((row['ingested_at'] for row in observations if row.get('ingested_at') is not None), default=None)
     return {
-        'contractVersion': 1, 'windowStart': iso(start), 'windowEnd': iso(end), 'bucketSeconds': BUCKET_SECONDS,
+        'contractVersion': 2, 'windowStart': iso(start), 'windowEnd': iso(end), 'bucketSeconds': BUCKET_SECONDS,
         'latestRequestIngestedAt': iso(latest) if latest is not None else None,
         'thresholdMs': threshold, 'summary': summary, 'features': features, 'buckets': buckets,
         'sources': {'django': 'observed' if any(b['observed'] for b in buckets) else 'unobserved',

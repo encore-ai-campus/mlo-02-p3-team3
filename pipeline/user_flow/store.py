@@ -29,7 +29,7 @@ def publish(db, metrics, ranges, now, scope='all', retention=3600, grace=30):
                 'status': 'verified', 'verifiedAt': utc(now), 'publishedAt': utc(now)}
     series_id = f'{scope}:{version}'
     series = {'_id': series_id, 'scope': scope, 'version': version,
-              'at': utc(int(now // 5) * 5), 'publishedAt': utc(now),
+              'at': utc(int(now)), 'publishedAt': utc(now),
               'presence': metrics.get('presenceSeries', []), 'booking': metrics['bookingSeries']}
     if len(BSON.encode(series)) > 8*1024*1024 or len(BSON.encode(document)) > 8*1024*1024:
         raise RuntimeError('공개 문서 용량 제한 초과')
