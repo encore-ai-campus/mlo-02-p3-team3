@@ -206,10 +206,12 @@ def test_capture_image_route_rejects_other_files(dashboard_client):
     assert dashboard_client.get("/runs/run-1/captures/frame.txt").status_code == 404
 
 
-def test_run_setup_starts_without_suites_and_shows_guides(dashboard_client):
+def test_run_setup_starts_with_every_suite_and_bots_at_seven_percent(dashboard_client):
     page = dashboard_client.get("/runs/new").text
     suite_inputs = re.findall(r'<input[^>]*name="suite_names"[^>]*>', page)
-    assert len(suite_inputs) == 12 and not any("checked" in tag for tag in suite_inputs)
+    assert len(suite_inputs) == 12 and all("checked" in tag for tag in suite_inputs)  # 처음 화면 · Suite 전부 선택
+    assert 'name="percent_HUMAN" value="51"' in page and 'name="percent_BOT_CAPTCHA" value="7"' in page
+    assert 'name="percent_BOT_NEW"' not in page  # 미학습 유형 = 평가 전용 · 트래픽 구성 칸 없음
     assert page.count('role="tooltip"') == 12
     assert "같은 좌석 동시 결제 시 중복 판매 여부" in page
     assert page.count("<b>검증 대상</b>") == 12 and page.count("<b>검증 방법</b>") == 12

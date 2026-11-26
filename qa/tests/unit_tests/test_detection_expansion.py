@@ -229,3 +229,11 @@ def test_wait_until_judged_polls_until_every_session_has_verdict():
 
 def test_new_suites_are_registered():
     assert {"detection_regression", "failure_detection"} <= SUITE_BY_NAME.keys()
+
+
+def test_regression_follows_run_virtual_user_count(qa_database):
+    run_config = RunConfig(TargetKind.FAKE, ("detection_regression",), virtual_user_count=10)
+    result = DetectionRegressionSuite().run(build_context(qa_database, run_config=run_config))
+    assert len(AnswerKeyRepository(qa_database).load_for_suite("run-expansion", "detection_regression")) == 10
+    assert result.details["virtual_user_count"] == 10
+    assert "기준선 VU 200 · 이번 VU 10 · 조건 다름 · 비교 안 함" in result.message  # 다른 인원 기준선과 비교 안 함
