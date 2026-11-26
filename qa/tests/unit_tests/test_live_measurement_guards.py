@@ -105,7 +105,8 @@ class LateStreamReader:
 
 def build_server_records(attempt_id: str) -> list[StreamRecord]:
     return [StreamRecord(0, index, attempt_id, None, {"eventId": f"{attempt_id}-{event_type}", "eventType": event_type,
-                                                       "userId": "qa-user-0001", "bookingAttemptId": attempt_id})
+                                                       "userId": "qa-user-0001", "bookingAttemptId": attempt_id,
+                                                       "source": "server"})
             for index, event_type in enumerate(sorted(BOOKED_SERVER_EVENT_TYPES))]
 
 

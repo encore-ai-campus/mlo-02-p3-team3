@@ -7,7 +7,7 @@ import mongomock
 import pytest
 
 from ticket_guard_qa.answer_key.answer_key_repository import AnswerKeyRepository
-from ticket_guard_qa.domain.enums import TargetKind, VerdictStage
+from ticket_guard_qa.domain.enums import SuiteOutcome, TargetKind, VerdictStage
 from ticket_guard_qa.domain.models import RunConfig
 from ticket_guard_qa.settings import QA_ROOT_DIR
 from ticket_guard_qa.system_targets import live_mongo_reader
@@ -129,6 +129,33 @@ def test_live_run_waits_for_pipeline_verdicts(qa_database):
 
 def test_fake_run_does_not_wait(qa_database):
     assert run_verdict_accuracy(qa_database, TargetKind.FAKE) == []
+
+
+class EmptyVerdictReader:
+    """판정이 저장되지 않은 시스템 · 연결은 됨"""
+
+    def read_session_verdicts(self, run_id: str) -> dict:
+        return {}
+
+    def read_verdict_records(self, run_id: str) -> list:
+        return []
+
+
+def test_verdict_accuracy_is_skipped_when_no_verdict_is_received(qa_database):
+    """판정 0건 = 탐지율 · 오탐률 측정 불가 → PASS 아님 · 탐지 회귀와 같은 SKIPPED"""
+    context = SuiteContext(
+        run_id="run-test",
+        run_config=RunConfig(TargetKind.FAKE, ("verdict_accuracy",), virtual_user_count=5),
+        system_target=replace(build_fake_system_target(), verdict_reader=EmptyVerdictReader()),
+        answer_key_repository=AnswerKeyRepository(qa_database),
+        case_data_dir=QA_ROOT_DIR / "case_data",
+        report_progress=lambda text, **fields: None,
+    )
+    result = VerdictAccuracySuite(live_settle_sec=0.0, sleep=lambda seconds: None).run(context)
+    assert result.outcome is SuiteOutcome.SKIPPED
+    assert result.details["is_verdict_measurable"] is False
+    assert "api_latency_p95_sec" in result.metrics  # 응답 지연 · 오류율은 측정됨
+    assert "bot_abd_detection_rate_percent" not in result.metrics  # 탐지율은 기록하지 않음
 
 
 def test_verdict_reader_needs_mongo_uri():

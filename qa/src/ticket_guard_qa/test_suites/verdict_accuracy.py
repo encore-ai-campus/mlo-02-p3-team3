@@ -157,7 +157,8 @@ class VerdictAccuracySuite:
         blocked_line = describe_blocked_sessions(answer_key, session_results)
         return SuiteResult(
             suite_name=self.suite_name,
-            outcome=SuiteOutcome.PASSED,  # 측정 완료 · 합격은 합격 기준이 판단
+            # 판정 수신율 기준 미만 = 탐지율 · 오탐률 측정 불가 → SKIPPED · 탐지 회귀와 같은 표시
+            outcome=SuiteOutcome.PASSED if collection.is_measurable else SuiteOutcome.SKIPPED,
             metrics=metrics,
             message=MESSAGE_LINE_SEPARATOR.join([describe_verdict_collection(collection), *([blocked_line] if blocked_line else [])]),
             details={**build_result_details(judged_key, system_verdicts), "rule_hit_count_by_rule_id": rule_hit_count_by_rule_id,

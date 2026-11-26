@@ -322,6 +322,7 @@ def build_fake_event(event_type: str, user_id: str, booking_attempt_id: str | No
     return {
         "schemaVersion": 1, "eventId": event_id or str(uuid.uuid4()), "eventType": event_type,
         "occurredAt": datetime.now(timezone.utc).isoformat(), "userId": user_id, "bookingAttemptId": booking_attempt_id,
+        "source": "browser" if event_type in BROWSER_EVENT_TYPES else "server",  # 실제 대상과 같은 출처 표기
     }
 
 
