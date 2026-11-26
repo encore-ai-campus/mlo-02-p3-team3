@@ -21,6 +21,15 @@ class AccountPoolExhaustedError(RuntimeError):
     """Live 시험 계정 수보다 VU가 많음"""
 
 
+# 예매 웹 즉시 차단 정책 응답 · 429 · 서버 오류 · API 오류율에서 제외
+POLICY_BLOCK_ERROR_CODES = frozenset({"TEMPORARILY_RESTRICTED", "PURCHASE_LIMIT", "LOGIN_LOCKED"})
+
+
+def is_policy_block(failed_step: str | None) -> bool:
+    """"start · TEMPORARILY_RESTRICTED" 형식 · 마지막 항목이 차단 코드"""
+    return bool(failed_step) and failed_step.rsplit(" · ", 1)[-1] in POLICY_BLOCK_ERROR_CODES
+
+
 @dataclass(frozen=True)
 class HttpResult:
     status_code: int

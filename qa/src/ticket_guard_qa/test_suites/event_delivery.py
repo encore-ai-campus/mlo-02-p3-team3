@@ -1,10 +1,12 @@
 """이벤트 전달 검증 · VU 트래픽 → 예매 사이트 → 이벤트 토픽 · 완전성 · 유일성 · 형식 · 파티션 키 · 전달 지연 · 읽기만"""
+import time
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from ticket_guard_qa.answer_key.expected_verdicts import plan_virtual_users
-from ticket_guard_qa.domain.enums import BookingOutcome, SuiteOutcome
+from ticket_guard_qa.domain.enums import BookingOutcome, SuiteOutcome, TargetKind
 from ticket_guard_qa.domain.models import (
     FAIL_LINE_PREFIX,
     MESSAGE_LINE_SEPARATOR,
@@ -27,6 +29,8 @@ TEST_ACCOUNT_PREFIX = "qa-user-"
 CAPTURE_SCHEMA_VERSION = 2  # 관측 이벤트 · PR #12
 CAPTURE_CHUNK_EVENT_TYPE = "capture_chunk"
 MAX_LISTED_ISSUE_COUNT = 10
+LATE_SERVER_EVENT_WAIT_SEC = 60.0  # 서버 이벤트 = outbox 저장 뒤 비동기 발행 · 늦게 도착하는 이벤트 대기 상한
+LATE_SERVER_EVENT_POLL_SEC = 5.0
 
 # 예매 시도 하나에서 서버가 내야 하는 이벤트 · main web/services.py 기준
 BOOKED_SERVER_EVENT_TYPES = frozenset({
@@ -166,7 +170,22 @@ def evaluate_delivery(session_results: list[VirtualUserSessionResult], records: 
     return report
 
 
-def build_message(report: DeliveryReport, session_results: list[VirtualUserSessionResult]) -> str:
+def wait_for_late_server_events(
+    context: SuiteContext, stream_reader: EventStreamReader, start_offsets: dict[int, int],
+    session_results: list[VirtualUserSessionResult], report: DeliveryReport, records: list[StreamRecord],
+    sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+) -> tuple[DeliveryReport, list[StreamRecord], float]:
+    """빠진 서버 이벤트가 있으면 다시 읽기 · 다 오거나 상한까지 · (보고서, 메시지, 추가 대기 초)"""
+    started_at = clock()
+    while report.missing_server_events and clock() - started_at < LATE_SERVER_EVENT_WAIT_SEC:
+        context.report_progress(f"서버 이벤트 늦은 도착 대기 · 미도착 {len(report.missing_server_events)}건")
+        sleep(LATE_SERVER_EVENT_POLL_SEC)
+        records = stream_reader.read_since(start_offsets, context.run_id)
+        report = evaluate_delivery(session_results, records)
+    return report, records, clock() - started_at
+
+
+def build_message(report: DeliveryReport, session_results: list[VirtualUserSessionResult], late_wait_sec: float = 0.0) -> str:
     """한 줄 = 한 항목 · FAIL 줄 먼저 · 트래픽 오류는 참고 (트래픽 안정성은 예매 흐름 · 부하 테스트 판정)"""
     failures = [
         (f"좌석 클릭 이벤트 누락 {len(report.missing_browser_event_ids)}건", report.missing_browser_event_ids),
@@ -183,7 +202,12 @@ def build_message(report: DeliveryReport, session_results: list[VirtualUserSessi
                  f" · 중복 {len(report.duplicate_event_ids)}")
     lines.append(f"관측 이벤트 {report.capture_event_count}")
     if report.delivery_latency_ms:
-        lines.append(f"전달 지연 p95 {calculate_p95(report.delivery_latency_ms):.0f}ms")
+        lines.append(f"전달 지연 p95 {calculate_p95(report.delivery_latency_ms):.0f}ms · 최대 {max(report.delivery_latency_ms):.0f}ms")
+    if late_wait_sec:
+        lines.append(f"{REFERENCE_LINE_PREFIX}서버 이벤트 늦은 도착 · 추가 대기 {late_wait_sec:.0f}초 · outbox 비동기 발행")
+    blocked_count = sum(1 for result in session_results if result.is_blocked)
+    if blocked_count:
+        lines.append(f"{REFERENCE_LINE_PREFIX}시스템 즉시 차단 VU {blocked_count}명 · 서버 이벤트 대조 제외")
     failed_step_counts = Counter(result.failed_step or "unknown" for result in session_results if result.is_error)
     if failed_step_counts:
         lines.append(f"{REFERENCE_LINE_PREFIX}트래픽 오류 VU {sum(failed_step_counts.values())}명")
@@ -201,6 +225,9 @@ class EventDeliverySuite:
         "누락 0 · 중복 0",
     )
 
+    def __init__(self, sleep: Callable[[float], None] = time.sleep) -> None:
+        self.sleep = sleep
+
     def run(self, context: SuiteContext) -> SuiteResult:
         stream_reader = context.system_target.event_stream_reader
         if stream_reader is None:
@@ -211,6 +238,10 @@ class EventDeliverySuite:
             return SuiteResult(self.suite_name, SuiteOutcome.FAILED, message=f"FAIL: {error}")
 
         report = evaluate_delivery(session_results, records)
+        late_wait_sec = 0.0
+        if context.system_target.kind is TargetKind.LIVE:
+            report, records, late_wait_sec = wait_for_late_server_events(
+                context, stream_reader, start_offsets, session_results, report, records, self.sleep)
         is_passed = report.issue_count == 0  # 전달 결과만 판정
         run_config = context.run_config
         planned_users = plan_virtual_users(run_config.traffic_mix, run_config.virtual_user_count, run_config.random_seed)
@@ -223,9 +254,11 @@ class EventDeliverySuite:
                 "event_delivery_invalid_count": float(report.invalid_record_count),
                 "event_delivery_partition_violation_count": float(len(report.partition_violation_ids)),
                 "event_delivery_qa_record_count": float(report.qa_record_count),
-                **({"event_delivery_latency_p95_ms": calculate_p95(report.delivery_latency_ms)} if report.delivery_latency_ms else {}),
+                **({"event_delivery_latency_p95_ms": calculate_p95(report.delivery_latency_ms),
+                    "event_delivery_latency_max_ms": max(report.delivery_latency_ms)} if report.delivery_latency_ms else {}),
+                "event_delivery_late_wait_sec": round(late_wait_sec, 1),
             },
-            message=build_message(report, session_results),
+            message=build_message(report, session_results, late_wait_sec),
             details={
                 "start_offsets": {str(partition): offset for partition, offset in start_offsets.items()},
                 "read_record_count": len(records),

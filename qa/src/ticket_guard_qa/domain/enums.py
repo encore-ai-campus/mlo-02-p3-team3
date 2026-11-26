@@ -91,6 +91,7 @@ class BookingOutcome(StrEnum):
     """VU 한 명의 예매 결과 · 오류는 VirtualUserSessionResult.is_error"""
     BOOKED = "BOOKED"
     SOLD_OUT = "SOLD_OUT"  # 남은 좌석 없음 · 오픈 경쟁의 정상 결과
+    BLOCKED = "BLOCKED"  # 시스템 즉시 차단 정책 응답(일시 제한 · 구매 한도) · 서버 오류 아님
 
 
 class TargetKind(StrEnum):

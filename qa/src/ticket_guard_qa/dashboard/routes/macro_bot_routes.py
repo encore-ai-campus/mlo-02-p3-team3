@@ -39,7 +39,7 @@ from ticket_guard_qa.macro_bots.browser_capture import (
     load_capture_frames,
 )
 from ticket_guard_qa.dashboard.bot_list_view import BotListItem, build_bot_list_view
-from ticket_guard_qa.dashboard.suite_result_view import describe_missing_verdict
+from ticket_guard_qa.dashboard.suite_result_view import describe_missing_verdict, read_measurable_verdict_details
 from ticket_guard_qa.macro_bots.bot_catalog import BROWSER_TRAFFIC, BotTypeInfo, find_bot_type_by_slug, list_bot_types
 from ticket_guard_qa.macro_bots.bot_profile_store import BotProfileLockedError, BotProfileStore
 from ticket_guard_qa.macro_bots.bot_profiles import BotProfile, BotProfileRegistry
@@ -93,8 +93,7 @@ def find_summary_or_404(run_service: RunService, run_id: str) -> RunSummary:
 
 
 def read_verdict_details(summary: RunSummary | None) -> dict[str, Any]:
-    verdict_result = summary.find_suite_result(VERDICT_ACCURACY_SUITE_NAME) if summary else None
-    return verdict_result.details if verdict_result else {}
+    return read_measurable_verdict_details(summary)
 
 
 @router.get("/bots", response_class=HTMLResponse)
