@@ -68,6 +68,12 @@ variable "key_pair_name" {
   default     = "ticketguard-staging"
 }
 
+variable "instance_profile_name" {
+  description = "인스턴스에 연결된 IAM 인스턴스 프로파일 이름 (iam_ec2.tf 의 프로파일과 동일 값)"
+  type        = string
+  default     = "ticketguard-ec2-ssm"
+}
+
 variable "root_volume_size_gb" {
   description = "루트 볼륨 크기 (GB)"
   type        = number
