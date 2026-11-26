@@ -1,5 +1,10 @@
 services:
   network-metrics:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     image: ticket-guard-network:dev
     build: ./pipeline
     command: [network]

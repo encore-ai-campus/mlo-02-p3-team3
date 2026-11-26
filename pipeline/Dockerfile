@@ -19,5 +19,5 @@ COPY configuration/log4j2.properties /opt/spark/conf/log4j2.properties
 ENV PYTHONPATH=/opt/pipeline TZ=UTC PYSPARK_PYTHON=python3 PYSPARK_DRIVER_PYTHON=python3
 WORKDIR /opt/pipeline
 USER 185
-ENTRYPOINT ["/opt/spark/bin/spark-submit", "--master", "local[2]", "--conf", "spark.ui.enabled=false", "/opt/pipeline/main.py"]
+ENTRYPOINT ["/opt/spark/bin/spark-submit", "--master", "local[2]", "--driver-memory", "1g", "--conf", "spark.ui.enabled=false", "/opt/pipeline/main.py"]
 CMD ["ingest"]

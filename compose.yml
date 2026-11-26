@@ -53,6 +53,11 @@ services:
     tty: true
 
   kafka:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     image: apache/kafka:4.1.2
     hostname: kafka
     environment:
@@ -129,6 +134,11 @@ services:
 
   # Run Spark with -p ticket-guard-workspace-pipeline; existing services are external.
   spark:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     image: ticket-guard-workspace-spark:dev
     build:
       context: ./pipeline
@@ -144,8 +154,8 @@ services:
       MONGO_WRITER_USERNAME: ${MONGO_WRITER_USERNAME:-}
       MONGO_WRITER_PASSWORD: ${MONGO_WRITER_PASSWORD:-}
       SPARK_CHECKPOINT_DIR: ${SPARK_CHECKPOINT_DIR:-/checkpoints/spark-consumer}
-      SPARK_TRIGGER_SECONDS: ${SPARK_TRIGGER_SECONDS:-5}
-      SPARK_MAX_OFFSETS_PER_TRIGGER: ${SPARK_MAX_OFFSETS_PER_TRIGGER:-1000}
+      SPARK_TRIGGER_SECONDS: ${SPARK_TRIGGER_SECONDS:-1}
+      SPARK_MAX_OFFSETS_PER_TRIGGER: ${SPARK_MAX_OFFSETS_PER_TRIGGER:-2000}
       SPARK_MONGO_BULK_SIZE: ${SPARK_MONGO_BULK_SIZE:-200}
       SPARK_MONGO_TIMEOUT_MS: ${SPARK_MONGO_TIMEOUT_MS:-10000}
       SPARK_MONGO_WRITE_ATTEMPTS: ${SPARK_MONGO_WRITE_ATTEMPTS:-3}

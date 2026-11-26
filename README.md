@@ -171,9 +171,9 @@ Spark 체크포인트는 소비 진행 위치를, 전용 MongoDB 상태는 파�
 
 | 항목 | 코드 기준 기본값·구성 | 목적 |
 |---|---|---|
-| ingest 처리 주기 | `SPARK_TRIGGER_SECONDS=5`초 | 정제·적재 마이크로배치 주기 |
+| ingest 처리 주기 | `SPARK_TRIGGER_SECONDS=1`초 | 정제·적재 마이크로배치 주기 |
 | flow 처리 주기 | `FLOW_TRIGGER_SECONDS=1`초 | 사용자 흐름 갱신 주기 |
-| 배치 입력량 | `SPARK_MAX_OFFSETS_PER_TRIGGER=1000` | 배치당 Kafka 입력량 제한 |
+| 배치 입력량 | `SPARK_MAX_OFFSETS_PER_TRIGGER=2000` | 배치당 Kafka 입력량 제한 |
 | ingest DB 쓰기 묶음 | `SPARK_MONGO_BULK_SIZE=200` | 문서별 호출을 묶음 쓰기로 처리 |
 | ingest DB 쓰기 시도 | `SPARK_MONGO_WRITE_ATTEMPTS=3` | 재시도 가능한 쓰기 실패에 대응 |
 | ingest 셔플 파티션 | `spark.sql.shuffle.partitions=2` | 현재 실행 구성의 파티션 설정 |
