@@ -18,6 +18,7 @@ from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
 from ticket_guard_qa.test_runs.run_service import RunService
 from ticket_guard_qa.test_suites.detection_regression import (
     DETECTION_REGRESSION_SUITE_NAME,
+    REGRESSION_VIRTUAL_USER_COUNT,
     build_baseline_from_result,
     save_baseline,
 )
@@ -62,6 +63,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "save-regression-baseline", help="탐지 회귀 기준선 저장 · 의도한 판정 규칙 변경 뒤에만 · case_data/regression_baselines"
     )
     baseline_command.add_argument("--target", dest="target_kind", type=TargetKind, choices=list(TargetKind))
+    baseline_command.add_argument("--vu", dest="virtual_user_count", type=int, default=REGRESSION_VIRTUAL_USER_COUNT,
+                                  help="탐지 회귀 VU 수 · Run 설정 VU와 같아야 비교")
 
     commands.add_parser("dashboard", help="QA 대시보드 띄우기 · 팀 compose 컨테이너 안에서만")
     return parser
@@ -115,7 +118,7 @@ def save_regression_baseline(arguments: argparse.Namespace) -> int:
     run_service = RunService(settings, connect_qa_database(settings.qa_database_url), RunProgressStream())
     target_kind = arguments.target_kind or settings.target_kind
     summary = run_service.run_now(RunConfig(target_kind=target_kind, suite_names=(DETECTION_REGRESSION_SUITE_NAME,),
-                                            random_seed=settings.random_seed))
+                                            virtual_user_count=arguments.virtual_user_count, random_seed=settings.random_seed))
     result = summary.find_suite_result(DETECTION_REGRESSION_SUITE_NAME)
     if result is None or "detection_rate_percent_by_actor" not in result.details:
         print(f"기준선 저장 실패 · {summary.status.value} · {result.message if result else '결과 없음'}")
