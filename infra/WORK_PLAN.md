@@ -280,11 +280,13 @@ import { to = aws_iam_policy.mongo_port_forward                 id = "arn:aws:ia
 
 ### JSON 차이 줄이기
 
-- SSM 문서 `content`는 공백 · 줄바꿈 차이를 없애기 위해 정규화
+- SSM 문서 `content`는 원문 파일을 **가공 없이** 사용 (끝 줄바꿈 포함)
+  - `jsonencode(jsondecode(...))` · `trimspace` 사용 시 AWS 저장 값과 달라져 plan에 변경이 나오고 apply 시 문서 새 버전 생성 (5단계에서 확인)
 
   ```hcl
-  content = jsonencode(jsondecode(file("${path.module}/documents/${each.key}.json")))
+  content = file("${path.module}/documents/${each.key}.json")
   ```
+- 원문은 `aws ssm get-document` 출력을 BOM 없는 UTF-8로 저장 (끝 줄바꿈 1개 유지)
 
 - `document_type = "Session"` · `document_format = "JSON"` 명시
 - IAM 정책은 `file()` 그대로 사용 (AWS 쪽에서 비교 시 정규화) · 차이가 나면 같은 방식으로 감싸기

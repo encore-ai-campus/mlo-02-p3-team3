@@ -47,3 +47,49 @@ import {
   to = aws_eip_association.staging
   id = "eipassoc-0d9011ff971cec7a8"
 }
+
+# ---------- 4단계 · EC2용 IAM ----------
+
+import {
+  to = aws_iam_role.ec2_ssm
+  id = "ticketguard-ec2-ssm"
+}
+
+import {
+  to = aws_iam_instance_profile.ec2_ssm
+  id = "ticketguard-ec2-ssm"
+}
+
+import {
+  to = aws_iam_role_policy_attachment.ec2_ssm_core
+  id = "ticketguard-ec2-ssm/arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# ---------- 6단계 · 팀원 정책 ----------
+
+import {
+  to = aws_iam_policy.mongo_port_forward
+  id = "arn:aws:iam::589792084208:policy/TicketGuardMongoPortForwardAccess"
+}
+
+# 인라인 import ID 형식: 사용자:정책 이름
+import {
+  for_each = local.team_inline
+  to       = aws_iam_user_policy.team[each.key]
+  id       = each.key
+}
+
+# 연결 import ID 형식: 사용자/정책 ARN
+import {
+  for_each = local.team_attached
+  to       = aws_iam_user_policy_attachment.team[each.key]
+  id       = each.key
+}
+
+# ---------- 5단계 · SSM 포트 포워딩 문서 ----------
+
+import {
+  for_each = toset(local.ssm_documents)
+  to       = aws_ssm_document.port_forward[each.key]
+  id       = each.key
+}

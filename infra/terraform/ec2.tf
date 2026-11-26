@@ -10,7 +10,7 @@ resource "aws_instance" "staging" {
   instance_type        = var.instance_type
   key_name             = var.key_pair_name
   subnet_id            = data.aws_subnet.staging.id
-  iam_instance_profile = var.instance_profile_name
+  iam_instance_profile = aws_iam_instance_profile.ec2_ssm.name
 
   # security_groups 사용 시 교체 발생 → 반드시 vpc_security_group_ids 사용
   vpc_security_group_ids = [aws_security_group.staging.id]
