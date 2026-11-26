@@ -4,8 +4,6 @@
 
 TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로의 행동을 재현하고, **Kafka·Spark·MongoDB로 원본 보관부터 정제·이상 관측·지표 공개까지 연결한 실시간 데이터 처리 시스템**입니다. 웹 서버는 요청 시점에 정책을 적용하고, Spark는 행동과 서버 처리 기록을 분석합니다. 운영자는 관리자 대시보드에서 결과와 근거를 확인하며, QA는 정답표와 시스템 결과를 비교합니다.
 
-이 문서는 프로젝트의 시작 배경, 구현 과정, 확인한 결과와 확장 방향을 정리했습니다. 구현 기준은 2026-11-26 확인한 `main`의 `32707c4`이며, 측정값에는 시험 환경과 측정 구간을 함께 기재했습니다.
-
 ## 1. 서론
 
 ### 1.1 프로젝트 시작 배경
@@ -41,6 +39,16 @@ TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로�
 | 관리자 화면 | 사용자 흐름·네트워크 상태·이상탐지, 단계별 탐지·조치 조회 | 공개 결과, 기준 시각, 대상·근거·상태 |
 | 자동화 QA | 트래픽 생성, 정답표 대조, 전달·적재·지연·회귀·복구 시험 | Run, 시험 항목, 봇 버전, 측정값·결과 |
 
+### 1.4 팀 구성과 역할
+
+| 팀원 | 담당 영역 | 주요 작업 | GitHub |
+|---|---|---|---|
+| 류지예 · 팀장 | Frontend·웹 UI·문서화 | 사용자·관리자 화면과 공통 테마 구성, 회원가입·로그인 및 예매 화면 개선, 예외 상황 UI, 공연별 예매 일정·좌석 초기화, README·구조도·발표자료 구성 | [callijee22-ship-it](https://github.com/callijee22-ship-it) |
+| 설호현 | QA·매크로 봇·배포 환경 | QA 대시보드·시험 항목 구현, 정상·매크로 트래픽 구성, Mock·Live 실행과 결과 UI, QA MongoDB 구성, AWS 업로드·실행 환경 구성 | [seoloo](https://github.com/seoloo) |
+| 홍석환 | Database·데이터 파이프라인·이상탐지 | MongoDB 구조·컬렉션·계정 구성, Kafka·Spark 연결, 원본 적재·분기 로직, 사용자 흐름·네트워크 지표, 사전 탐지·사후 처리, 관리자 지표 연결·UI 개선 | [SeokHwanHong](https://github.com/SeokHwanHong) |
+
+프로젝트 흐름과 웹페이지 기획·구성은 팀이 함께 논의하고, 각 담당 영역을 연결해 예매·수집·분석·조회·검증 흐름을 구성했습니다.
+
 ## 2. 과정
 
 ### 2.1 전체 아키텍처와 설계 의도
@@ -68,14 +76,14 @@ TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로�
 
 | 영역 | 기술 |
 |---|---|
-| Frontend | HTML5, CSS3, JavaScript, Django Templates, Jinja2 |
-| Backend | Python, Django, FastAPI, Uvicorn |
-| Database | MongoDB, PyMongo |
-| Messaging | Apache Kafka, confluent-kafka |
-| Data Processing | Apache Spark, PySpark, Structured Streaming |
-| Infrastructure | Docker, Docker Compose, Nginx |
-| Testing & QA | pytest, HTTPX, Playwright, Locust |
-| CI | GitHub Actions |
+| Frontend | ![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=flat-square&logo=html5&logoColor=white) ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=flat-square) ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=white) ![Django Templates](https://img.shields.io/badge/Django%20Templates-092E20?style=flat-square&logo=django&logoColor=white) ![Jinja2](https://img.shields.io/badge/Jinja2-B41717?style=flat-square&logo=jinja&logoColor=white) |
+| Backend | ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![Django](https://img.shields.io/badge/Django-092E20?style=flat-square&logo=django&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![Uvicorn](https://img.shields.io/badge/Uvicorn-4051B5?style=flat-square) |
+| Database | ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white) ![PyMongo](https://img.shields.io/badge/PyMongo-3F8F3E?style=flat-square) |
+| Messaging | ![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-231F20?style=flat-square&logo=apachekafka&logoColor=white) ![confluent-kafka](https://img.shields.io/badge/confluent--kafka-FF5E1E?style=flat-square&logo=confluent&logoColor=white) |
+| Data Processing | ![Apache Spark](https://img.shields.io/badge/Apache%20Spark-E25A1C?style=flat-square&logo=apachespark&logoColor=white) ![PySpark](https://img.shields.io/badge/PySpark-F29D38?style=flat-square) ![Structured Streaming](https://img.shields.io/badge/Structured%20Streaming-D76B18?style=flat-square) |
+| Infrastructure | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) ![Docker Compose](https://img.shields.io/badge/Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white) ![Nginx](https://img.shields.io/badge/Nginx-009639?style=flat-square&logo=nginx&logoColor=white) |
+| Testing & QA | ![pytest](https://img.shields.io/badge/pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white) ![HTTPX](https://img.shields.io/badge/HTTPX-3B82F6?style=flat-square) ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat-square) ![Locust](https://img.shields.io/badge/Locust-4A8B35?style=flat-square) |
+| CI | ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white) |
 
 Frontend는 HTML·CSS·JavaScript와 서버 템플릿으로 예매·관리자·QA 화면을 구성합니다. Backend는 Django의 예매 업무·인증과 FastAPI의 관리자·QA 앱으로 역할을 나눕니다. Kafka는 이벤트 전달을, Spark는 정제·집계·이상 관측을 담당하며, MongoDB는 데이터를 용도별로 보관합니다.
 
@@ -197,7 +205,7 @@ Spark 체크포인트는 소비 진행 위치를, 전용 MongoDB 상태는 파�
 
 #### 서버 즉시 정책
 
-서버 정책 버전 `prevention-2026-11-23-v1`을 적용했습니다. 웹 서버가 요청 처리 시점에 다음 기준으로 판단합니다.
+웹 서버가 요청 처리 시점에 다음 기준으로 판단하며, 적용한 정책과 버전을 이벤트에 함께 기록합니다.
 
 | 정책 | 적용 기준 | 적용 단위 |
 |---|---|---|
@@ -315,9 +323,9 @@ Spark 체크포인트는 소비 진행 위치를, 전용 MongoDB 상태는 파�
 
 | 검증 기록 | 시험 구성 | 확인한 결과 |
 |---|---|---|
-| 원본 적재, 2026-11-06 | 독립 3파티션 토픽·14건 표본 | 종류별 라우팅, 부분 저장 실패 시 미커밋, 재수신 후 중복 없음 |
-| DB 설치, 2026-11-09 | 빈 볼륨 초기화·계정·인덱스 준비 | reader 쓰기 거부, 재시작 후 조회, 반복 설정 시 데이터·계정 유지 |
-| flow 통합, 2026-11-13 | 실제 Kafka 2파티션·원본 적재·인증 DB·Spark `local[2]`·공개 뷰 | 원본 대조, 지표 저장·공개, 관리자 읽기 계정 조회 |
+| 원본 적재 검증 | 독립 3파티션 토픽·14건 표본 | 종류별 라우팅, 부분 저장 실패 시 미커밋, 재수신 후 중복 없음 |
+| DB 설치 검증 | 빈 볼륨 초기화·계정·인덱스 준비 | reader 쓰기 거부, 재시작 후 조회, 반복 설정 시 데이터·계정 유지 |
+| flow 통합 검증 | 실제 Kafka 2파티션·원본 적재·인증 DB·Spark `local[2]`·공개 뷰 | 원본 대조, 지표 저장·공개, 관리자 읽기 계정 조회 |
 | 같은 flow 시험의 입력·집계 | 합성 9건과 재전송 9건 | 고유 예매 시작·성공 각 3건, 시계열당 720개 시점 |
 | 같은 flow 시험의 권한 | 관리자 reader 계정 | 내부 컬렉션 조회·쓰기 요청 거부 |
 
@@ -418,5 +426,3 @@ Ticket_Guard/
 | QA 실행 | [QA 안내](qa/README.md) |
 | QA 봇 유형 | [기본 봇 카탈로그](qa/src/ticket_guard_qa/macro_bots/bot_catalog.py) |
 | QA 판정·지연·처리량 | [시스템 MongoDB 조회 코드](qa/src/ticket_guard_qa/system_targets/live_mongo_reader.py) |
-
-구현 내용은 main의 코드와 Compose 구성을 기준으로 정리했습니다. QA 시험 수치는 팀의 4주차 `TicketGuard_QA구현결과보고.pdf` 1~2쪽·10~13쪽, 원본·파이프라인 검증 수치는 위 상세 문서의 실행 기록을 근거로 작성했습니다.
