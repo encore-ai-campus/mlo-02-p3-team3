@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "1.0",
+  "sessionType": "Port",
+  "properties": {
+    "host": "172.21.0.2",
+    "portNumber": "27017",
+    "localPortNumber": "37021",
+    "type": "LocalPortForwarding"
+  }
+}

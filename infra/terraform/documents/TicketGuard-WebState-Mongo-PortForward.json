@@ -1,0 +1,1 @@
+{"schemaVersion":"1.0","description":"TicketGuard web-state MongoDB","sessionType":"Port","properties":{"host":"172.22.0.2","portNumber":"27017","localPortNumber":"37019","type":"LocalPortForwarding"}}

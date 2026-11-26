@@ -4,6 +4,7 @@
 - 브랜치: `infra` (develop 기준) → 완료 후 `develop` 대상 PR
 - 범위: 기존 스테이징 리소스를 **새로 만들지 않고 import로 연결** · 첫 목표는 `terraform plan` 결과 `No changes`
 - 기준 시점: 2026-11-26 AWS CLI 조회 결과
+- 작업 규칙: [`AGENTS.md`](AGENTS.md) · 이 문서는 가이드라인이며 더 나은 방법이 확인되면 수정
 
 ## 1. 작업 시작 전 준비 (집 PC)
 
@@ -15,11 +16,13 @@
    git pull
    ```
 
-2. Terraform 설치 (1.5 이상 · import 블록 사용)
+2. Terraform · AWS CLI 설치 (Terraform **1.7 이상** · import 블록 `for_each` 사용)
 
    ```bash
    winget install Hashicorp.Terraform
+   winget install Amazon.AWSCLI
    terraform -version
+   aws --version
    ```
 
 3. AWS 로그인 · 리전 서울
@@ -30,6 +33,20 @@
    ```
 
    - `Account` = `589792084208` · `Arn` = `user/student` 확인
+   - Terraform이 `aws login` 자격 증명을 인식하지 못하면 임시 자격 증명을 환경 변수로 넘김 (값은 화면 · 파일에 남기지 않음)
+
+     ```bash
+     eval "$(aws configure export-credentials --format env)"
+     ```
+
+4. 실행 계정 권한 확인 (import는 조회 권한 필요 · 하나라도 실패하면 진행 전 강사 확인)
+
+   ```bash
+   aws ec2 describe-instances --instance-ids i-05b288c5ca0f2e2a4 --query "Reservations[].Instances[].State.Name"
+   aws iam get-role --role-name ticketguard-ec2-ssm --query Role.RoleName
+   aws iam list-user-policies --user-name ticketguard_Hong
+   aws ssm describe-document --name TicketGuard-Mongo-PortForward --query Document.Name
+   ```
 
 ## 2. 현재 AWS 리소스 목록 (import 대상)
 
@@ -98,9 +115,14 @@ infra/
 infra/terraform/.terraform/
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.*
-infra/terraform/terraform.tfvars
+infra/terraform/*.tfvars
+!infra/terraform/terraform.tfvars.example
+infra/terraform/*.tfplan
+infra/terraform/generated.tf
 infra/terraform/crash.log
 ```
+
+- 저장소는 public · 계정 ID · 리소스 ID는 올려도 됨 · 비밀번호 · Access Key · 관리자 IP는 올리지 않음 (`infra/AGENTS.md` 1절)
 
 - `.terraform.lock.hcl`은 커밋 (provider 버전 고정)
 
@@ -152,16 +174,82 @@ import { to = aws_iam_policy.mongo_port_forward                 id = "arn:aws:ia
 ```
 
 - HCL에서는 `to`와 `id`를 줄바꿈으로 구분 (위 표기는 한 줄 요약)
+- SSM 문서 4개는 Terraform 1.7 `for_each` import 1개로 줄일 수 있음
+
+  ```hcl
+  import {
+    for_each = toset(local.ssm_documents)
+    to       = aws_ssm_document.port_forward[each.key]
+    id       = each.key
+  }
+  ```
+
 - 팀원 정책 import ID 형식
   - 인라인: `aws_iam_user_policy` → `ticketguard_Hong:TicketGuardShellAccess`
   - 연결: `aws_iam_user_policy_attachment` → `ticketguard_Hong/arn:aws:iam::aws:policy/IAMReadOnlyAccess`
-  - 사용자 2명 × 인라인 4개 · 연결 4개 = 16개 → `for_each`로 작성
+  - 사용자 2명 × (인라인 4개 + 연결 4개) = 16개 → locals 조합 + `for_each` import 2개
+
+  ```hcl
+  locals {
+    team_users = ["ticketguard_Hong", "ticketguard_Ryu"]
+
+    team_inline_policies = [
+      "TicketGuardQAMongoPortForwardAccess",
+      "TicketGuardSparkPortForwardAccess",
+      "TicketGuardWebStatePortForwardAccess",
+      "TicketGuardShellAccess",
+    ]
+
+    team_attached_policies = [
+      "arn:aws:iam::589792084208:policy/TicketGuardMongoPortForwardAccess",
+      "arn:aws:iam::aws:policy/IAMReadOnlyAccess",
+      "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess",
+      "arn:aws:iam::aws:policy/AWSCloudShellFullAccess",
+    ]
+
+    team_inline = {
+      for pair in setproduct(local.team_users, local.team_inline_policies) :
+      "${pair[0]}:${pair[1]}" => { user = pair[0], policy = pair[1] }
+    }
+
+    team_attached = {
+      for pair in setproduct(local.team_users, local.team_attached_policies) :
+      "${pair[0]}/${pair[1]}" => { user = pair[0], policy_arn = pair[1] }
+    }
+  }
+
+  import {
+    for_each = local.team_inline
+    to       = aws_iam_user_policy.team[each.key]
+    id       = each.key # user:policy
+  }
+
+  import {
+    for_each = local.team_attached
+    to       = aws_iam_user_policy_attachment.team[each.key]
+    id       = each.key # user/arn
+  }
+  ```
+
+  - 인라인 정책 본문은 `policies/<정책명>.json` 하나를 두 사용자가 공유 (4절에서 Hong · Ryu 동일 확인 후)
 - 사용자 자체는 `data "aws_iam_user"` 참조 (로그인 프로필 · 키를 Terraform 관리 밖에 둠)
+
+### 코드 자동 생성으로 작성 시간 줄이기
+
+- import 블록만 먼저 쓰고 리소스 코드 없이 실행 → Terraform이 실제 설정을 읽어 코드 초안 작성
+
+  ```bash
+  terraform plan -generate-config-out=generated.tf
+  ```
+
+- `generated.tf`를 역할별 파일(`network.tf` · `ec2.tf` …)로 옮기며 정리 → 읽기 전용 속성 · 기본값 · 하드코딩 ID를 변수 · 참조로 교체 → `generated.tf` 삭제
+- `for_each` import 대상은 자동 생성이 안 됨 → SSM 문서 · 팀원 정책은 위 예시대로 직접 작성
 
 ## 6. 진행 순서
 
 | 단계 | 내용 | 완료 기준 |
 |---|---|---|
+| 0 | 설치 · 로그인 · 실행 계정 권한 확인 (1절) · 원문 JSON 내려받기 (4절) | 조회 명령 전부 성공 |
 | 1 | `versions.tf` · `provider.tf` · `data.tf` 작성 → `terraform init` | `.terraform.lock.hcl` 생성 |
 | 2 | 보안 그룹 · 규칙 + import | 해당 리소스 plan 차이 0 |
 | 3 | EC2 · EIP + import | 차이 0 · **replace 계획이 하나라도 나오면 apply 금지** |
@@ -180,6 +268,26 @@ import { to = aws_iam_policy.mongo_port_forward                 id = "arn:aws:ia
 - `iam_instance_profile = aws_iam_instance_profile.ec2_ssm.name` · `key_name = "ticketguard-staging"`
 - 보안 그룹은 `vpc_security_group_ids` 사용 (`security_groups` 사용 시 교체 발생)
 - 보안 그룹 `description`은 현재 문자열 그대로 · 변경 시 보안 그룹 교체 발생
+- 코드에 없으면 차이로 자주 나오는 속성 → 현재 값을 조회해 명시
+
+  | 속성 | 확인 방법 · 예상 값 |
+  |---|---|
+  | `credit_specification { cpu_credits }` | t3 계열 · `aws ec2 describe-instance-credit-specifications --instance-ids i-05b288c5ca0f2e2a4` (보통 `unlimited`) |
+  | `source_dest_check` | 보통 `true` |
+  | `disable_api_termination` · `disable_api_stop` | `aws ec2 describe-instance-attribute --attribute disableApiTermination` |
+  | `ebs_optimized` · `monitoring` | `true` · `false` (2절 표) |
+  | `associate_public_ip_address` | EIP 사용 · 현재 값 그대로 (변경 시 교체) |
+
+### JSON 차이 줄이기
+
+- SSM 문서 `content`는 공백 · 줄바꿈 차이를 없애기 위해 정규화
+
+  ```hcl
+  content = jsonencode(jsondecode(file("${path.module}/documents/${each.key}.json")))
+  ```
+
+- `document_type = "Session"` · `document_format = "JSON"` 명시
+- IAM 정책은 `file()` 그대로 사용 (AWS 쪽에서 비교 시 정규화) · 차이가 나면 같은 방식으로 감싸기
 
 ### 금지 사항
 
@@ -221,8 +329,8 @@ import { to = aws_iam_policy.mongo_port_forward                 id = "arn:aws:ia
 
 | 단계 | 예상 |
 |---|---|
-| 준비 · 원문 JSON | 0.5시간 |
-| 코드 작성 | 3~4시간 |
+| 준비 · 설치 · 권한 확인 · 원문 JSON | 1시간 |
+| 코드 작성 (자동 생성 + 정리 · `for_each` import) | 2~3시간 |
 | import · plan 차이 맞추기 | 2~3시간 |
 | README · 아키텍처 그림 | 1~2시간 |
 | CI | 0.5~1시간 |

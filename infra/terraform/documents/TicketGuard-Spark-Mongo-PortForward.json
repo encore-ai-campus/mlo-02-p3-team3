@@ -1,0 +1,1 @@
+{"schemaVersion":"1.0","description":"TicketGuard Spark result MongoDB","sessionType":"Port","properties":{"host":"172.19.0.3","portNumber":"27017","localPortNumber":"37018","type":"LocalPortForwarding"}}
