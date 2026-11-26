@@ -41,11 +41,83 @@ TicketGuard는 직접 구현한 예매 웹에서 정상 사용자와 매크로�
 
 ### 1.4 팀 구성과 역할
 
-| 팀원 | 담당 영역 | 주요 작업 | GitHub |
-|---|---|---|---|
-| 류지예 · 팀장 | Frontend·웹 UI·문서화 | 사용자·관리자 화면과 공통 테마 구성, 회원가입·로그인 및 예매 화면 개선, 예외 상황 UI, 공연별 예매 일정·좌석 초기화, README·구조도·발표자료 구성 | [callijee22-ship-it](https://github.com/callijee22-ship-it) |
-| 설호현 | QA·매크로 봇·배포 환경 | QA 대시보드·시험 항목 구현, 정상·매크로 트래픽 구성, Mock·Live 실행과 결과 UI, QA MongoDB 구성, AWS 업로드·실행 환경 구성 | [seoloo](https://github.com/seoloo) |
-| 홍석환 | Database·데이터 파이프라인·이상탐지 | MongoDB 구조·컬렉션·계정 구성, Kafka·Spark 연결, 원본 적재·분기 로직, 사용자 흐름·네트워크 지표, 사전 탐지·사후 처리, 관리자 지표 연결·UI 개선 | [SeokHwanHong](https://github.com/SeokHwanHong) |
+### 1.4 팀원 소개
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://github.com/callijee22-ship-it">
+        <img src="https://github.com/callijee22-ship-it.png" width="110" alt="류지예 프로필" />
+      </a>
+      <br />
+      <strong>류지예</strong>
+      <br />
+      <sub>팀장 · Frontend & UI</sub>
+      <br /><br />
+      <a href="https://github.com/callijee22-ship-it">
+        <img src="https://img.shields.io/badge/GitHub-8B5CF6?style=flat-square&logo=github&logoColor=white" alt="류지예 GitHub" />
+      </a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://github.com/seoloo">
+        <img src="https://github.com/seoloo.png" width="110" alt="설호현 프로필" />
+      </a>
+      <br />
+      <strong>설호현</strong>
+      <br />
+      <sub>QA & Automation</sub>
+      <br /><br />
+      <a href="https://github.com/seoloo">
+        <img src="https://img.shields.io/badge/GitHub-2563EB?style=flat-square&logo=github&logoColor=white" alt="설호현 GitHub" />
+      </a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://github.com/SeokHwanHong">
+        <img src="https://github.com/SeokHwanHong.png" width="110" alt="홍석환 프로필" />
+      </a>
+      <br />
+      <strong>홍석환</strong>
+      <br />
+      <sub>Data Engineering & Detection</sub>
+      <br /><br />
+      <a href="https://github.com/SeokHwanHong">
+        <img src="https://img.shields.io/badge/GitHub-0D9488?style=flat-square&logo=github&logoColor=white" alt="홍석환 GitHub" />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>사용자 경험과 화면 구성</strong>
+      <ul>
+        <li>사용자·관리자 화면 및 공통 테마</li>
+        <li>회원가입·로그인·예매 화면 개선</li>
+        <li>예외 상황 안내와 화면 동작</li>
+        <li>공연별 예매 일정·좌석 초기화</li>
+        <li>README·구조도·발표자료 구성</li>
+      </ul>
+    </td>
+    <td valign="top">
+      <strong>자동화 시험과 결과 검증</strong>
+      <ul>
+        <li>QA 대시보드·시험 항목 구현</li>
+        <li>정상·매크로 트래픽 구성</li>
+        <li>Mock·Live 실행 및 결과 UI</li>
+        <li>QA MongoDB 구성</li>
+        <li>AWS 업로드·실행 환경 구성</li>
+      </ul>
+    </td>
+    <td valign="top">
+      <strong>데이터 처리와 이상 관측</strong>
+      <ul>
+        <li>MongoDB 구조·컬렉션·계정 구성</li>
+        <li>Kafka·Spark 연결 및 원본 적재</li>
+        <li>사용자 흐름·네트워크 지표</li>
+        <li>사전 탐지·사후 처리 로직</li>
+        <li>관리자 지표 연결·UI 개선</li>
+      </ul>
+    </td>
+  </tr>
+</table>
 
 프로젝트 흐름과 웹페이지 기획·구성은 팀이 함께 논의하고, 각 담당 영역을 연결해 예매·수집·분석·조회·검증 흐름을 구성했습니다.
 
