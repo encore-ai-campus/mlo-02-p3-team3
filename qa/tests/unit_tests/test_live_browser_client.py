@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 
 import httpx
+import pytest
 
 from ticket_guard_qa.domain.enums import ActorType, BookingOutcome
 from ticket_guard_qa.domain.models import PlannedUser, VirtualUserSessionPlan
@@ -15,6 +16,7 @@ from ticket_guard_qa.system_targets import live_browser_client as browser
 from ticket_guard_qa.system_targets.live_browser_client import BrowserUnavailableError, LiveBrowserBookingClient
 from ticket_guard_qa.system_targets.live_booking_client import DEVICE_COOKIE_NAME
 from ticket_guard_qa.system_targets.live_django_system import LiveDjangoBookingApi, SystemAdminAccount, VirtualUserAccountPool
+from ticket_guard_qa.system_targets.target_interfaces import AccountPoolExhaustedError
 from ticket_guard_qa.traffic_generators.virtual_user_traffic import (
     assign_devices,
     build_planned_user_session_plans,
@@ -390,22 +392,27 @@ def test_browser_cap_comes_from_setting():
     assert (browser_slots._value, window_slots._value) == (6, 18)  # 창 = 브라우저 × 3
 
 
-def test_accounts_prefer_unused_and_restart_after_reset(monkeypatch):
+def test_accounts_continue_after_reset_and_skip_limited(monkeypatch):
     api = LiveDjangoBookingApi(BASE_URL, "ticketguard", "unused", VirtualUserAccountPool(3, "pw", "QA123"),
                                SystemAdminAccount("manager", "manager"))
     first = api.acquire_account_number()
-    api.free_account_numbers.append(first)
-    assert api.acquire_account_number() == 2  # 반환된 1번보다 새 계정 먼저 · 회차 사이 재사용 최소화
+    api.return_account(first)
+    assert api.acquire_account_number() == 2  # 반환된 1번보다 다음 번호 먼저 · 같은 계정 연속 사용 최소화
 
     async def fake_reset():
         return None
 
     monkeypatch.setattr(api, "_reset_as_admin", fake_reset)
-    assert api.reset_test_data() and api.virtual_user_capacity() == 3  # 초기화 = 진행 중 예매 없음 · 계정 처음부터
+    assert api.reset_test_data() and api.virtual_user_capacity() == 3
+    assert api.acquire_account_number() == 3  # 초기화해도 1번부터 다시 쓰지 않음 · 시스템 구매 기록은 초기화 안 됨
+    api.account_ledger.record_purchase(1, 4)  # 회차 한도 4매 다 씀
+    api.record_policy_block(2, "TEMPORARILY_RESTRICTED")
+    with pytest.raises(AccountPoolExhaustedError):  # 3번 사용 중 · 1번 한도 · 2번 차단
+        api.acquire_account_number()
 
 
 def test_sold_out_browser_account_is_not_reused():
     api, _ = build_live_api(lambda: FakeBrowserPage(hidden_sold_seat_ids={"C3", "C4", "C5", "C6"}))
     result = send_virtual_user_traffic(api, [build_plan(behavior=replace(BOT_C_BEHAVIOR, sold_out_retry_count=0))], 10)[0]
     assert result.booking_outcome is BookingOutcome.SOLD_OUT
-    assert api.free_account_numbers == []  # 취소가 서버에 닿았는지 모름 · 다른 VU에 주지 않음
+    assert api.accounts_in_use == {1}  # 취소가 서버에 닿았는지 모름 · 다른 VU에 주지 않음

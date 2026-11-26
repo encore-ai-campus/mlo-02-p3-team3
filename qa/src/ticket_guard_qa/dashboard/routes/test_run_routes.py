@@ -9,21 +9,24 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from ticket_guard_qa.dashboard.criterion_status import STATUS_TITLES, build_criterion_rows, count_statuses
-from ticket_guard_qa.dashboard.suite_result_view import build_suite_result_view, describe_missing_verdict
+from ticket_guard_qa.dashboard.suite_result_view import (
+    build_suite_result_view,
+    describe_missing_verdict,
+    read_measurable_verdict_details,
+)
 from ticket_guard_qa.dashboard.dependencies import (
     get_progress_stream,
     get_run_service,
     redirect_to_page,
     render_screen,
 )
-from ticket_guard_qa.domain.enums import AlertPolicy, Comparison, RunStatus, TargetKind
+from ticket_guard_qa.domain.enums import ActorType, AlertPolicy, Comparison, RunStatus, TargetKind
 from ticket_guard_qa.domain.models import LEGACY_TRAFFIC_FIELD_TO_ACTOR, CriterionResult, RunConfig, RunSummary, TrafficMix
-from ticket_guard_qa.macro_bots.bot_catalog import BotTypeInfo, list_bot_types
+from ticket_guard_qa.macro_bots.bot_catalog import BotRole, BotTypeInfo, list_bot_types
 from ticket_guard_qa.domain.pass_criteria import PASS_CRITERIA, PassCriterion
 from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
 from ticket_guard_qa.test_runs.run_service import RunAlreadyActiveError, RunDeleteError, RunService
 from ticket_guard_qa.test_suites.suite_registry import get_suite, list_suites
-from ticket_guard_qa.test_suites.verdict_accuracy import VERDICT_ACCURACY_SUITE_NAME
 
 PROGRESS_POLL_INTERVAL_SEC = 0.5
 RESULT_LIST_LIMIT = 50  # 테스트 결과 목록 · 최신 Run
@@ -108,13 +111,22 @@ def _render_test_setup(
     }, status_code)
 
 
+SETUP_BOT_PERCENT = 7  # 02 처음 화면 · 탐지 대상 봇 7종 각 7% · 나머지 정상 · 미학습 · 추가 유형 0
+
+
+def build_setup_traffic_percents() -> dict[str, int]:
+    bot_ids = [info.actor_type.value for info in list_bot_types() if info.role is BotRole.DETECTION_TARGET]
+    return {ActorType.HUMAN.value: 100 - SETUP_BOT_PERCENT * len(bot_ids), **{bot_id: SETUP_BOT_PERCENT for bot_id in bot_ids}}
+
+
 @router.get("/runs/new", response_class=HTMLResponse)
 def show_test_setup(request: Request, from_run_id: str | None = None, run_service: RunService = Depends(get_run_service)) -> HTMLResponse:
     previous_summary = run_service.run_repository.get_summary(from_run_id) if from_run_id else None
     run_config = previous_summary.run_config if previous_summary else RunConfig(
         target_kind=run_service.settings.target_kind,
-        suite_names=(),  # 처음 화면 · 선택 없음
+        suite_names=tuple(suite.suite_name for suite in list_suites()),  # 처음 화면 · Suite 전부 선택
         duration_sec=AUTO_TIME_LIMIT_VALUE,
+        traffic_mix=TrafficMix(build_setup_traffic_percents()),
         random_seed=run_service.settings.random_seed,
     )
     return _render_test_setup(request, run_service, run_config)
@@ -287,7 +299,6 @@ def show_test_result(request: Request, run_id: str, run_service: RunService = De
         for criterion in PASS_CRITERIA
     ]
     failed_cards = [card for card in criterion_cards if card.result.is_passed is False]
-    verdict_result = summary.find_suite_result(VERDICT_ACCURACY_SUITE_NAME)
     suite_title_by_name = {suite.suite_name: suite.title for suite in list_suites()}
     criterion_rows = build_criterion_rows(summary, suite_title_by_name)
     return render_screen(request, "screen_04_test_result.html", {
@@ -300,7 +311,7 @@ def show_test_result(request: Request, run_id: str, run_service: RunService = De
         "criterion_status_titles": STATUS_TITLES,
         "first_failed_card": failed_cards[0] if failed_cards else None,
         "next_actions": [NEXT_ACTION_BY_CRITERION_ID[card.criterion.criterion_id] for card in failed_cards],
-        "verdict_details": verdict_result.details if verdict_result else {},
+        "verdict_details": read_measurable_verdict_details(summary),
         "missing_verdict_reason": describe_missing_verdict(summary),
         "comparisons": build_criterion_comparisons(summary, run_service.run_repository.find_previous_same_config_summary(summary)),
         "suite_title_by_name": suite_title_by_name,
