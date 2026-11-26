@@ -24,11 +24,13 @@ from ticket_guard_qa.domain.enums import ActorType, AlertPolicy, Comparison, Run
 from ticket_guard_qa.domain.models import LEGACY_TRAFFIC_FIELD_TO_ACTOR, CriterionResult, RunConfig, RunSummary, TrafficMix
 from ticket_guard_qa.macro_bots.bot_catalog import BotRole, BotTypeInfo, list_bot_types
 from ticket_guard_qa.domain.pass_criteria import PASS_CRITERIA, PassCriterion
-from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
+from ticket_guard_qa.test_runs.run_progress_stream import ProgressMessage, RunProgressStream
 from ticket_guard_qa.test_runs.run_service import RunAlreadyActiveError, RunDeleteError, RunService
 from ticket_guard_qa.test_suites.suite_registry import get_suite, list_suites
 
 PROGRESS_POLL_INTERVAL_SEC = 0.5
+KEEPALIVE_INTERVAL_SEC = 15.0
+RECONNECT_DELAY_MS = 2000  # 브라우저 자동 재연결 간격
 RESULT_LIST_LIMIT = 50  # 테스트 결과 목록 · 최신 Run
 RUN_STATUS_FILTERS = {"PASSED": "PASS", "FAILED": "FAIL", "RUNNING": "진행 중", "ERROR": "ERROR", "CANCELLED": "중지"}
 VIRTUAL_USER_PRESETS = (50, 200, 500)
@@ -207,16 +209,40 @@ def show_test_running(request: Request, run_id: str, run_service: RunService = D
     })
 
 
+def read_resume_sequence_number(last_event_id: str | None, after: int) -> int:
+    """다시 연결 · 브라우저 자동 재연결 = Last-Event-ID · 화면 수동 재연결 = after"""
+    try:
+        header_value = int(last_event_id) if last_event_id else 0
+    except ValueError:
+        header_value = 0
+    return max(header_value, after, 0)
+
+
+def format_server_sent_event(message: ProgressMessage) -> str:
+    """id = 메시지 번호 · 끊긴 지점부터 이어 받기"""
+    return f"id: {message.sequence_number}\ndata: {json.dumps(message.to_payload(), ensure_ascii=False)}\n\n"
+
+
 @router.get("/runs/{run_id}/events")
-async def stream_run_progress(run_id: str, progress_stream: RunProgressStream = Depends(get_progress_stream)) -> StreamingResponse:
+async def stream_run_progress(
+    request: Request, run_id: str, after: int = 0,
+    progress_stream: RunProgressStream = Depends(get_progress_stream),
+) -> StreamingResponse:
     async def generate_server_sent_events() -> AsyncIterator[str]:
-        last_sequence_number = 0
+        last_sequence_number = read_resume_sequence_number(request.headers.get("last-event-id"), after)
+        idle_sec = 0.0
+        yield f"retry: {RECONNECT_DELAY_MS}\n\n"
         while True:
-            for message in progress_stream.read_after(run_id, last_sequence_number):
+            messages = progress_stream.read_after(run_id, last_sequence_number)
+            for message in messages:
                 last_sequence_number = message.sequence_number
-                yield f"data: {json.dumps(message.to_payload(), ensure_ascii=False)}\n\n"
+                yield format_server_sent_event(message)
                 if message.is_finished:
                     return
+            idle_sec = 0.0 if messages else idle_sec + PROGRESS_POLL_INTERVAL_SEC
+            if idle_sec >= KEEPALIVE_INTERVAL_SEC:  # 판정 대기 등 메시지 공백 · 중간 장비 끊김 방지
+                idle_sec = 0.0
+                yield ": keepalive\n\n"
             await asyncio.sleep(PROGRESS_POLL_INTERVAL_SEC)
 
     headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}  # 팀 입구(nginx) 버퍼링 끄기

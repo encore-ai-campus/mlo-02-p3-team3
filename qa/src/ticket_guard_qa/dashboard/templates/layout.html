@@ -75,6 +75,34 @@
     });
     alignAllSuiteTooltips();
     window.addEventListener("resize", alignAllSuiteTooltips);
+
+    // Run 진행 메시지 · 끊기면 마지막 번호부터 이어 받기 · 브라우저가 재연결을 포기하면 2 → 4 → 8초 … 최대 30초 간격 재시도
+    const openRunProgressEvents = (url, { onMessage, onConnectionChange = () => {} }) => {
+      const FIRST_RETRY_DELAY_MS = 2000, MAX_RETRY_DELAY_MS = 30000;
+      let lastSequenceNumber = 0, retryDelayMs = FIRST_RETRY_DELAY_MS, source = null, isClosed = false;
+      const close = () => { isClosed = true; if (source) source.close(); };
+      const connect = () => {
+        if (isClosed) return;
+        source = new EventSource(`${url}?after=${lastSequenceNumber}`);
+        source.onopen = () => { retryDelayMs = FIRST_RETRY_DELAY_MS; onConnectionChange(true); };
+        source.onmessage = (event) => {
+          lastSequenceNumber = Number(event.lastEventId) || lastSequenceNumber;
+          const message = JSON.parse(event.data);
+          if (message.is_finished) close();
+          onMessage(message);
+        };
+        source.onerror = () => {
+          if (isClosed) return;
+          onConnectionChange(false);
+          if (source.readyState === EventSource.CLOSED) {
+            setTimeout(connect, retryDelayMs);
+            retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_DELAY_MS);
+          }
+        };
+      };
+      connect();
+      return { close };
+    };
   </script>
   {% block scripts %}{% endblock %}
 </body>

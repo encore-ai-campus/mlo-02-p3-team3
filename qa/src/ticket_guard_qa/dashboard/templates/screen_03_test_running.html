@@ -111,7 +111,7 @@
 <div class="state-grid">
   <section class="state-card" id="state-disconnected" hidden>
     <span class="state-icon" style="background:var(--fail-red-light);color:var(--fail-red)"><i data-lucide="wifi-off"></i></span>
-    <div><h4>대상 연결 끊김</h4><p>진행 상황 수신 불가 · 서버 측 Run은 계속 진행 가능</p><button class="button is-small" type="button" onclick="location.reload()">재연결</button></div>
+    <div><h4>대상 연결 끊김</h4><p>진행 상황 수신 불가 · 자동 재연결 중 · 서버 측 Run은 계속 진행 가능</p><button class="button is-small" type="button" onclick="location.reload()">재연결</button></div>
   </section>
   <section class="state-card" id="state-recovering" hidden>
     <span class="state-icon" style="background:var(--qa-blue-light);color:var(--qa-blue)"><i data-lucide="loader"></i></span>
@@ -196,10 +196,14 @@
     document.getElementById("suite-wait-count").textContent = Math.max(total - doneCount - (currentIndex < total ? 1 : 0), 0);
   }
 
-  const progressEvents = new EventSource("{{ base_path }}/runs/{{ summary.run_id }}/events");
-  progressEvents.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    document.getElementById("state-disconnected").hidden = true;
+  const showConnection = (isConnected) => {
+    document.getElementById("state-disconnected").hidden = isConnected;
+    document.getElementById("connection-dot").classList.toggle("is-down", !isConnected);
+    document.getElementById("connection-text").textContent = isConnected ? "연결 정상" : "연결 끊김 · 재연결 중";
+    document.getElementById("connection-line").classList.toggle("is-down", !isConnected);
+  };
+  const handleProgressMessage = (message) => {
+    showConnection(true);
     if (message.elapsed_sec !== null) {
       document.getElementById("elapsed-number").textContent = Math.floor(message.elapsed_sec);
       const ratio = message.total_sec ? message.elapsed_sec / message.total_sec : 1;
@@ -215,23 +219,15 @@
       markSuiteProgress(runSuiteNames.indexOf(message.suite_name));
     }
     if (message.is_finished) {
-      progressEvents.close();
       markSuiteProgress(runSuiteNames.length);
       document.getElementById("progress-fill").style.width = "100%";
       window.location.href = resultUrl;  // 끝나면 04로 자동 이동
     }
   };
-  progressEvents.onerror = () => {
-    document.getElementById("state-disconnected").hidden = false;
-    document.getElementById("connection-dot").classList.add("is-down");
-    document.getElementById("connection-text").textContent = "연결 끊김";
-    document.getElementById("connection-line").classList.add("is-down");
-  };
-  progressEvents.onopen = () => {
-    document.getElementById("connection-dot").classList.remove("is-down");
-    document.getElementById("connection-text").textContent = "연결 정상";
-    document.getElementById("connection-line").classList.remove("is-down");
-  };
+  openRunProgressEvents("{{ base_path }}/runs/{{ summary.run_id }}/events", {
+    onMessage: handleProgressMessage,
+    onConnectionChange: showConnection,
+  });
   setInterval(() => {
     const waitedSec = (Date.now() - pageOpenedAt) / 1000;
     document.getElementById("state-timeout").hidden = waitedSec < measurementWindowSec + TIMEOUT_GRACE_SEC;
