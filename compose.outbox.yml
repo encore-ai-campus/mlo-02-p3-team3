@@ -1,0 +1,41 @@
+# Add after compose.state.yml. No new port, database, or deployment action.
+services:
+  web:
+    depends_on:
+      web-state-prepare:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready/', timeout=10)"]
+  web-state-prepare:
+    image: ticket-guard-web:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    command: [python, manage.py, prepare_web_state]
+    environment:
+      WEB_STATE_MONGO_URI: ${WEB_STATE_MONGO_URI:?Set WEB_STATE_MONGO_URI}
+      EVENT_PUBLISHER: mock
+    networks: [state-backend]
+    depends_on:
+      state-init:
+        condition: service_completed_successfully
+    restart: "no"
+  outbox-worker:
+    image: ticket-guard-web:dev
+    working_dir: /app
+    command: [python, manage.py, drain_prevention_outbox, --watch, --limit, '100', --interval, '1']
+    environment:
+      WEB_STATE_MONGO_URI: ${WEB_STATE_MONGO_URI:?Set WEB_STATE_MONGO_URI}
+      EVENT_PUBLISHER: kafka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_EVENTS_TOPIC: ${KAFKA_EVENTS_TOPIC:-ticketguard.events.v1}
+    networks: [default, state-backend]
+    depends_on:
+      web-state-prepare:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 35s
