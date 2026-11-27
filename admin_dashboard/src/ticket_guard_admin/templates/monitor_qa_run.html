@@ -1,0 +1,35 @@
+{# QA Run 구간 · 시험 계정 트래픽 집계 · QA 04 · B1 · B4 'DB 원인 분석' 링크로 진입 #}
+<section class="mp-card mp-qa-run-card" data-qa-run="{{ qa_run_id }}" aria-labelledby="qa-run-title">
+  <div class="mp-card-heading">
+    <div><h2 id="qa-run-title">QA Run 구간 조회</h2>
+      <p><span class="mono">{{ qa_run_id }}</span>{% if qa_run %} · {{ qa_run.window_label }}{% if not qa_run.has_finish %} · 종료 시각 미전달 · 시작 후 최대 60분{% endif %}{% endif %} · 시험 계정 트래픽</p></div>
+    <span class="mp-pill">QA Run 연결</span>
+  </div>
+  {% if qa_run_error %}
+  <p class="mp-qa-run-state is-error" data-qa-run-state="error">{{ qa_run_error }}</p>
+  {% elif qa_run and qa_run.matched == 0 %}
+  <p class="mp-qa-run-state" data-qa-run-state="empty">구간 내 시험 계정 이벤트 없음 · 이벤트 전달 · 정제 지연 또는 Run 미실행</p>
+  {% elif qa_run %}
+  <div class="mp-qa-run-grid" data-qa-run-state="ready">
+    <div><span>정제 이벤트</span><b>{{ "{:,}".format(qa_run.matched) }}건</b></div>
+    <div><span>시험 계정</span><b>{{ qa_run.user_count }}개</b></div>
+    <div><span>예매 시작</span><b>{{ qa_run.starts }}건</b></div>
+    <div><span>예매 완료</span><b>{{ qa_run.completed }}건</b></div>
+    <div><span>전환율</span><b>{{ qa_run.conversion ~ "%" if qa_run.conversion is not none else "—" }}</b></div>
+    <div class="{{ 'is-alert' if qa_run.rejected_users or qa_run.failed_users }}"><span>거부 · 실패 계정</span><b>{{ qa_run.rejected_users }} · {{ qa_run.failed_users }}</b></div>
+  </div>
+  {% if qa_run.is_truncated %}<p class="mp-qa-run-state">최근 {{ "{:,}".format(qa_run.limit) }}건 기준 집계</p>{% endif %}
+  <div class="mp-qa-run-tables">
+    <table><caption>거부 · 실패 사유</caption><thead><tr><th>사유</th><th>이벤트</th><th>예매 시도</th></tr></thead><tbody>
+      {% for reason, count, attempts in qa_run.failures %}<tr><th class="mono">{{ reason }}</th><td>{{ count }}</td><td>{{ attempts }}</td></tr>
+      {% else %}<tr><td colspan="3">거부 · 실패 이벤트 없음</td></tr>{% endfor %}
+    </tbody></table>
+    <table><caption>단계 도달 · 예매 시도</caption><thead><tr><th>단계</th><th>시도</th></tr></thead><tbody>
+      {% for label, count in qa_run.stages %}<tr><th>{{ label }}</th><td>{{ count }}</td></tr>{% endfor %}
+    </tbody></table>
+    <table><caption>단계 소요 · 초</caption><thead><tr><th>구간</th><th>중앙값</th><th>p95</th></tr></thead><tbody>
+      {% for row in qa_run.durations %}<tr><th>{{ row.label }}</th><td>{{ row.median if row.median is not none else "—" }}</td><td>{{ row.p95 | round(2) if row.p95 is not none else "—" }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  {% endif %}
+</section>

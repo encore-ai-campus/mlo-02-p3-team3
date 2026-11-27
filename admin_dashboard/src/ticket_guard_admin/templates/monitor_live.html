@@ -17,7 +17,7 @@
 <a class="mp-skip" href="#preview-content">본문 바로가기</a>
 {% include 'header.html' %}{% include 'monitor_navigation.html' %}
 <main id="preview-content" class="mp-main" tabindex="-1">
-{% if qa_run_id %}<div class="mp-qa-run" data-qa-run="{{ qa_run_id }}"><span class="mp-pill">QA Run 연결</span><span class="mono">{{ qa_run_id }}</span><span>Run 단위 구분 전 · 시스템 전체 공개 지표</span><span>사전 관측 기본 범위 · 시뮬레이션 트래픽</span></div>{% endif %}
+{% if qa_run_id %}{% include 'monitor_qa_run.html' %}{% endif %}
 <div id="monitor-metrics">
 {% if not flow.unpublished %}<div class="mp-live-meta"><span class="mp-pill mp-confirmed">검증 공개 결과</span><span>기준 {{ flow.as_of_label }}</span><details><summary>집계 범위·게시 정보</summary><p>집계 범위 {{ flow.window_label }}</p><p>공개 {{ flow.published_label }}</p><p>접속 집계 단위: {{ flow.counting_label }} · 시계열은 현재 시각 기준 최근 10초</p></details></div>{% endif %}
   {% include 'monitor_user_flow.html' %}

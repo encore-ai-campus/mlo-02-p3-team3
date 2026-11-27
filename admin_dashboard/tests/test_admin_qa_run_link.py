@@ -19,6 +19,7 @@ def web(admin_settings, monkeypatch):
     client.flow.flow_read_current.insert_one(deepcopy(current))
     client.flow.flow_read_series.insert_one(deepcopy(series))
     monkeypatch.setattr('ticket_guard_admin.user_flow.reader.MongoClient', lambda *a, **kw: client)
+    monkeypatch.setattr('ticket_guard_admin.qa_run.reader.MongoClient', lambda *a, **kw: client)
     admin_settings.mongo_uri = 'mongodb://unused/flow'
     return TestClient(create_admin_dashboard_app(admin_settings), headers={'X-Admin-User': 'manager'})
 
