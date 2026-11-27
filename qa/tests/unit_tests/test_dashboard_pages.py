@@ -299,3 +299,21 @@ def test_suite_failure_without_failed_criterion_links_db_dashboard(dashboard_cli
     page = dashboard_client.get(f"/runs/{run_id}").text
     assert "Suite 실패 1" in page and f'href="/qa/db?run_id={run_id}"' in page
     assert "실패한 합격 기준 없음" not in page
+
+
+def test_passed_run_also_links_db_dashboard_with_run_window(dashboard_client):
+    """PASS여도 DB 기록 확인 · 탈락 · 차단 확인용 · 종료 시각 run_to 전달"""
+    from dataclasses import replace
+
+    from ticket_guard_qa.domain.enums import RunStatus, SuiteOutcome
+    from ticket_guard_qa.domain.models import SuiteResult
+
+    run_repository = dashboard_client.app.state.run_service.run_repository
+    run_id = "run-20261127-071054-af07"
+    run_repository.create_run(run_id, RunConfig(TargetKind.FAKE, ("booking_flow",)), datetime(2026, 11, 27, 7, 10, 54, tzinfo=timezone.utc))
+    summary = run_repository.get_summary(run_id)
+    run_repository.save_summary(replace(summary, status=RunStatus.PASSED, finished_at=datetime(2026, 11, 27, 7, 12, 30, tzinfo=timezone.utc),
+                                        suite_results=[SuiteResult("booking_flow", SuiteOutcome.PASSED, message="예매 완료 8")]))
+    page = dashboard_client.get(f"/runs/{run_id}").text
+    assert "실패한 합격 기준 없음" in page and "DB 기록 확인" in page
+    assert f'href="/qa/db?run_id={run_id}&amp;run_to=2026-11-27T07%3A12%3A30%2B00%3A00"' in page
