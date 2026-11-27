@@ -4,7 +4,7 @@
   {% if early.previous_as_of %}<p>마지막 공개 기준 {{ early.previous_as_of }} KST · 이전 수치 공개 보류</p>{% endif %}
   <div class="sd-controls"><span>{{ early.period }} · 기준 {{ early.as_of }}</span>
   {% if not is_preview %}<form method="get" action="{{ base_path }}/#anomaly">
-    <input type="hidden" name="scope" value="{{ scope }}">{% if qa_run_id %}<input type="hidden" name="run_id" value="{{ qa_run_id }}">{% endif %}<label>탐지 범위 <select name="early_scope">{% for option in early.scopes %}<option value="{{ option.value }}" {% if option.value==early.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></label><button type="submit" class="mp-text-button">조회</button>
+    <input type="hidden" name="scope" value="{{ scope }}">{% if qa_run_id %}<input type="hidden" name="run_id" value="{{ qa_run_id }}">{% if qa_run and qa_run.has_finish %}<input type="hidden" name="run_to" value="{{ qa_run_to }}">{% endif %}{% endif %}<label>탐지 범위 <select name="early_scope">{% for option in early.scopes %}<option value="{{ option.value }}" {% if option.value==early.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></label><button type="submit" class="mp-text-button">조회</button>
   </form>{% endif %}</div>
   <div class="sd-flow" role="list" aria-label="표시 대상 단계의 진행 순서와 하위 탐지 항목">
     {% for stage in detection_stages %}

@@ -3,6 +3,21 @@
 기준 시각·조회 범위·오류·미연결 상태를 시안과 구분해 표시한다.
 */
 .mp-qa-run { display:flex; flex-wrap:wrap; gap:13px; align-items:center; margin-bottom:14px; padding:13px 16px; border:1px solid #dce8f6; border-radius:10px; background:#f0f6ff; color:#5f7392; font-size:12px; }
+.mp-qa-run-card { margin-bottom:18px; }
+.mp-qa-run-card .mono { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; color:#1f3a66; font-weight:700; }
+.mp-qa-run-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-top:12px; }
+.mp-qa-run-grid div { border:1px solid #dce8f6; border-radius:10px; background:#f7faff; padding:10px 12px; display:flex; flex-direction:column; gap:4px; }
+.mp-qa-run-grid span { font-size:12px; color:#5f7392; }
+.mp-qa-run-grid b { font-size:18px; color:#1f3a66; }
+.mp-qa-run-grid .is-alert { border-color:#f6c2c4; background:#fff4f4; }
+.mp-qa-run-grid .is-alert b { color:#b42318; }
+.mp-qa-run-state { margin-top:12px; font-size:13px; color:#5f7392; }
+.mp-qa-run-state.is-error { color:#b42318; }
+.mp-qa-run-tables { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; margin-top:14px; }
+.mp-qa-run-tables table { width:100%; border-collapse:collapse; font-size:12.5px; }
+.mp-qa-run-tables caption { text-align:left; font-weight:700; padding-bottom:6px; color:#1f3a66; }
+.mp-qa-run-tables th, .mp-qa-run-tables td { padding:6px 8px; border-top:1px solid #e6edf7; text-align:left; }
+.mp-qa-run-tables td { text-align:right; font-variant-numeric:tabular-nums; }
 .mp-qa-run .mono { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; color:#1f3a66; font-weight:700; }
 .mp-live-meta { display:flex; flex-wrap:wrap; gap:13px; align-items:center; margin-bottom:22px; padding:13px 16px; border:1px solid #dce8f6; border-radius:10px; background:#f0f6ff; color:#5f7392; font-size:12px; }
 .mp-live-meta details { margin-left:auto; }.mp-live-meta summary { cursor:pointer; }.mp-live-meta details p { padding-top:8px; }

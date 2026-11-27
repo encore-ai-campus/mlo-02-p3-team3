@@ -18,13 +18,15 @@ from ticket_guard_admin.anomaly.presentation import display as anomaly_display
 from ticket_guard_admin.early_monitor.reader import read as read_early, ObservationReadError
 from ticket_guard_admin.early_monitor.presentation import display as display_early
 from ticket_guard_admin.early_monitor.stage_detections import build as build_stage_detections
+from ticket_guard_admin.qa_run.reader import QaRunReadError, read_qa_run
 
-# QA 04 · B1 · B4 'DB 원인 분석' 링크 · 조회 조건 아님 · 연결 표시만
+# QA 04 · B1 · B4 'DB 원인 분석' 링크 · run_id 시작 시각 + run_to 종료 시각 = Run 구간 조회
 QA_RUN_PARAM = 'run_id'
+QA_RUN_END_PARAM = 'run_to'
 QA_RUN_ID_PATTERN = re.compile(r'run-\d{8}-\d{6}-[0-9a-f]{4}')  # QA create_run_id 형식
 DEFAULT_EARLY_SCOPE = '[false,null,null]'
 QA_EARLY_SCOPE = '[true,null,null]'  # QA 테스트 계정 트래픽 = isSimulation True
-SUPPORTED_PARAMS = {'scope', 'anomaly_mode', 'early_scope', QA_RUN_PARAM}
+SUPPORTED_PARAMS = {'scope', 'anomaly_mode', 'early_scope', QA_RUN_PARAM, QA_RUN_END_PARAM}
 
 
 def read_qa_run_id(query_params) -> str | None:
@@ -44,7 +46,7 @@ def _render(request, mongo_uri, *, fragment, reads):
                    admin_user=getattr(request.state, 'admin_user', ''), is_preview=False,
                    flow=None, flow_error=None, scope='all', scope_choices=[{'value': 'all', 'label': '전체 공개 지표'}],
                    header_status='공개 지표 확인', header_error=False, header_tone='neutral',
-                   qa_run_id=read_qa_run_id(request.query_params))
+                   qa_run_id=read_qa_run_id(request.query_params), qa_run_to=request.query_params.get(QA_RUN_END_PARAM, ''))
     filter_error = None
     try:
         if set(request.query_params) - SUPPORTED_PARAMS or len(request.query_params.getlist('scope')) > 1:
@@ -60,6 +62,8 @@ def _render(request, mongo_uri, *, fragment, reads):
     early_read = (reads.submit(read_early, mongo_uri, early_scope)
                   if len(request.query_params.getlist('early_scope')) <= 1 else None)
     flow_read = reads.submit(PublishedFlowReader(mongo_uri).read, selected_scope) if filter_error is None else None
+    qa_run_read = (reads.submit(read_qa_run, mongo_uri, context['qa_run_id'], request.query_params.get(QA_RUN_END_PARAM))
+                   if context['qa_run_id'] and not fragment else None)  # 1초 갱신 조각 제외 · 끝난 Run 구간
     try:
         context['network'] = network_for_display(network_read.result())
     except (NetworkReadError, ValueError):
@@ -89,6 +93,11 @@ def _render(request, mongo_uri, *, fragment, reads):
         context['early'] = display_early(early_read.result(), selected=early_scope)
     except ObservationReadError as exc:
         context['early'] = display_early(error=str(exc), selected=early_scope, previous_as_of=exc.previous_as_of)
+    if qa_run_read is not None:
+        try:
+            context['qa_run'] = qa_run_read.result()
+        except QaRunReadError as exc:
+            context['qa_run_error'] = str(exc)
     context['detection_stages'] = build_stage_detections(context['early'],context['anomaly'],legacy_scope=context['scope'])
     context['dashboard_data'] = {'flow': context['flow'], 'anomaly': context['anomaly'], 'network': context['network']}
     response = templates.TemplateResponse(request, 'monitor_metrics.html' if fragment else 'monitor_live.html', context)
