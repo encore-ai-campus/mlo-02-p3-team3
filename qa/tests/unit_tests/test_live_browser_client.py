@@ -13,6 +13,7 @@ from ticket_guard_qa.domain.models import PlannedUser, VirtualUserSessionPlan
 from ticket_guard_qa.macro_bots.bot_profiles import DEFAULT_BEHAVIOR_BY_ACTOR_TYPE, BotProfileRegistry
 from ticket_guard_qa.macro_bots.browser_capture import CAPTURE_FOLDER_NAME, CAPTURE_INDEX_FILE_NAME, load_capture_frames
 from ticket_guard_qa.system_targets import live_browser_client as browser
+from ticket_guard_qa.system_targets import live_django_system
 from ticket_guard_qa.system_targets.live_browser_client import BrowserUnavailableError, LiveBrowserBookingClient
 from ticket_guard_qa.system_targets.live_booking_client import DEVICE_COOKIE_NAME
 from ticket_guard_qa.system_targets.live_django_system import LiveDjangoBookingApi, SystemAdminAccount, VirtualUserAccountPool
@@ -46,6 +47,7 @@ class FakeBrowserPage:
         self.is_queue_stuck = is_queue_stuck
         self.cookies: dict[str, str] = {}
         self.issued_device_cookie = ""
+        self.login_notice = ""  # "locked" · "rejected" · 로그인 화면 안내
 
     async def goto(self, url: str) -> None:
         self.url = url
@@ -96,6 +98,10 @@ class FakeBrowserPage:
             return self.is_selection_error_shown
         if expression == browser.IS_CAPTCHA_IMAGE_LOADED:
             return True
+        if expression == browser.IS_LOGIN_LOCKED:
+            return self.login_notice == "locked"
+        if expression == browser.IS_LOGIN_REJECTED:
+            return self.login_notice == "rejected"
         raise AssertionError(expression)
 
     async def screenshot(self) -> bytes:
@@ -328,7 +334,7 @@ class ScriptBrokenPage(FakeBrowserPage):
         return await super().click(selector)
 
     async def wait_for(self, selector: str, timeout_ms: float) -> bool:
-        return selector != browser.SHOW_LIST_READY
+        return selector != browser.LOGIN_RESULT_READY  # 로그인 결과 화면이 안 뜸
 
 
 def test_login_reports_page_script_failure_separately():
@@ -416,3 +422,34 @@ def test_sold_out_browser_account_is_not_reused():
     result = send_virtual_user_traffic(api, [build_plan(behavior=replace(BOT_C_BEHAVIOR, sold_out_retry_count=0))], 10)[0]
     assert result.booking_outcome is BookingOutcome.SOLD_OUT
     assert api.accounts_in_use == {1}  # 취소가 서버에 닿았는지 모름 · 다른 VU에 주지 않음
+
+
+class LoginNoticePage(FakeBrowserPage):
+    """로그인 5회 오류 잠금 · 비밀번호 불일치 안내가 바로 뜨는 화면"""
+    notice = "locked"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.login_notice = self.notice
+
+
+class LoginRejectedPage(LoginNoticePage):
+    notice = "rejected"
+
+
+def test_locked_login_drops_the_bot_at_once_and_blocks_the_account():
+    api, _ = build_live_api(LoginNoticePage)
+    result = send_virtual_user_traffic(api, [build_plan()], 10)[0]
+    assert result.booking_outcome is BookingOutcome.BLOCKED and not result.is_error  # 오류가 아닌 차단
+    assert result.failed_step == "browser login · LOGIN_LOCKED"
+    assert api.account_ledger.count_usable(set(), 2) == api.test_accounts.count - 1  # 그 계정 5분 제외
+
+
+def test_login_failures_in_a_row_stop_later_sessions_without_touching_the_system():
+    api, browsers = build_live_api(LoginRejectedPage, account_count=6)
+    results = send_virtual_user_traffic(api, [build_plan() for _ in range(6)], 10, wave_size=1)  # 한 명씩 · 앞 결과가 뒤에 영향
+    assert [result.failed_step for result in results[:3]] == ["browser login · LOGIN_FAILED"] * 3
+    assert all(result.failed_step == live_django_system.LOGIN_ABORTED_FAILED_STEP for result in results[3:])
+    assert len({result.session_key for result in results}) == 6  # 정답표 키 겹침 없음
+    assert sum(len(browser_instance.pages) for browser_instance in browsers) == 3  # 4번째부터 화면을 열지 않음
+    assert api.is_login_aborted()
