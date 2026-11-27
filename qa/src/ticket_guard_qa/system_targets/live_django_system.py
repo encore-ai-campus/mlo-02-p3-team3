@@ -50,6 +50,9 @@ ADMISSION_POLL_INTERVAL_SEC = 0.5  # T1 입장 시각 정밀도
 RATE_LIMITED_STATUS_CODE = 429  # T2 · 반복 재입장 제한
 CONNECTION_ERROR_STATUS_CODE = 0
 REENTRY_RESTRICTED_ERROR_CODE = "TEMPORARILY_RESTRICTED"
+LOGIN_FAILED_ERROR_CODE = "LOGIN_FAILED"  # 아이디 · 비밀번호 불일치
+LOGIN_FAILURE_STREAK_LIMIT = 3  # 로그인 성공 없이 연속 불일치 → 이후 VU는 시스템에 로그인 시도 안 함 · 실패 누적 · 계정 잠금 방지
+LOGIN_ABORTED_FAILED_STEP = "login · 시험 계정 로그인 반복 불일치 · 비밀번호(QA_TEST_ACCOUNT_PASSWORD) 확인 필요"
 DOCKER_API_BASE_URL = "http://docker"  # 소켓 연결 · 호스트 이름 무시
 DOCKER_ACTION_TIMEOUT_SEC = 30.0
 DOCKER_ACTION_OK_STATUS_CODES = (204, 304)  # 304 = 이미 그 상태
@@ -141,6 +144,8 @@ class LiveDjangoBookingApi:
                                       trusted_origin=build_trusted_origin(self.base_url))  # 시험에서 가짜 브라우저로 교체
         # 시스템 구매 기록 · 차단은 QA 초기화로 안 지워짐 → Run 사이 공용 기록(target_factory) · 없으면 이 대상 전용
         self.account_ledger = account_ledger or TestAccountLedger(self.test_accounts.count)
+        self.login_aborted_session_count = 0
+        self.login_failure_streak = 0  # 로그인 성공 없이 이어진 불일치 횟수
         self.accounts_in_use: set[int] = set()  # 진행 중 예매 정리 전 · 다른 VU에 주지 않음(DUPLICATE_PAGE)
 
     def check_health(self) -> bool:
@@ -174,6 +179,21 @@ class LiveDjangoBookingApi:
 
     def return_account(self, account_number: int) -> None:
         self.accounts_in_use.discard(account_number)
+
+    def is_login_aborted(self) -> bool:
+        return self.login_failure_streak >= LOGIN_FAILURE_STREAK_LIMIT
+
+    def track_login_result(self, error: BookingFlowError | None) -> None:
+        """로그인을 지난 세션 = 연속 기록 초기화 · 불일치 = 누적"""
+        if error is None or error.step != "login":
+            self.login_failure_streak = 0
+        elif error.error_code == LOGIN_FAILED_ERROR_CODE:
+            self.login_failure_streak += 1
+
+    def build_login_aborted_result(self, session_plan: VirtualUserSessionPlan) -> VirtualUserSessionResult:
+        self.login_aborted_session_count += 1
+        return VirtualUserSessionResult(SessionKey(f"failed-login-aborted-{self.login_aborted_session_count:04d}"), 0.0, is_error=True,
+                                        failed_step=LOGIN_ABORTED_FAILED_STEP, device_key=session_plan.device_key)
 
     def record_policy_block(self, account_number: int, error_code: str | None) -> bool:
         """즉시 차단 응답 = 계정 5분 제외 · True = 차단"""
@@ -273,6 +293,8 @@ class LiveDjangoBookingApi:
     ) -> VirtualUserSessionResult:
         """브라우저 트래픽 유형 · 실제 화면으로 예매 · 실행 환경 없으면 세션 오류(browser)로 기록
         계정 반환 = 예매 완료 또는 예매 시도 전 · 매진 · 오류는 취소 미확인 → 반환 안 함(DUPLICATE_PAGE 방지 · 60초 뒤 시스템 만료)"""
+        if self.is_login_aborted():
+            return self.build_login_aborted_result(session_plan)
         account_number = self.acquire_account_number()
         username = build_test_account_username(account_number)
         attempt_id = ""
@@ -291,6 +313,7 @@ class LiveDjangoBookingApi:
                         username, self.test_accounts.password, self.test_accounts.captcha_answer, session_plan, open_at_monotonic
                     )
                     is_booked = flow_result.booking_outcome is BookingOutcome.BOOKED
+                    self.track_login_result(None)
                 finally:
                     current_step = client.current_step  # 오류 기록 · 멈춘 단계
                     attempt_id = client.booking_attempt_id
@@ -298,6 +321,7 @@ class LiveDjangoBookingApi:
             return VirtualUserSessionResult(SessionKey(f"failed-{username}"), 0.0, is_error=True,
                                             failed_step=f"browser · 실행 환경 없음 · {error}", device_key=session_plan.device_key)
         except BookingFlowError as error:
+            self.track_login_result(error)
             is_blocked = self.record_policy_block(account_number, error.error_code)
             return VirtualUserSessionResult(SessionKey(attempt_id or f"failed-{username}"), 0.0, is_error=not is_blocked,
                                             failed_step=f"browser {error.step} · {error.error_code or error.status_code}",
@@ -325,6 +349,8 @@ class LiveDjangoBookingApi:
         """시험 계정 하나로 예매 확정까지 → 확정 못 했으면 예매 취소로 계정 반환 · 브라우저 유형은 화면으로"""
         if session_plan.uses_browser:
             return await self.run_browser_session(session_plan, open_at_monotonic)
+        if self.is_login_aborted():
+            return self.build_login_aborted_result(session_plan)
         account_number = self.acquire_account_number()
         username = build_test_account_username(account_number)
         client = LiveBookingClient(self.base_url, self.transport, request_headers=choose_request_headers(session_plan))
@@ -334,6 +360,7 @@ class LiveDjangoBookingApi:
                 username, self.test_accounts.password, self.test_accounts.captcha_answer, session_plan, open_at_monotonic
             )
         except BookingFlowError as error:
+            self.track_login_result(error)
             is_blocked = self.record_policy_block(account_number, error.error_code)
             return VirtualUserSessionResult(SessionKey(client.booking_attempt_id or f"failed-{username}"), 0.0, is_error=not is_blocked,
                                             failed_step=f"{error.step} · {error.error_code or error.status_code}",
@@ -345,6 +372,7 @@ class LiveDjangoBookingApi:
                                             sent_event_ids=tuple(client.sent_event_ids), device_key=session_plan.device_key)
         finally:
             await self.release_client(client, account_number)
+        self.track_login_result(None)
         if flow_result.booking_outcome is BookingOutcome.BOOKED:
             self.account_ledger.record_purchase(account_number, len(flow_result.booked_seat_ids))
         return VirtualUserSessionResult(
