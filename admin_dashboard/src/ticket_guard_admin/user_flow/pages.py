@@ -2,6 +2,7 @@
 [홍석환] 실제 사용자 흐름 공개 지표 페이지
 조회·표시 변환을 연결하고 공개 결과 없음과 오류를 샘플 없이 렌더링한다.
 """
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.responses import HTMLResponse
@@ -18,6 +19,18 @@ from ticket_guard_admin.early_monitor.reader import read as read_early, Observat
 from ticket_guard_admin.early_monitor.presentation import display as display_early
 from ticket_guard_admin.early_monitor.stage_detections import build as build_stage_detections
 
+# QA 04 · B1 · B4 'DB 원인 분석' 링크 · 조회 조건 아님 · 연결 표시만
+QA_RUN_PARAM = 'run_id'
+QA_RUN_ID_PATTERN = re.compile(r'run-\d{8}-\d{6}-[0-9a-f]{4}')  # QA create_run_id 형식
+DEFAULT_EARLY_SCOPE = '[false,null,null]'
+QA_EARLY_SCOPE = '[true,null,null]'  # QA 테스트 계정 트래픽 = isSimulation True
+SUPPORTED_PARAMS = {'scope', 'anomaly_mode', 'early_scope', QA_RUN_PARAM}
+
+
+def read_qa_run_id(query_params) -> str | None:
+    values = query_params.getlist(QA_RUN_PARAM)
+    return values[0] if len(values) == 1 and QA_RUN_ID_PATTERN.fullmatch(values[0]) else None
+
 
 def render_published_dashboard(request, mongo_uri, *, fragment=False) -> HTMLResponse:
     # Each reader has its own bounded MongoClient. Independent sections must not
@@ -30,10 +43,11 @@ def _render(request, mongo_uri, *, fragment, reads):
     context = dict(base_path=request.app.state.base_path,
                    admin_user=getattr(request.state, 'admin_user', ''), is_preview=False,
                    flow=None, flow_error=None, scope='all', scope_choices=[{'value': 'all', 'label': '전체 공개 지표'}],
-                   header_status='공개 지표 확인', header_error=False, header_tone='neutral')
+                   header_status='공개 지표 확인', header_error=False, header_tone='neutral',
+                   qa_run_id=read_qa_run_id(request.query_params))
     filter_error = None
     try:
-        if set(request.query_params) - {'scope', 'anomaly_mode', 'early_scope'} or len(request.query_params.getlist('scope')) > 1:
+        if set(request.query_params) - SUPPORTED_PARAMS or len(request.query_params.getlist('scope')) > 1:
             raise FlowError('unsupported_filter', '지원하지 않는 조회 조건 · 기존 기간·공연 단독 필터 대신 공개된 범위 조합을 선택해 주세요.')
         context['scope'] = scope_key(request.query_params.get('scope', 'all'))
     except FlowError as exc:
@@ -41,7 +55,8 @@ def _render(request, mongo_uri, *, fragment, reads):
     selected_scope = context['scope']
     network_read = reads.submit(read_network, mongo_uri)
     anomaly_read = reads.submit(read_anomaly, mongo_uri, selected_scope)
-    early_scope = request.query_params.get('early_scope', selected_scope if selected_scope != 'all' else '[false,null,null]')
+    default_early_scope = QA_EARLY_SCOPE if context['qa_run_id'] else DEFAULT_EARLY_SCOPE
+    early_scope = request.query_params.get('early_scope', selected_scope if selected_scope != 'all' else default_early_scope)
     early_read = (reads.submit(read_early, mongo_uri, early_scope)
                   if len(request.query_params.getlist('early_scope')) <= 1 else None)
     flow_read = reads.submit(PublishedFlowReader(mongo_uri).read, selected_scope) if filter_error is None else None

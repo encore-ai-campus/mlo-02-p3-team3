@@ -2,6 +2,8 @@
 [홍석환] 실제 공개 지표의 조회 조건과 상태 스타일
 기준 시각·조회 범위·오류·미연결 상태를 시안과 구분해 표시한다.
 */
+.mp-qa-run { display:flex; flex-wrap:wrap; gap:13px; align-items:center; margin-bottom:14px; padding:13px 16px; border:1px solid #dce8f6; border-radius:10px; background:#f0f6ff; color:#5f7392; font-size:12px; }
+.mp-qa-run .mono { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; color:#1f3a66; font-weight:700; }
 .mp-live-meta { display:flex; flex-wrap:wrap; gap:13px; align-items:center; margin-bottom:22px; padding:13px 16px; border:1px solid #dce8f6; border-radius:10px; background:#f0f6ff; color:#5f7392; font-size:12px; }
 .mp-live-meta details { margin-left:auto; }.mp-live-meta summary { cursor:pointer; }.mp-live-meta details p { padding-top:8px; }
 .mp-empty-state { min-height:280px; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
