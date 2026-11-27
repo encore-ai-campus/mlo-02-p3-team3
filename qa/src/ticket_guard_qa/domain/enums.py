@@ -92,6 +92,7 @@ class BookingOutcome(StrEnum):
     BOOKED = "BOOKED"
     SOLD_OUT = "SOLD_OUT"  # 남은 좌석 없음 · 오픈 경쟁의 정상 결과
     BLOCKED = "BLOCKED"  # 시스템 즉시 차단 정책 응답(일시 제한 · 구매 한도) · 서버 오류 아님
+    DROPPED = "DROPPED"  # QA 브라우저 봇 탈락 · 예매 시작 전 응답 없음 · QA 실행 자원 문제 · 서버 오류 판정 제외
 
 
 class TargetKind(StrEnum):

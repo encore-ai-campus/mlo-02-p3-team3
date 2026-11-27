@@ -260,7 +260,9 @@ class LiveBrowserBookingClient:
         if not await self.page.wait_for(LOGIN_RESULT_READY, PAGE_TIMEOUT_MS):
             if f"{LOGIN_USERNAME.removeprefix('#')}=" in self.page.url:  # 화면 스크립트 미동작 → 폼이 주소로 제출됨
                 raise BookingFlowError("login", 0, "BROWSER_SCRIPT_NOT_RUNNING")
-            raise BookingFlowError("login", 0, "BROWSER_LOGIN_FAILED")
+            # 15초 무응답 구분 · 로그인 화면 그대로 = 서버 응답 없음 · 이동 후 = 공연 목록 미표시
+            is_on_login_page = urlparse(self.page.url).path.rstrip("/").endswith("/login")
+            raise BookingFlowError("login", 0, "BROWSER_LOGIN_NO_RESPONSE" if is_on_login_page else "BROWSER_SHOW_LIST_NOT_LOADED")
         # 잠금 · 오류 안내가 뜨면 15초 기다리지 않고 바로 탈락 · 코드는 HTTP 봇과 같음
         if await self.page.evaluate(IS_LOGIN_LOCKED):
             raise BookingFlowError("login", 429, "LOGIN_LOCKED")

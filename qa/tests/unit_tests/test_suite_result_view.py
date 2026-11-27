@@ -84,3 +84,21 @@ def test_missing_verdict_reason_tells_skip_apart_from_not_run():
     assert describe_missing_verdict(build_summary()) == "판정 정확도 Suite 미실행"
     skipped = SuiteResult("verdict_accuracy", SuiteOutcome.SKIPPED, message="판정 저장 위치 미정")
     assert describe_missing_verdict(build_summary(skipped)) == "판정 정확도 건너뜀 · 판정 저장 위치 미정"
+
+
+def test_booking_flow_shows_dropped_bots_without_failing():
+    """브라우저 봇 탈락 = 회색 타일 · 오류 분모 = 전체 VU"""
+    result = SuiteResult(
+        "booking_flow", SuiteOutcome.PASSED,
+        metrics={"booking_flow_success_count": 8.0, "booking_flow_failure_count": 0.0, "booking_flow_blocked_count": 0.0,
+                 "booking_flow_dropped_count": 2.0, "booking_flow_booked_count": 8.0, "booking_flow_sold_out_count": 0.0},
+        message="예매 완료 8 · 매진 0 · 탈락 2 · 오류 0 / VU 10\n"
+                "참고: 브라우저 봇 탈락 2명 · browser login · BROWSER_LOGIN_NO_RESPONSE 2건 · QA 실행 자원 · 서버 오류 아님",
+    )
+    view = build_suite_result_view(result)
+    tiles = {tile.label: tile for tile in view.tiles}
+    assert [tile.label for tile in view.tiles][:4] == ["예매 완료", "매진", "탈락", "오류"]
+    assert tiles["탈락"].value == "2" and not tiles["탈락"].is_alert
+    assert tiles["오류"].value == "0/10" and not tiles["오류"].is_alert
+    assert not view.headline  # PASS · 결론 줄 없음
+    assert any("브라우저 봇 탈락 2명" in text for _, text in view.detail_lines)

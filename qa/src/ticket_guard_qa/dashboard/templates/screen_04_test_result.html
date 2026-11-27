@@ -199,6 +199,17 @@
       <a class="button is-db is-wide" style="font-size:17px" href="{{ base_path }}/db?run_id={{ summary.run_id }}"><i data-lucide="database"></i>DB 원인 분석<i data-lucide="chevron-right"></i></a>
       <a class="button is-outline is-wide" style="font-size:17px;margin-top:12px" href="{{ base_path }}/runs/new?from_run_id={{ summary.run_id }}"><i data-lucide="sliders-horizontal"></i>Run 재구성</a>
     </section>
+    {% elif summary.failed_suite_count %}
+    {% set failed_suite_titles = [] %}{% for result in summary.suite_results if result.outcome.value in ('FAILED', 'ERROR') %}{% set _ = failed_suite_titles.append(suite_title_by_name.get(result.suite_name, result.suite_name)) %}{% endfor %}
+    <section class="card side-card failure-card">
+      <div class="failure-head">
+        <span class="failure-icon"><i data-lucide="circle-alert"></i></span>
+        <div><h2 class="section-heading" style="font-size:24px">Suite 실패 {{ summary.failed_suite_count }}</h2>
+          <div class="sub-text" style="font-size:16px">{{ failed_suite_titles | join(' · ') }} · 합격 기준 실패 없음</div></div>
+      </div>
+      <a class="button is-db is-wide" style="font-size:17px" href="{{ base_path }}/db?run_id={{ summary.run_id }}"><i data-lucide="database"></i>DB 원인 분석<i data-lucide="chevron-right"></i></a>
+      <a class="button is-outline is-wide" style="font-size:17px;margin-top:12px" href="{{ base_path }}/runs/new?from_run_id={{ summary.run_id }}"><i data-lucide="sliders-horizontal"></i>Run 재구성</a>
+    </section>
     {% else %}
     <section class="card side-card pass-card">
       <h2 class="section-heading" style="font-size:24px"><i data-lucide="circle-check" style="color:var(--pass-green)"></i>실패한 합격 기준 없음</h2>

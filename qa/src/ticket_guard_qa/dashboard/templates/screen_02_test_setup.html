@@ -47,6 +47,7 @@
   .estimate-list b { color: var(--text-color); font-variant-numeric: tabular-nums; }
   .estimate-source { font-size: 11.5px; font-weight: 700; border-radius: 6px; padding: 1px 6px; background: var(--gray-chip-background); color: var(--muted-text-color); }
   .estimate-source.is-recent { background: var(--pass-green-light); color: var(--pass-green); }
+  .suite-toggle { margin-top: 8px; white-space: nowrap; }
   .busy-card { margin-bottom: 18px; padding: 20px 22px; border-style: dashed; }
   .busy-timer { display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--db-orange-light); color: var(--db-orange-text); border: 1px solid #F8C9A6; border-radius: 12px; padding: 12px; font-weight: 800; margin: 12px 0; }
   .busy-timer b { font-size: 24px; letter-spacing: .02em; }
@@ -69,7 +70,8 @@
     </div>
 
     <div class="setup-row">
-      <div><div class="row-title">Suite</div><div class="row-hint">복수 선택 가능</div></div>
+      <div><div class="row-title">Suite</div><div class="row-hint">복수 선택 가능</div>
+        <button type="button" class="button is-soft is-small suite-toggle" id="suite-toggle"><i data-lucide="list-checks"></i><span>전체 선택</span></button></div>
       <div class="chips suite-chips">
         {% for suite in suites %}
         <label class="chip is-multi suite-chip" data-label="{{ suite.title }}"><input type="checkbox" name="suite_names" value="{{ suite.suite_name }}" aria-describedby="suite-guide-{{ suite.suite_name }}" {{ 'checked' if suite.suite_name in run_config.suite_names }}>{{ suite.title }}
@@ -344,11 +346,28 @@
     return { title, isValid: true };
   }
 
+  const suiteInputs = [...setupForm.querySelectorAll("input[name=suite_names]")];
+  const suiteToggle = document.getElementById("suite-toggle");
+
+  function refreshSuiteToggle() {
+    // 전부 선택 = 전체 해제 · 그 외 = 전체 선택 · 반환 = 선택 1개 이상
+    const isAllChecked = suiteInputs.every((input) => input.checked);
+    suiteToggle.querySelector("span").textContent = isAllChecked ? "전체 해제" : "전체 선택";
+    return suiteInputs.some((input) => input.checked);
+  }
+
+  suiteToggle.addEventListener("click", () => {
+    const willCheck = !suiteInputs.every((input) => input.checked);
+    suiteInputs.forEach((input) => { input.checked = willCheck; });
+    refreshSummary();
+  });
+
   function refreshSummary() {
     const targetKind = setupForm.elements.target_kind.value;
     const isMock = targetKind === "fake";
     const wavePlan = refreshWavePreview();
-    startButton.disabled = isRunLocked || !wavePlan.isValid;
+    const hasSuite = refreshSuiteToggle();
+    startButton.disabled = isRunLocked || !wavePlan.isValid || !hasSuite;
     showTargetRows(targetKind);
     document.getElementById("summary-target").textContent = isMock ? "Mock" : "Live";
     document.getElementById("summary-suites").textContent = readCheckedLabels("suite_names").join(" · ") || "미선택";

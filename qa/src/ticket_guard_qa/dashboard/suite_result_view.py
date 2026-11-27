@@ -22,6 +22,9 @@ FAILED_STEP_TITLES = {  # 세션 오류 코드 → 화면 문구 · 원문은 �
     "browser · Error": "브라우저 오류",
     "browser · TimeoutError": "브라우저 응답 시간 초과",
     "browser login · BROWSER_LOGIN_FAILED": "브라우저 로그인 실패",
+    "browser login · BROWSER_LOGIN_NO_RESPONSE": "로그인 응답 없음 · 15초",
+    "browser login · BROWSER_SHOW_LIST_NOT_LOADED": "로그인 후 공연 목록 미표시",
+    "browser login · LOGIN_FAILED": "시험 계정 로그인 불일치",
     "browser login · BROWSER_SCRIPT_NOT_RUNNING": "화면 스크립트 미동작",
     "browser heartbeat · QUEUE_TIMEOUT": "브라우저 대기열 시간 초과",
     "browser verify · BROWSER_CAPTCHA_FAILED": "브라우저 보안문자 실패",
@@ -137,7 +140,9 @@ def build_booking_flow_view(result: SuiteResult) -> SuiteResultView:
     metrics = result.metrics
     success_count = int(metrics.get("booking_flow_success_count", 0))
     failure_count = int(metrics.get("booking_flow_failure_count", 0))
-    planned_count = success_count + failure_count
+    blocked_count = int(metrics.get("booking_flow_blocked_count", 0))
+    dropped_count = int(metrics.get("booking_flow_dropped_count", 0))
+    planned_count = success_count + failure_count + blocked_count + dropped_count  # 전체 VU · 차단 · 탈락 포함
     view = SuiteResultView(raw_message=result.message)
     lines = [(kind, humanize_text(text)) for kind, text in split_message_lines(result.message)]
     fail_texts = [text.split(SEGMENT_SEPARATOR + "예매 완료")[0] for kind, text in lines if kind == "fail"]  # 이전 기록 = 한 줄
@@ -147,6 +152,8 @@ def build_booking_flow_view(result: SuiteResult) -> SuiteResultView:
     view.tiles = [
         SuiteTile("예매 완료", str(int(metrics.get("booking_flow_booked_count", 0)))),
         SuiteTile("매진", str(int(metrics.get("booking_flow_sold_out_count", 0)))),
+        *([SuiteTile("차단", str(blocked_count))] if blocked_count else []),
+        *([SuiteTile("탈락", str(dropped_count))] if dropped_count else []),  # QA 브라우저 봇 · 오류 아님 · 회색
         SuiteTile("오류", f"{failure_count}/{planned_count}", failure_count > 0),
     ]
     if "booking_flow_p95_latency_ms" in metrics:

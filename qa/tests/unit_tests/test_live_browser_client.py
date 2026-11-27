@@ -453,3 +453,42 @@ def test_login_failures_in_a_row_stop_later_sessions_without_touching_the_system
     assert len({result.session_key for result in results}) == 6  # 정답표 키 겹침 없음
     assert sum(len(browser_instance.pages) for browser_instance in browsers) == 3  # 4번째부터 화면을 열지 않음
     assert api.is_login_aborted()
+
+
+class LoginNoResponsePage(FakeBrowserPage):
+    """로그인 클릭 후 15초 동안 화면 변화 없음 · 로그인 화면 그대로"""
+
+    async def click(self, selector: str):
+        if selector == browser.LOGIN_SUBMIT:
+            self.url = f"{BASE_URL}/login/"
+            return CLICK_POINT
+        return await super().click(selector)
+
+    async def wait_for(self, selector: str, timeout_ms: float) -> bool:
+        return selector != browser.LOGIN_RESULT_READY
+
+
+class LoginPageTimeoutPage(FakeBrowserPage):
+    """로그인 화면 열기부터 시간 초과 · 브라우저 · 서버 응답 없음"""
+
+    async def goto(self, url: str) -> None:
+        if url.endswith("/login/"):
+            raise Error("Page.goto: Timeout 15000ms exceeded.")
+        await super().goto(url)
+
+
+def test_unresponsive_login_drops_the_bot_instead_of_failing():
+    api, _ = build_live_api(LoginNoResponsePage)
+    result = send_virtual_user_traffic(api, [build_plan()], 10)[0]
+    assert result.booking_outcome is BookingOutcome.DROPPED and not result.is_error  # 오류가 아닌 탈락
+    assert result.failed_step == "browser login · BROWSER_LOGIN_NO_RESPONSE"
+    assert not api.accounts_in_use  # 계정 바로 반환
+
+
+def test_browser_timeout_before_booking_drops_but_later_timeout_stays_error():
+    api, _ = build_live_api(LoginPageTimeoutPage)
+    dropped = send_virtual_user_traffic(api, [build_plan()], 10)[0]
+    assert dropped.is_dropped and not dropped.is_error and dropped.failed_step.startswith("browser login · Error")
+    api, _ = build_live_api(SeatClickBrokenPage)
+    failed = send_virtual_user_traffic(api, [build_plan()], 10)[0]
+    assert failed.is_error and not failed.is_dropped  # 예매 시작 후 = 시스템 확인 필요 · 오류 유지
