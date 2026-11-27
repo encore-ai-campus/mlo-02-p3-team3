@@ -147,7 +147,7 @@ class VerdictAccuracySuite:
         }))
         # 판정 API 응답 = 세션 시작 응답 · 끝까지 진행한 세션만 · 즉시 차단은 오류율에서 제외 · 대상 0 = 측정 불가(값 없음)
         latency_values_sec = [result.api_response_latency_ms / 1000 for result in session_results if result.is_completed]
-        judged_results = [result for result in session_results if not result.is_blocked]
+        judged_results = [result for result in session_results if not result.is_excluded]
         error_count = sum(1 for result in judged_results if result.is_error)
         metrics = {
             **(calculate_detection_metrics(judged_key, system_verdicts) if collection.is_measurable else {}),

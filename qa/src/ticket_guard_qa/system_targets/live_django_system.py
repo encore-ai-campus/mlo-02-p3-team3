@@ -53,6 +53,9 @@ REENTRY_RESTRICTED_ERROR_CODE = "TEMPORARILY_RESTRICTED"
 LOGIN_FAILED_ERROR_CODE = "LOGIN_FAILED"  # 아이디 · 비밀번호 불일치
 LOGIN_FAILURE_STREAK_LIMIT = 3  # 로그인 성공 없이 연속 불일치 → 이후 VU는 시스템에 로그인 시도 안 함 · 실패 누적 · 계정 잠금 방지
 LOGIN_ABORTED_FAILED_STEP = "login · 시험 계정 로그인 반복 불일치 · 비밀번호(QA_TEST_ACCOUNT_PASSWORD) 확인 필요"
+# 브라우저 봇 탈락 · 예매 시작 전 응답 없음 = QA 실행 자원(메모리) 문제 · 기다리지 않고 바로 탈락 · 서버 오류 판정 제외
+BROWSER_DROP_ERROR_CODES = frozenset({"BROWSER_LOGIN_NO_RESPONSE", "BROWSER_SHOW_LIST_NOT_LOADED", "BROWSER_LOGIN_FAILED"})
+BROWSER_DROP_STEPS = frozenset({"window", "device", "login"})  # 브라우저 예외(시간 초과 등) · 이 단계까지만 탈락 · 예매 시작 후는 오류
 DOCKER_API_BASE_URL = "http://docker"  # 소켓 연결 · 호스트 이름 무시
 DOCKER_ACTION_TIMEOUT_SEC = 30.0
 DOCKER_ACTION_OK_STATUS_CODES = (204, 304)  # 304 = 이미 그 상태
@@ -195,6 +198,12 @@ class LiveDjangoBookingApi:
         return VirtualUserSessionResult(SessionKey(f"failed-login-aborted-{self.login_aborted_session_count:04d}"), 0.0, is_error=True,
                                         failed_step=LOGIN_ABORTED_FAILED_STEP, device_key=session_plan.device_key)
 
+    @staticmethod
+    def build_dropped_result(session_key: str, failed_step: str, session_plan: VirtualUserSessionPlan) -> VirtualUserSessionResult:
+        """브라우저 봇 탈락 · 오류 아님 · 예매 미진행 · 계정은 finally에서 반환"""
+        return VirtualUserSessionResult(SessionKey(session_key), 0.0, is_error=False, failed_step=failed_step,
+                                        booking_outcome=BookingOutcome.DROPPED, device_key=session_plan.device_key)
+
     def record_policy_block(self, account_number: int, error_code: str | None) -> bool:
         """즉시 차단 응답 = 계정 5분 제외 · True = 차단"""
         if error_code not in POLICY_BLOCK_ERROR_CODES:
@@ -322,15 +331,20 @@ class LiveDjangoBookingApi:
                                             failed_step=f"browser · 실행 환경 없음 · {error}", device_key=session_plan.device_key)
         except BookingFlowError as error:
             self.track_login_result(error)
+            failed_step = f"browser {error.step} · {error.error_code or error.status_code}"
+            if error.error_code in BROWSER_DROP_ERROR_CODES:
+                return self.build_dropped_result(attempt_id or f"failed-{username}", failed_step, session_plan)
             is_blocked = self.record_policy_block(account_number, error.error_code)
             return VirtualUserSessionResult(SessionKey(attempt_id or f"failed-{username}"), 0.0, is_error=not is_blocked,
-                                            failed_step=f"browser {error.step} · {error.error_code or error.status_code}",
+                                            failed_step=failed_step,
                                             booking_outcome=BookingOutcome.BLOCKED if is_blocked else None,
                                             device_key=session_plan.device_key)
         except Exception as error:  # noqa: BLE001 · 브라우저 오류 하나가 Run 전체를 멈추지 않게
+            failed_step = f"browser {current_step} · {type(error).__name__} · {summarize_browser_error(error)}"
+            if current_step in BROWSER_DROP_STEPS and not attempt_id:
+                return self.build_dropped_result(f"failed-{username}", failed_step, session_plan)
             return VirtualUserSessionResult(SessionKey(attempt_id or f"failed-{username}"), 0.0, is_error=True,
-                                            failed_step=f"browser {current_step} · {type(error).__name__} · {summarize_browser_error(error)}",
-                                            device_key=session_plan.device_key)
+                                            failed_step=failed_step, device_key=session_plan.device_key)
         finally:
             if is_booked:
                 self.account_ledger.record_purchase(account_number, len(flow_result.booked_seat_ids))

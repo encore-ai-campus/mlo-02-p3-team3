@@ -253,9 +253,18 @@ class VirtualUserSessionResult:
         return self.booking_outcome is BookingOutcome.BLOCKED
 
     @property
+    def is_dropped(self) -> bool:
+        return self.booking_outcome is BookingOutcome.DROPPED
+
+    @property
+    def is_excluded(self) -> bool:
+        """오류 아님 · 예매 흐름 미진행 · 즉시 차단 · QA 봇 탈락 · 응답 시간 · 판정 비교 제외"""
+        return self.is_blocked or self.is_dropped
+
+    @property
     def is_completed(self) -> bool:
-        """예매 흐름 끝까지 진행 · 응답 시간 · 판정 비교 대상 · 오류 · 즉시 차단 제외"""
-        return not self.is_error and not self.is_blocked
+        """예매 흐름 끝까지 진행 · 응답 시간 · 판정 비교 대상 · 오류 · 즉시 차단 · 탈락 제외"""
+        return not self.is_error and not self.is_excluded
 
     @property
     def api_response_latency_ms(self) -> float:

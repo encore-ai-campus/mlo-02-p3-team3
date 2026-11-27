@@ -219,6 +219,9 @@ def build_message(report: DeliveryReport, session_results: list[VirtualUserSessi
     blocked_count = sum(1 for result in session_results if result.is_blocked)
     if blocked_count:
         lines.append(f"{REFERENCE_LINE_PREFIX}시스템 즉시 차단 VU {blocked_count}명 · 서버 이벤트 대조 제외")
+    dropped_count = sum(1 for result in session_results if result.is_dropped)
+    if dropped_count:
+        lines.append(f"{REFERENCE_LINE_PREFIX}브라우저 봇 탈락 VU {dropped_count}명 · 예매 시작 전 응답 없음 · 서버 이벤트 대조 제외")
     failed_step_counts = Counter(result.failed_step or "unknown" for result in session_results if result.is_error)
     if failed_step_counts:
         lines.append(f"{REFERENCE_LINE_PREFIX}트래픽 오류 VU {sum(failed_step_counts.values())}명")

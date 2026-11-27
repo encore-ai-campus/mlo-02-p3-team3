@@ -137,3 +137,12 @@ def test_verdict_api_latency_uses_start_response_not_bot_wait_time():
     mock = VirtualUserSessionResult(SessionKey("attempt-2"), 12.0, is_error=False)
     assert live.api_response_latency_ms == 101.0
     assert mock.api_response_latency_ms == 12.0
+
+
+def test_dropped_browser_bots_are_reference_not_failure():
+    results = [session("a1", BookingOutcome.BOOKED),
+               session("failed-qa-user-0002", BookingOutcome.DROPPED, failed_step="browser login · BROWSER_LOGIN_NO_RESPONSE", latency_ms=0.0)]
+    message = build_booking_message(results, 2)
+    assert "탈락 1 · 오류 0 / VU 2" in message and "FAIL" not in message
+    assert "참고: 브라우저 봇 탈락 1명 · browser login · BROWSER_LOGIN_NO_RESPONSE 1건 · QA 실행 자원 · 서버 오류 아님" in message
+    assert not results[1].is_completed

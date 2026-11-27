@@ -206,10 +206,11 @@ def test_capture_image_route_rejects_other_files(dashboard_client):
     assert dashboard_client.get("/runs/run-1/captures/frame.txt").status_code == 404
 
 
-def test_run_setup_starts_with_every_suite_and_bots_at_seven_percent(dashboard_client):
+def test_run_setup_starts_with_no_suite_and_bots_at_seven_percent(dashboard_client):
     page = dashboard_client.get("/runs/new").text
     suite_inputs = re.findall(r'<input[^>]*name="suite_names"[^>]*>', page)
-    assert len(suite_inputs) == 12 and all("checked" in tag for tag in suite_inputs)  # 처음 화면 · Suite 전부 선택
+    assert len(suite_inputs) == 12 and not any("checked" in tag for tag in suite_inputs)  # 처음 화면 · Suite 전체 해제
+    assert 'id="suite-toggle"' in page and "전체 선택" in page
     assert 'name="percent_HUMAN" value="51"' in page and 'name="percent_BOT_CAPTCHA" value="7"' in page
     assert 'name="percent_BOT_NEW"' not in page  # 미학습 유형 = 평가 전용 · 트래픽 구성 칸 없음
     assert page.count('role="tooltip"') == 12
@@ -280,3 +281,21 @@ def test_monitor_shows_cancel_requested_state(dashboard_client):
     run_service._active_run_id = "run-20261127-020000-dddd"
     run_service.cancel("run-20261127-020000-dddd")
     assert "중지 요청됨" in dashboard_client.get("/runs/run-20261127-020000-dddd/live").text
+
+
+def test_suite_failure_without_failed_criterion_links_db_dashboard(dashboard_client):
+    """합격 기준 실패 0 · Suite 실패만 있어도 DB 원인 분석 버튼"""
+    from dataclasses import replace
+
+    from ticket_guard_qa.domain.enums import RunStatus, SuiteOutcome
+    from ticket_guard_qa.domain.models import SuiteResult
+
+    run_repository = dashboard_client.app.state.run_service.run_repository
+    run_id = "run-20261127-030000-eeee"
+    run_repository.create_run(run_id, RunConfig(TargetKind.FAKE, ("booking_flow",)), datetime.now(timezone.utc))
+    summary = run_repository.get_summary(run_id)
+    failed = SuiteResult("booking_flow", SuiteOutcome.FAILED, message="FAIL: browser login · BROWSER_LOGIN_FAILED 2건")
+    run_repository.save_summary(replace(summary, status=RunStatus.FAILED, suite_results=[failed]))
+    page = dashboard_client.get(f"/runs/{run_id}").text
+    assert "Suite 실패 1" in page and f'href="/qa/db?run_id={run_id}"' in page
+    assert "실패한 합격 기준 없음" not in page

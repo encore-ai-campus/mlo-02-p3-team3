@@ -53,13 +53,23 @@ def build_blocked_line(session_results: list[VirtualUserSessionResult]) -> str |
     return f"{REFERENCE_LINE_PREFIX}시스템 즉시 차단 {sum(blocked_counts.values())}건 · {listed} · 서버 오류 아님"
 
 
+def build_dropped_line(session_results: list[VirtualUserSessionResult]) -> str | None:
+    """브라우저 봇 탈락 = 예매 시작 전 응답 없음 · QA 실행 자원 문제 · 서버 오류 아님 · 참고 줄"""
+    dropped_counts = Counter(result.failed_step or "unknown" for result in session_results if result.is_dropped)
+    if not dropped_counts:
+        return None
+    listed = ", ".join(f"{step} {count}건" for step, count in dropped_counts.most_common())
+    return f"{REFERENCE_LINE_PREFIX}브라우저 봇 탈락 {sum(dropped_counts.values())}명 · {listed} · QA 실행 자원 · 서버 오류 아님"
+
+
 def build_message(session_results: list[VirtualUserSessionResult], planned_count: int) -> str:
     error_count = sum(1 for result in session_results if result.is_error)
     completed = [result for result in session_results if result.is_completed]
     outcome_counts = count_outcomes(session_results)
     blocked_text = f" · 차단 {outcome_counts[BookingOutcome.BLOCKED]}" if outcome_counts[BookingOutcome.BLOCKED] else ""
+    dropped_text = f" · 탈락 {outcome_counts[BookingOutcome.DROPPED]}" if outcome_counts[BookingOutcome.DROPPED] else ""
     parts = [
-        f"예매 완료 {outcome_counts[BookingOutcome.BOOKED]} · 매진 {outcome_counts[BookingOutcome.SOLD_OUT]}{blocked_text}"
+        f"예매 완료 {outcome_counts[BookingOutcome.BOOKED]} · 매진 {outcome_counts[BookingOutcome.SOLD_OUT]}{blocked_text}{dropped_text}"
         f" · 오류 {error_count} / VU {planned_count}"
     ]
     if completed:
@@ -72,8 +82,8 @@ def build_message(session_results: list[VirtualUserSessionResult], planned_count
     failure_counts = Counter(result.failed_step or "unknown" for result in session_results if result.is_error)
     if failure_counts:
         fail_lines.append("FAIL: " + ", ".join(f"{step} {count}건" for step, count in failure_counts.most_common()))
-    blocked_line = build_blocked_line(session_results)
-    return MESSAGE_LINE_SEPARATOR.join([*fail_lines, " · ".join(parts), *([blocked_line] if blocked_line else [])])
+    reference_lines = [line for line in (build_blocked_line(session_results), build_dropped_line(session_results)) if line]
+    return MESSAGE_LINE_SEPARATOR.join([*fail_lines, " · ".join(parts), *reference_lines])
 
 
 class BookingFlowSuite:
@@ -119,7 +129,7 @@ class BookingFlowSuite:
         succeeded_latencies = [result.latency_ms for result in session_results if result.is_completed]
         outcome_counts = count_outcomes(session_results)
         double_sold = find_double_sold_seat_ids(session_results)
-        is_passed = error_count == 0 and not double_sold  # 즉시 차단 = 오류 아님 · 참고 줄
+        is_passed = error_count == 0 and not double_sold  # 즉시 차단 · 브라우저 봇 탈락 = 오류 아님 · 참고 줄
         return SuiteResult(
             suite_name=self.suite_name,
             outcome=SuiteOutcome.PASSED if is_passed else SuiteOutcome.FAILED,
@@ -127,6 +137,7 @@ class BookingFlowSuite:
                 "booking_flow_success_count": float(len(succeeded_latencies)),
                 "booking_flow_failure_count": float(error_count),
                 "booking_flow_blocked_count": float(outcome_counts[BookingOutcome.BLOCKED]),
+                "booking_flow_dropped_count": float(outcome_counts[BookingOutcome.DROPPED]),
                 "booking_flow_booked_count": float(outcome_counts[BookingOutcome.BOOKED]),
                 "booking_flow_sold_out_count": float(outcome_counts[BookingOutcome.SOLD_OUT]),
                 "booking_flow_double_sold_seat_count": float(len(double_sold)),
