@@ -7,7 +7,7 @@
 <title>DB 대시보드 · 사용자 흐름 | 티켓가드</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 {% for filename in ('theme_tokens.css','dashboard.css','shell.css','monitor_common.css','monitor_flow.css','monitor_live.css') %}<link rel="stylesheet" href="{{ base_path }}/admin-static/{{ filename }}{% if filename == 'monitor_common.css' %}?v=queue-card{% endif %}">{% endfor %}
-{% for filename in ('monitor_charts.js','monitor_flow.js','monitor_navigation.js','monitor_refresh.js') %}<script src="{{ base_path }}/admin-static/{{ filename }}?v=refresh-1s-v1" defer></script>{% endfor %}
+{% for filename in ('monitor_charts.js','monitor_flow.js','monitor_navigation.js','monitor_refresh.js') %}<script src="{{ base_path }}/admin-static/{{ filename }}?v={{ "realtime-v3" if filename == "monitor_refresh.js" else "fixed-axis-10s-v2" }}" defer></script>{% endfor %}
 <link rel="stylesheet" href="{{ base_path }}/admin-static/monitor_network.css?v=server-metrics">
 <link rel="stylesheet" href="{{ base_path }}/admin-static/stage_detections.css?v=2">
 <script src="{{ base_path }}/admin-static/stage_detections.js?v=refresh-1s-v1" defer></script>
