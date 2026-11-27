@@ -12,7 +12,8 @@ services:
     build: ./pipeline
     command: [flow]
     init: true
-    restart: "no"
+    # 서버 재부팅·DB 일시 중단 후 자동 복구 · 같은 체크포인트에서 이어서 처리
+    restart: unless-stopped
     environment:
       PIPELINE_STATE_MONGO_URI: ${PIPELINE_STATE_MONGO_URI:?Set PIPELINE_STATE_MONGO_URI}
       SPARK_KAFKA_BOOTSTRAP_SERVERS: ${SPARK_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
