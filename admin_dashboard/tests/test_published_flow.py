@@ -29,28 +29,31 @@ def configured_reader(monkeypatch, docs=None):
 
 
 def test_reader_uses_public_views_and_preserves_all_five_metrics(monkeypatch):
-    reader, client = configured_reader(monkeypatch)
+    now = datetime(2026, 11, 12, 3, tzinfo=timezone.utc)
+    reader, client = configured_reader(monkeypatch, published_documents(now))
     result = reader.read()
-    display = for_display(result)
+    display = for_display(result, now=now)
     assert display['current'] == 3
     assert display['starts'] == 4 and display['completed'] == 2 and display['ratio'] == .5
     assert [node['id'] for node in display['nodes']] == ['queue','other']
     assert display['nodes'][0]['mean'] == 5.5 and display['nodes'][0]['median'] == 4.5
     assert display['nodes'][1]['samples'] == 0 and display['nodes'][1]['mean'] is None
-    assert display['presence'][0]['value'] == 0
-    assert display['presence'][1]['value'] is None and not display['presence'][1]['observed']
+    # 최근 10초 · 1초 칸 · 비는 칸은 미관측(0으로 채우지 않음)
+    assert len(display['presence']) == 10
+    assert display['presence'][-1]['value'] == 3 and display['presence'][-1]['observed']
+    assert all(p['value'] is None and not p['observed'] for p in display['presence'][:-1])
     assert display['count_unit'] == '개' and display['counting_label'] == '브라우저 세션'
     assert not client.flow.flow_versions.find_one() and not client.flow.flow_public.find_one()
 
 
-def test_series_is_clipped_to_current_twelve_hours_and_kst(monkeypatch):
+def test_series_is_clipped_to_recent_ten_seconds_and_kst(monkeypatch):
     now = datetime(2026, 11, 12, 3, tzinfo=timezone.utc)
     reader, _ = configured_reader(monkeypatch, published_documents(now))
     display = for_display(reader.read(), now=now)
-    assert len(display['presence']) == 3
+    assert [p['value'] for p in display['presence'] if p['observed']] == [3]  # 60초·300초 전 표본 제외
     assert display['as_of_label'] == '2026.11.12 12:00:00 KST'
-    later = for_display(reader.read(), now=now+timedelta(hours=13))
-    assert later['presence'] == [] and later['booking'] == []
+    later = for_display(reader.read(), now=now+timedelta(seconds=11))
+    assert len(later['presence']) == 10 and not any(p['observed'] for p in later['presence'] + later['booking'])
     assert later['current'] == 3  # 기준 시각의 최신값을 시계열에서 다시 만들지 않는다.
 
 
@@ -151,7 +154,7 @@ def test_actual_page_uses_db_data_never_sample(admin_settings,monkeypatch):
     assert response.context['anomaly']['error'] == 'anomaly publication unavailable'
     assert response.context['anomaly']['attempts'] is None
     assert '지표 조회 실패' in response.text
-    assert 'early publication unavailable' in response.text
+    assert response.context['early']['error'] == 'early publication unavailable' and '조회 실패' in response.text
     assert 'href="/admin/db"' not in response.text
     assert 'href="/admin/preview"' not in response.text
 
@@ -210,7 +213,6 @@ def test_zero_presence_and_selected_scope_render_without_sample_labels(admin_set
     assert 'data-flow-state=' not in response.text
     assert '단계별 샘플 지표' not in response.text and '0명이' not in response.text
     assert '현재 동시 접속 브라우저 세션' in response.text
-    assert '실행·검증 실패 여부는 조회하지 않습니다' in response.text
     assert 'monitor_user_flow' not in response.text  # 템플릿은 서버에서 포함된다.
     assert '/admin/admin-static/monitor_navigation.js' in response.text
     assert 'mp-live-toolbar' not in response.text

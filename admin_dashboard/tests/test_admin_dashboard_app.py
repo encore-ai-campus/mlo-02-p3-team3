@@ -27,7 +27,7 @@ create_admin_dashboard_app(AdminSettings(mongo_uri="", _env_file=None))
     assert client.get("/").status_code == 403
     response = client.get("/", headers={"X-Admin-User": "manager"})
     assert response.status_code == 200
-    assert "DB 조회 실패" in response.text
+    assert "공개 지표 조회 실패" in response.text  # 헤더 상태 표시
     assert "샘플 데이터" not in response.text
     assert response.headers["cache-control"] == "no-store"
 

@@ -57,7 +57,8 @@ def test_actual_preview_auth_and_no_sample_fallback(admin_settings,monkeypatch):
     def fail(*a,**k): raise ObservationReadError('observation-offline')
     monkeypatch.setattr('ticket_guard_admin.user_flow.pages.read_early',fail)
     actual=client.get('/',headers=headers)
-    assert actual.status_code==200 and 'observation-offline' in actual.text
+    assert actual.status_code==200 and '조회 실패' in actual.text
+    assert actual.context['early']['error']=='observation-offline'
     assert '고정 샘플 · 실제 DB 연결 없음' not in actual.text
     assert actual.headers['cache-control']=='no-store'
 
@@ -88,4 +89,3 @@ def test_metric_structure_remains_visible_without_observations(admin_settings,mo
     assert section.count('data-detection-stage=')==4
     assert not any(label in section for label in ('보안문자','오답 한도 도달','반복 오답','과도한 문제 변경'))
     assert '고정 샘플' not in section
-    assert ('observation-offline' in section)==failed
