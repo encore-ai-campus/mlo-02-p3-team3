@@ -12,7 +12,7 @@ class FlowConfig:
     kafka: str
     topic: str
     group: str
-    raw_uri: str = field(repr=False)
+    raw_uri: str = field(repr=False)  # 선택 · 사전 점검·사후 정합성 검토용 · 실시간 경로는 사용 안 함
     target_uri: str = field(repr=False)
     source: str
     checkpoint: str
@@ -23,7 +23,6 @@ class FlowConfig:
     max_offsets: int = 1000
     timeout_ms: int = 1000
     max_events: int = 250000
-    raw_wait_seconds: int = 10
 
     @classmethod
     def load(cls):
@@ -42,11 +41,11 @@ class FlowConfig:
             raise ValueError('전용 체크포인트 경로 필요')
         return cls(os.environ.get('SPARK_KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092'),
                    os.environ.get('KAFKA_EVENTS_TOPIC', 'ticketguard.events.v1'),
-                   os.environ.get('SPARK_KAFKA_GROUP_ID', 'ticketguard-spark-consumer'),
-                   required('FLOW_RAW_MONGO_URI'), required('FLOW_TARGET_MONGO_URI'),
+                   # 기존 Spark 정제 그룹과 분리
+                   os.environ.get('SPARK_KAFKA_GROUP_ID', 'ticketguard-flow-v1'),
+                   os.environ.get('FLOW_RAW_MONGO_URI', ''), required('FLOW_TARGET_MONGO_URI'),
                    required('RAW_SOURCE_ID'), checkpoint,
                    number('FLOW_TRIGGER_SECONDS', 1, 60), number('FLOW_PRESENCE_SECONDS', 30, 3600),
                    3600, number('FLOW_GRACE_SECONDS', 300, 3600),
                    number('SPARK_MAX_OFFSETS_PER_TRIGGER', 1000, 10000),
-                   number('FLOW_READ_TIMEOUT_MS', 1000, 10000), number('FLOW_MAX_EVENTS', 250000, 1000000),
-                   number('FLOW_RAW_WAIT_SECONDS', 10, 120))
+                   number('FLOW_READ_TIMEOUT_MS', 1000, 10000), number('FLOW_MAX_EVENTS', 250000, 1000000))

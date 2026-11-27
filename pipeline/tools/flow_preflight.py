@@ -10,18 +10,23 @@ from user_flow.verification import COLLECTIONS
 
 def check():
     config = FlowConfig.load()
-    raw = connection(config.raw_uri, config.timeout_ms)
+    # 원본 DB는 실시간 경로에서 쓰지 않음 · 주소가 있으면 사후 정합성 검토 준비 상태만 확인
+    raw = connection(config.raw_uri, config.timeout_ms) if config.raw_uri else None
     target = connection(config.target_uri, config.timeout_ms)
     reader = None
     try:
-        raw_db = raw.get_default_database()
         target_db = target.get_default_database()
-        raw.admin.command('ping'); target.admin.command('ping')
-        expected = [('source', 1), ('topic', 1), ('partition', 1), ('offset', 1)]
-        for name in COLLECTIONS:
-            index = raw_db[name].index_information().get('raw_kafka_position_v1')
-            if not index or list(index['key']) != expected:
-                raise ValueError('원본 위치 인덱스 확인 필요: ' + name)
+        target.admin.command('ping')
+        if raw is not None:
+            raw_db = raw.get_default_database()
+            raw.admin.command('ping')
+            expected = [('source', 1), ('topic', 1), ('partition', 1), ('offset', 1)]
+            for name in COLLECTIONS:
+                index = raw_db[name].index_information().get('raw_kafka_position_v1')
+                if not index or list(index['key']) != expected:
+                    raise ValueError('원본 위치 인덱스 확인 필요: ' + name)
+        else:
+            print('원본 DB 검사는 미수행: FLOW_RAW_MONGO_URI 없음 (실시간 경로는 원본 DB 미사용)')
         for name in ('flow_read_current', 'flow_read_series'):
             info = list(target_db.list_collections(filter={'name': name}))
             if not info or info[0]['type'] != 'view':
@@ -37,9 +42,10 @@ def check():
             print('관리자 공개 뷰 읽기 확인 완료 (같은 서버 대상 여부는 별도 확인 필요)')
         else:
             print('관리자 읽기 계정 검사는 미수행: 기존 관리자 URI가 전달되지 않음')
-        print('원본 위치 인덱스·지표 공개 뷰 검사 완료. 쓰기와 지표 공개는 수행하지 않았다.')
+        print('지표 공개 뷰 검사 완료. 쓰기와 지표 공개는 수행하지 않았다.')
     finally:
-        raw.close(); target.close()
+        if raw is not None: raw.close()
+        target.close()
         if reader is not None: reader.close()
 
 

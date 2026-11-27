@@ -115,24 +115,17 @@ def test_chunk_reassembly_and_conflict(tmp_path):
     finally: s.close()
 
 
-def test_publish_expiry_and_restart_after_failed_raw_verification(tmp_path):
+def test_publication_does_not_wait_for_raw_original(tmp_path):
+    # 실시간 경로는 원본 DB를 조회하지 않는다 · 원본 미적재여도 공개
     p, clock = processor(tmp_path)
-    feed(p,[event('enter', NOW-10, 'queue_enter')])
-    first = p.target.flow_public.find_one({'_id':'all'})['version']
-    with patch('user_flow.runtime.time.sleep'):
-        with pytest.raises(RuntimeError):
-            p.batch(Frame([SimpleNamespace(topic='events',partition=0,offset=100,value=event('later',NOW))]),1)
-    assert p.target.flow_public.find_one({'_id':'all'})['version'] == first
-    assert p.target.flow_health.find_one()['status'] == 'blocked'
-    p.tick()
-    assert p.target.flow_public.find_one({'_id':'all'})['version'] == first
-    p = Processor(p.config,p.raw,p.target,clock=lambda:clock[0])
-    feed(p,[event('later', NOW)],batch=1)
+    rows = [SimpleNamespace(topic='events', partition=0, offset=0, value=event('enter', NOW-10, 'queue_enter'))]
+    p.batch(Frame(rows), 0)
+    assert p.raw.booking_events.count_documents({}) == 0
+    assert p.target.flow_public.find_one({'_id': 'all'})
+    assert p.target.flow_health.find_one()['status'] == 'verified'
     clock[0] += 40; p.tick()
-    current, series = read_public(p.target)
+    current, _ = read_public(p.target)
     assert current['metrics']['current'] == 0
-    assert len(series['presence']) == len(series['booking']) == 720
-    assert next(v for v in series['booking'] if v['at']==iso(NOW+20))['observed'] is False
 
 
 def test_partial_store_failure_keeps_public_pointer():
@@ -166,18 +159,42 @@ def test_config_one_hour_and_no_secret_in_representation(monkeypatch):
     assert 'hidden-value' not in repr(config)
 
 
-def test_filtered_reference_mismatch_blocks_every_scope(tmp_path):
+def test_raw_uri_is_optional_and_group_is_separate(monkeypatch):
+    for key in ('FLOW_RAW_MONGO_URI', 'SPARK_KAFKA_GROUP_ID'):
+        monkeypatch.delenv(key, raising=False)
+    for key in ('FLOW_TARGET_MONGO_URI', 'RAW_SOURCE_ID'):
+        monkeypatch.setenv(key, 'hidden-value')
+    config = FlowConfig.load()
+    assert config.raw_uri == ''
+    assert config.group == 'ticketguard-flow-v1'  # Spark 정제 그룹과 분리
+
+
+@pytest.mark.parametrize('value,reason', [
+    (event('old', NOW-3600-301, 'queue_enter'), 'late'),
+    (event('ahead', NOW+31, 'queue_enter'), 'future'),
+    (b'{not json', 'malformed'),
+    (json.dumps({'schemaVersion': 9, 'eventId': 'x', 'eventType': 'page_enter'}).encode(), 'malformed'),
+])
+def test_out_of_range_or_malformed_event_is_skipped_and_counted(tmp_path, value, reason):
     p, _ = processor(tmp_path)
-    feed(p,[event('enter',NOW-5,'queue_enter')])
-    before = list(p.target.flow_public.find())
-    reference = State(str(p.reference_path))
-    row = reference.observations()[0]
-    row['simulation'] = False
-    reference.db.events.update_one({'_id': reference._key(row['id'])}, {'$set': {'payload': row}})
-    reference.close()
-    with pytest.raises(VerificationPending): p.tick()
-    assert list(p.target.flow_public.find()) == before
-    assert p.failed and p.target.flow_health.find_one()['status']=='blocked'
+    rows = [SimpleNamespace(topic='events', partition=0, offset=0, value=value),
+            SimpleNamespace(topic='events', partition=0, offset=1, value=event('enter', NOW-5, 'queue_enter'))]
+    p.batch(Frame(rows), 0)  # 멈추지 않고 공개
+    health = p.target.flow_health.find_one({'_id': 'pipeline'})
+    assert health['status'] == 'verified' and not p.failed
+    assert health['skipped'][reason] == 1
+    assert sum(health['skipped'].values()) == 1
+    state = p.state()
+    assert [row['id'] for row in state.observations()] == ['enter']
+    state.close()
+
+
+def test_skipped_counts_accumulate_across_batches(tmp_path):
+    p, _ = processor(tmp_path)
+    for batch in (0, 1):
+        rows = [SimpleNamespace(topic='events', partition=0, offset=batch, value=event('old'+str(batch), NOW-5000))]
+        p.batch(Frame(rows), batch)
+    assert p.target.flow_health.find_one({'_id': 'pipeline'})['skipped']['late'] == 2
 
 
 def test_reprocessing_completed_batch_is_idempotent(tmp_path):

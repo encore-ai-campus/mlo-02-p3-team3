@@ -9,7 +9,8 @@ _counts=ContextVar('pipeline_transaction_counts')
 
 
 class State:
-    def __init__(self, namespace, max_events=250000, max_chunks=4096, *, projector=project, skip_expired=False):
+    def __init__(self, namespace, max_events=250000, max_chunks=4096, *, projector=project, skip_expired=False,
+                 skip_future=False):
         uri = os.environ.get('PIPELINE_STATE_MONGO_URI')
         if not uri:
             raise ValueError('PIPELINE_STATE_MONGO_URI is required')
@@ -17,7 +18,7 @@ class State:
         self.db = self.client.get_default_database()
         self.namespace = hashlib.sha256(str(namespace).encode()).hexdigest()
         self.max_events, self.max_chunks = max_events, max_chunks
-        self.projector, self.skip_expired = projector, skip_expired
+        self.projector, self.skip_expired, self.skip_future = projector, skip_expired, skip_future
         self.db.events.create_index([('namespace', 1), ('time', 1), ('event_id', 1)])
         self.db.chunks.create_index([('namespace', 1), ('record', 1), ('index', 1)], unique=True)
         self.db.batches.create_index([('namespace', 1), ('complete', 1), ('batch', 1)])
@@ -92,7 +93,8 @@ class State:
                 if received:
                     ingestion = received['latest']
             p = self.projector(e)
-            if p is not None and not (self.skip_expired and p['time'] < oldest):
+            if p is not None and not (self.skip_expired and p['time'] < oldest) and not (
+                    self.skip_future and p['time'] > now + future_seconds):
                 if p['time'] > now + future_seconds:
                     raise ValueError('Future event outside allowed range')
                 if p['time'] < oldest:

@@ -1,6 +1,7 @@
-"""실제 flow 배치 진입점의 원본 대조·공개·실패 후 타이머 차단."""
+"""실제 flow 배치 진입점의 공개·저장 실패 후 타이머 차단."""
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import mongomock
 import pytest
@@ -39,8 +40,9 @@ def test_verified_batch_publishes_receipts_without_changing_flow_presence(tmp_pa
     try:
         assert state.observations()==[]
     finally: state.close()
-    db.raw.unclassified_events.update_one({'offset':0},{'$set':{'value':b'mismatch'}})
-    with pytest.raises(RuntimeError): processor.batch(Frame(records),1)
+    # 원본 대조는 실시간 경로에서 제외 · 실제 저장 실패만 공개를 막는다.
+    with patch('user_flow.runtime.observe_early',side_effect=RuntimeError('write failure')):
+        with pytest.raises(RuntimeError): processor.batch(Frame(records),1)
     assert db.metrics.early_health.find_one()['status']=='blocked'
     processor.tick()
     assert db.metrics.early_public.find_one()==pointer
