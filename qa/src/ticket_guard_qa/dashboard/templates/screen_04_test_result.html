@@ -179,6 +179,15 @@
   </section>
 
   <aside>
+    {% if summary.status.value in ('CANCELLED', 'ERROR') %}
+    <section class="card side-card">
+      <h2 class="section-heading" style="font-size:24px"><i data-lucide="circle-alert"></i>{{ '중지된 Run' if summary.status.value == 'CANCELLED' else '오류 종료 Run' }}</h2>
+      <div class="sub-text">같은 설정으로 새 Run 시작 · 봇 버전은 현재 버전 기준</div>
+      <form method="post" action="{{ base_path }}/runs/{{ summary.run_id }}/restart">
+        <button class="button is-wide" type="submit" style="font-size:17px;margin-top:16px"><i data-lucide="rotate-ccw"></i>Run 다시 시작</button>
+      </form>
+    </section>
+    {% endif %}
     {% if first_failed_card %}
     <section class="card side-card failure-card">
       <div class="failure-head">

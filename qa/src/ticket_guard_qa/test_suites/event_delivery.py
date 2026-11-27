@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.answer_key.expected_verdicts import plan_virtual_users
 from ticket_guard_qa.domain.enums import BookingOutcome, SuiteOutcome, TargetKind
 from ticket_guard_qa.domain.models import (
@@ -183,7 +184,7 @@ def evaluate_delivery(session_results: list[VirtualUserSessionResult], records: 
 def wait_for_late_server_events(
     context: SuiteContext, stream_reader: EventStreamReader, start_offsets: dict[int, int],
     session_results: list[VirtualUserSessionResult], report: DeliveryReport, records: list[StreamRecord],
-    sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = cancellable_sleep, clock: Callable[[], float] = time.monotonic,
 ) -> tuple[DeliveryReport, list[StreamRecord], float]:
     """빠진 서버 이벤트가 있으면 다시 읽기 · 다 오거나 상한까지 · (보고서, 메시지, 추가 대기 초)"""
     started_at = clock()
@@ -235,7 +236,7 @@ class EventDeliverySuite:
         "누락 0 · 중복 0",
     )
 
-    def __init__(self, sleep: Callable[[float], None] = time.sleep) -> None:
+    def __init__(self, sleep: Callable[[float], None] = cancellable_sleep) -> None:
         self.sleep = sleep
 
     def run(self, context: SuiteContext) -> SuiteResult:

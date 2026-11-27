@@ -87,6 +87,9 @@
         <a class="button is-small" href="{{ base_path }}/runs/{{ summary.run_id }}/live"><i data-lucide="activity"></i>Run 모니터</a>
         {% else %}
         <a class="button is-small" href="{{ base_path }}/runs/{{ summary.run_id }}"><i data-lucide="file-text"></i>리포트</a>
+        {% if status in ('CANCELLED', 'ERROR') %}
+        <form method="post" action="{{ base_path }}/runs/{{ summary.run_id }}/restart"><button class="button is-small" type="submit"><i data-lucide="rotate-ccw"></i>다시 시작</button></form>
+        {% endif %}
         <a class="button is-soft is-small" href="{{ base_path }}/runs/new?from_run_id={{ summary.run_id }}"><i data-lucide="refresh-cw"></i>재실행</a>
         <form method="post" action="{{ base_path }}/runs/{{ summary.run_id }}/delete" class="delete-form"
               data-run-label="Run {{ summary.run_id[-11:] }} · {{ status_titles.get(status, status) }} · {{ 'Mock' if summary.run_config.target_kind.value == 'fake' else 'Live' }} · {{ summary.started_at | time_ago }}"

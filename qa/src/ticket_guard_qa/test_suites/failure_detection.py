@@ -3,6 +3,7 @@ Live = 컨테이너 중지 · 시작 제어(Docker 소켓) + 판정 읽기 연�
 import time
 from collections.abc import Callable
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.answer_key.expected_verdicts import build_answer_key, plan_virtual_users
 from ticket_guard_qa.domain.detection_targets import DETECTION_TARGETS
 from ticket_guard_qa.domain.enums import SuiteOutcome
@@ -26,7 +27,7 @@ MAX_LISTED_SESSION_COUNT = 3
 
 def wait_until_judged(
     verdict_reader: VerdictReader, run_id: str, answer_key: AnswerKey, timeout_sec: float, poll_interval_sec: float,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = cancellable_sleep,
 ) -> tuple[SystemVerdicts, float]:
     """정답표 세션 전부 판정될 때까지 · (판정, 걸린 초)"""
     started_at = time.monotonic()

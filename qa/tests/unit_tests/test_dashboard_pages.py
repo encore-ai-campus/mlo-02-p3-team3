@@ -253,3 +253,30 @@ def test_delete_rejects_running_or_unknown_run(dashboard_client):
     assert dashboard_client.post("/runs/run-20261109-040000-aaaa/delete").status_code == 409
     assert run_service.run_repository.get_summary("run-20261109-040000-aaaa") is not None
     assert dashboard_client.post("/runs/..%2F..%2Fsecret/delete").status_code in (404, 409)
+
+
+def test_cancelled_run_offers_restart_with_same_settings(dashboard_client):
+    run_service = dashboard_client.app.state.run_service
+    run_service.run_repository.create_run("run-20261127-010000-cccc", RunConfig(TargetKind.FAKE, ("self_check",), virtual_user_count=11),
+                                          datetime.now(timezone.utc))
+    run_service.run_repository.runs.update_one({"_id": "run-20261127-010000-cccc"}, {"$set": {"status": "CANCELLED"}})
+    action = 'action="/qa/runs/run-20261127-010000-cccc/restart"'
+    assert action in dashboard_client.get("/runs/run-20261127-010000-cccc").text  # 04 결과
+    assert action in dashboard_client.get("/runs").text  # 결과 목록
+
+    response = dashboard_client.post("/runs/run-20261127-010000-cccc/restart", follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"].endswith("/live")
+    new_run_id = response.headers["location"].split("/")[-2]
+    assert run_service.run_repository.get_summary(new_run_id).run_config.virtual_user_count == 11
+
+
+def test_restart_rejects_unknown_run(dashboard_client):
+    assert dashboard_client.post("/runs/run-missing/restart").status_code == 409
+
+
+def test_monitor_shows_cancel_requested_state(dashboard_client):
+    run_service = dashboard_client.app.state.run_service
+    run_service.run_repository.create_run("run-20261127-020000-dddd", RunConfig(TargetKind.FAKE, ("self_check",)), datetime.now(timezone.utc))
+    run_service._active_run_id = "run-20261127-020000-dddd"
+    run_service.cancel("run-20261127-020000-dddd")
+    assert "중지 요청됨" in dashboard_client.get("/runs/run-20261127-020000-dddd/live").text

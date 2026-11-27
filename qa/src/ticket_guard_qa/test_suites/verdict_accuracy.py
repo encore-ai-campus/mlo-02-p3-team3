@@ -3,6 +3,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.answer_key.expected_verdicts import build_answer_key, plan_virtual_users
 from ticket_guard_qa.domain.enums import SessionStep, SuiteOutcome, TargetKind
 from ticket_guard_qa.domain.models import (
@@ -114,7 +115,7 @@ class VerdictAccuracySuite:
         "매크로 탐지 90% 이상(브라우저 자동화 70%) · 사람 오판 1% 이하",
     )
 
-    def __init__(self, live_settle_sec: float = LIVE_VERDICT_SETTLE_SEC, sleep: Callable[[float], None] = time.sleep) -> None:
+    def __init__(self, live_settle_sec: float = LIVE_VERDICT_SETTLE_SEC, sleep: Callable[[float], None] = cancellable_sleep) -> None:
         self.live_settle_sec = live_settle_sec
         self.sleep = sleep
 

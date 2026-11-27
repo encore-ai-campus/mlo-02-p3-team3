@@ -25,7 +25,7 @@ from ticket_guard_qa.domain.models import LEGACY_TRAFFIC_FIELD_TO_ACTOR, Criteri
 from ticket_guard_qa.macro_bots.bot_catalog import BotRole, BotTypeInfo, list_bot_types
 from ticket_guard_qa.domain.pass_criteria import PASS_CRITERIA, PassCriterion
 from ticket_guard_qa.test_runs.run_progress_stream import ProgressMessage, RunProgressStream
-from ticket_guard_qa.test_runs.run_service import RunAlreadyActiveError, RunDeleteError, RunService
+from ticket_guard_qa.test_runs.run_service import RunAlreadyActiveError, RunDeleteError, RunRestartError, RunService
 from ticket_guard_qa.test_suites.suite_registry import get_suite, list_suites
 
 PROGRESS_POLL_INTERVAL_SEC = 0.5
@@ -205,6 +205,7 @@ def show_test_running(request: Request, run_id: str, run_service: RunService = D
         "summary": summary,
         "run_suites": [get_suite(suite_name) for suite_name in summary.run_config.suite_names],  # 실행 순서
         "measurement_window_sec": run_service.measurement_window_sec(summary.run_config, run_id),
+        "is_cancel_requested": run_service.is_cancel_requested(run_id),
         "threshold_by_metric_name": {criterion.metric_name: criterion.threshold for criterion in PASS_CRITERIA},
     })
 
@@ -227,7 +228,21 @@ def format_server_sent_event(message: ProgressMessage) -> str:
 async def stream_run_progress(
     request: Request, run_id: str, after: int = 0,
     progress_stream: RunProgressStream = Depends(get_progress_stream),
+    run_service: RunService = Depends(get_run_service),
 ) -> StreamingResponse:
+    if run_service.run_repository.get_summary(run_id) is None:
+        raise HTTPException(status_code=404, detail="Run 없음")  # 없는 Run 번호로 끝없이 대기하지 않음
+
+    def build_missing_finish_message(sequence_number: int) -> ProgressMessage | None:
+        """프로그램 재시작 등으로 종료 신호가 사라진 Run · DB의 최종 상태로 화면 마무리"""
+        if run_service.active_run_id == run_id or progress_stream.read_after(run_id, sequence_number):
+            return None
+        summary = run_service.run_repository.get_summary(run_id)
+        if summary is None or summary.status is RunStatus.RUNNING:
+            return None
+        return ProgressMessage(sequence_number + 1, f"Run 종료 · {summary.status.value}", is_finished=True,
+                               final_status=summary.status.value)
+
     async def generate_server_sent_events() -> AsyncIterator[str]:
         last_sequence_number = read_resume_sequence_number(request.headers.get("last-event-id"), after)
         idle_sec = 0.0
@@ -239,6 +254,9 @@ async def stream_run_progress(
                 yield format_server_sent_event(message)
                 if message.is_finished:
                     return
+            if not messages and (finish_message := build_missing_finish_message(last_sequence_number)):
+                yield format_server_sent_event(finish_message)
+                return
             idle_sec = 0.0 if messages else idle_sec + PROGRESS_POLL_INTERVAL_SEC
             if idle_sec >= KEEPALIVE_INTERVAL_SEC:  # 판정 대기 등 메시지 공백 · 중간 장비 끊김 방지
                 idle_sec = 0.0
@@ -253,6 +271,18 @@ async def stream_run_progress(
 def cancel_test_run(request: Request, run_id: str, run_service: RunService = Depends(get_run_service)) -> RedirectResponse:
     run_service.cancel(run_id)
     return redirect_to_page(request, f"/runs/{run_id}/live")
+
+
+@router.post("/runs/{run_id}/restart")
+def restart_test_run(request: Request, run_id: str, run_service: RunService = Depends(get_run_service)):
+    """끝난 Run과 같은 설정으로 바로 새 Run · 03으로 이동"""
+    try:
+        new_run_id = run_service.restart(run_id)
+    except RunRestartError as error:
+        return _render_result_list(request, run_service, "", error_message=str(error), status_code=409)
+    except RunAlreadyActiveError as error:
+        return _render_result_list(request, run_service, "", error_message=str(error), status_code=409)
+    return redirect_to_page(request, f"/runs/{new_run_id}/live")
 
 
 def build_criterion_comparisons(summary: RunSummary, previous_summary: RunSummary | None) -> list[CriterionComparison]:
