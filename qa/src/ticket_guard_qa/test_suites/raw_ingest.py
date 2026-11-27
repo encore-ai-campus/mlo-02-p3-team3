@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.domain.enums import SuiteOutcome
 from ticket_guard_qa.domain.models import FAIL_LINE_PREFIX, MESSAGE_LINE_SEPARATOR, SuiteResult
 from ticket_guard_qa.domain.raw_event_routing import UNCLASSIFIED_COLLECTION_NAME, find_expected_raw_collection
@@ -81,7 +82,7 @@ def evaluate_raw_ingest(qa_records: list[StreamRecord], stored_records: list[Raw
 
 def read_stored_records(
     raw_event_reader: RawEventReader, positions: list[Position], wait_sec: float, poll_interval_sec: float,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = cancellable_sleep,
 ) -> list[RawStoredRecord]:
     """전부 보일 때까지 다시 조회 · 최대 wait_sec · 마지막에 전체 한 번 더 (늦게 생긴 중복 포함)"""
     remaining_positions = set(positions)

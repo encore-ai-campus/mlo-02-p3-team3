@@ -4,6 +4,7 @@ from collections import Counter
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.domain.enums import SuiteOutcome
 from ticket_guard_qa.domain.models import FAIL_LINE_PREFIX, MESSAGE_LINE_SEPARATOR, SuiteResult
 from ticket_guard_qa.system_targets.target_interfaces import PIPELINE_SERVICE_NAME, BookingApi, PipelineReader
@@ -29,7 +30,7 @@ def send_events(booking_api: BookingApi, events: list[dict]) -> list[str]:
 
 def wait_until_processed(
     pipeline_reader: PipelineReader, event_ids: list[str], timeout_sec: float, poll_interval_sec: float,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = cancellable_sleep,
 ) -> tuple[list[str], float]:
     """전부 저장될 때까지 · (저장된 eventId 목록, 걸린 초)"""
     started_at = time.monotonic()

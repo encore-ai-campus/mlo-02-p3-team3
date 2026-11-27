@@ -2,6 +2,8 @@
 [홍석환] 실제 사용자 흐름 공개 지표 페이지
 조회·표시 변환을 연결하고 공개 결과 없음과 오류를 샘플 없이 렌더링한다.
 """
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.responses import HTMLResponse
 
 from ticket_guard_admin.network_status.presentation import for_display as network_for_display
@@ -18,20 +20,40 @@ from ticket_guard_admin.early_monitor.stage_detections import build as build_sta
 
 
 def render_published_dashboard(request, mongo_uri, *, fragment=False) -> HTMLResponse:
+    # Each reader has its own bounded MongoClient. Independent sections must not
+    # accumulate their connection timeouts behind the browser's refresh deadline.
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix='admin-metrics') as reads:
+        return _render(request, mongo_uri, fragment=fragment, reads=reads)
+
+
+def _render(request, mongo_uri, *, fragment, reads):
     context = dict(base_path=request.app.state.base_path,
                    admin_user=getattr(request.state, 'admin_user', ''), is_preview=False,
                    flow=None, flow_error=None, scope='all', scope_choices=[{'value': 'all', 'label': '전체 공개 지표'}],
                    header_status='공개 지표 확인', header_error=False, header_tone='neutral')
-    try:
-        context['network'] = network_for_display(read_network(mongo_uri))
-    except (NetworkReadError, ValueError):
-        context['network'] = network_for_display(None)
-        context['network_error'] = True
+    filter_error = None
     try:
         if set(request.query_params) - {'scope', 'anomaly_mode', 'early_scope'} or len(request.query_params.getlist('scope')) > 1:
             raise FlowError('unsupported_filter', '지원하지 않는 조회 조건 · 기존 기간·공연 단독 필터 대신 공개된 범위 조합을 선택해 주세요.')
         context['scope'] = scope_key(request.query_params.get('scope', 'all'))
-        result = PublishedFlowReader(mongo_uri).read(context['scope'])
+    except FlowError as exc:
+        filter_error = exc
+    selected_scope = context['scope']
+    network_read = reads.submit(read_network, mongo_uri)
+    anomaly_read = reads.submit(read_anomaly, mongo_uri, selected_scope)
+    early_scope = request.query_params.get('early_scope', selected_scope if selected_scope != 'all' else '[false,null,null]')
+    early_read = (reads.submit(read_early, mongo_uri, early_scope)
+                  if len(request.query_params.getlist('early_scope')) <= 1 else None)
+    flow_read = reads.submit(PublishedFlowReader(mongo_uri).read, selected_scope) if filter_error is None else None
+    try:
+        context['network'] = network_for_display(network_read.result())
+    except (NetworkReadError, ValueError):
+        context['network'] = network_for_display(None)
+        context['network_error'] = True
+    try:
+        if filter_error is not None:
+            raise filter_error
+        result = flow_read.result()
         context['flow'] = for_display(result)
         context['scope_choices'] = [dict(value=value, label=scope_label(value)) for value in result['scopes']]
         context['header_status'] = '공개 지표 조회 완료'
@@ -43,14 +65,13 @@ def render_published_dashboard(request, mongo_uri, *, fragment=False) -> HTMLRes
                                     'unsupported_filter': '조회 조건 확인'}.get(exc.code, '공개 지표 조회 실패')
         context['header_error'] = exc.code not in ('no_publication', 'scope_not_found', 'unsupported_filter')
     try:
-        context['anomaly'] = anomaly_display(read_anomaly(mongo_uri, context['scope']))
+        context['anomaly'] = anomaly_display(anomaly_read.result())
     except (AnomalyReadError, ValueError) as exc:
         context['anomaly'] = anomaly_display(error=str(exc))
-    early_scope = request.query_params.get('early_scope', context['scope'] if context['scope'] != 'all' else '[false,null,null]')
     try:
         if len(request.query_params.getlist('early_scope')) > 1:
             raise ObservationReadError('사전 관측 조회 조건 중복')
-        context['early'] = display_early(read_early(mongo_uri, early_scope), selected=early_scope)
+        context['early'] = display_early(early_read.result(), selected=early_scope)
     except ObservationReadError as exc:
         context['early'] = display_early(error=str(exc), selected=early_scope, previous_as_of=exc.previous_as_of)
     context['detection_stages'] = build_stage_detections(context['early'],context['anomaly'],legacy_scope=context['scope'])

@@ -12,7 +12,7 @@
     return node;
   }
   const timeLabel = value => new Intl.DateTimeFormat('ko-KR', {timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).format(new Date(value));
-  function draw(id, points, {label, unit, color = '#3971ed', percent = false, range = null}) {
+  function draw(id, points, {label, unit, color = '#3971ed', percent = false, range = null, fixedSeconds = null}) {
     const host = document.getElementById(id);
     if (!host || !host.getBoundingClientRect().width) return;
     const width = Math.max(330, host.clientWidth), height = 224;
@@ -29,12 +29,13 @@
     const maximum = Math.max(1, ...valid.map(point => point.value * scale));
     const step = percent ? 25 : Math.max(1, Math.ceil(maximum/4 / (maximum > 100 ? 25 : 1)) * (maximum > 100 ? 25 : 1));
     const ceiling = percent ? 100 : step*4;
-    const start=Date.parse(range?.start || points[0].at), end=Date.parse(range?.end || points.at(-1).at);
+    const end=Date.parse(range?.end || points.at(-1).at);
+    const start=fixedSeconds===null ? Date.parse(range?.start || points[0].at) : end-fixedSeconds*1000;
     const xAt = time => left+(end===start ? .5 : (time-start)/(end-start))*plotWidth;
     const x = index => xAt(Date.parse(points[index].at));
     const y = value => top+plotHeight - value*scale/ceiling*plotHeight;
     const svg = svgElement('svg', {viewBox:`0 0 ${width} ${height}`, role:'img',
-      'aria-label': axesOnly ? `${label} · 단위 ${unit} · 관측값 없음` : `${label} · 최근 12시간 · 단위 ${unit}. 미관측 구간은 선을 끊어 표시합니다.`});
+      'aria-label': axesOnly ? `${label} · 단위 ${unit} · 관측값 없음` : `${label} · ${fixedSeconds===null ? "공개 시계열" : "최근 "+fixedSeconds+"초 · 0초는 구간 시작, "+fixedSeconds+"초는 최신 시점"} · 단위 ${unit}. 미관측 구간은 선을 끊어 표시합니다.`});
     svg.append(svgElement('title', {}, label));
     const desc = svgElement('desc', {}, '표본에 초점을 이동하거나 포인터를 올리면 시간과 값, 미관측 여부와 시작 시도 없는 구간을 확인할 수 있습니다. 값이 없는 구간의 아래쪽 표식은 0을 의미하지 않습니다.');
     if (!axesOnly) svg.append(desc);
@@ -43,11 +44,12 @@
       svg.append(svgElement('line', {x1:left, y1:yy, x2:width-right, y2:yy, class:'mp-grid-line'}));
       svg.append(svgElement('text', {x:left-10, y:yy+4, 'text-anchor':'end', class:'mp-axis-label'}, String(ceiling-i*ceiling/4)));
     }
-    const shortRange=end-start<=10000;
-    const ticks=shortRange?9:6;
+    const ticks=fixedSeconds===null?6:fixedSeconds;
     for(let tick=0;tick<=ticks;tick++) {
       const time=start+(end-start)*tick/ticks;
-      svg.append(svgElement('text',{x:left+plotWidth*tick/6,y:height-9,'text-anchor':'middle',class:'mp-axis-label'},shortRange ? new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',second:'2-digit'}).format(new Date(time))+'초' : timeLabel(time)));
+      svg.append(svgElement('text',{x:left+plotWidth*tick/ticks,y:height-9,
+        'text-anchor':tick===0?'start':tick===ticks?'end':'middle',class:'mp-axis-label'},
+        fixedSeconds===null ? timeLabel(time) : `${tick}초`));
     }
     if (axesOnly) {
       svg.append(svgElement('path', {d:`M${left},${top} V${top+plotHeight} H${width-right}`, fill:'none', stroke:'#a6b5cb'}));

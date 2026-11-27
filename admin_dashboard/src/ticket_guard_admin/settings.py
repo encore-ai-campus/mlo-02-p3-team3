@@ -3,6 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AdminSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="TICKET_GUARD_ADMIN_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="TICKET_GUARD_ADMIN_", env_file=(".env", ".env.admin.local"), extra="ignore")
     mongo_uri: str = ""
     base_path: str = "/admin"
