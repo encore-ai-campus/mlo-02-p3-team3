@@ -5,6 +5,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.domain.models import (
     REFERENCE_LINE_PREFIX,
     AnswerKey,
@@ -49,7 +50,7 @@ def count_received(judged_answer_key: AnswerKey, verdicts: SystemVerdicts) -> in
 
 def collect_verdicts(
     read_verdicts: Callable[[], SystemVerdicts], judged_answer_key: AnswerKey, waits_for_verdicts: bool,
-    report_progress: Callable[[str], None], sleep: Callable[[float], None] = time.sleep,
+    report_progress: Callable[[str], None], sleep: Callable[[float], None] = cancellable_sleep,
     clock: Callable[[], float] = time.monotonic, wait_sec: float = VERDICT_WAIT_SEC, poll_sec: float = VERDICT_POLL_SEC,
 ) -> VerdictCollection:
     """Live = 수신율 기준 넘거나 wait_sec 지날 때까지 다시 읽기 · Mock = 한 번"""

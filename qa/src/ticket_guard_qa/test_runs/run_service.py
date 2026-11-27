@@ -22,6 +22,7 @@ from ticket_guard_qa.reports.json_report import write_json_report
 from ticket_guard_qa.settings import Settings
 from ticket_guard_qa.system_targets.target_factory import build_system_target
 from ticket_guard_qa.system_targets.target_interfaces import SystemTarget
+from ticket_guard_qa.test_runs.run_cancellation import RunCancelledError, bind_cancel_event
 from ticket_guard_qa.test_runs.run_estimate import HISTORY_RUN_LIMIT, VERDICT_READING_SUITE_NAMES, RunEstimate, estimate_live_run
 from ticket_guard_qa.test_runs.run_progress_stream import RunProgressStream
 from ticket_guard_qa.test_runs.run_repository import RunRepository
@@ -42,6 +43,10 @@ class RunAlreadyActiveError(Exception):
 
 
 class RunDeleteError(Exception):
+    pass
+
+
+class RunRestartError(Exception):
     pass
 
 
@@ -68,6 +73,8 @@ def run_one_suite(suite: QaSuite, context: SuiteContext) -> SuiteResult:
         result = suite.run(context)
     except NotImplementedError as error:
         result = SuiteResult(suite.suite_name, SuiteOutcome.SKIPPED, message=str(error))  # 실패 아님
+    except RunCancelledError:
+        result = SuiteResult(suite.suite_name, SuiteOutcome.SKIPPED, message="Run 중지로 중단")  # Run 상태 = CANCELLED
     except Exception as error:  # noqa: BLE001 · 한 묶음 오류가 실행 전체를 멈추지 않게
         result = SuiteResult(suite.suite_name, SuiteOutcome.ERROR, message=f"{type(error).__name__}: {error}")
     return replace(result, duration_sec=round(time.monotonic() - started_at, 1))
@@ -93,6 +100,7 @@ class RunService:
         self._active_run_ends_at: datetime | None = None
         self._active_estimate: RunEstimate | None = None  # Live · Run 시작 때 계산 · 03 남은 시간 기준
         self._cancel_requested_run_ids: set[str] = set()
+        self._cancel_event = threading.Event()  # 진행 중 Run 하나의 중지 신호 · Suite 대기 · 트래픽이 확인
 
     @property
     def active_run_id(self) -> str | None:
@@ -171,7 +179,21 @@ class RunService:
         shutil.rmtree(report_output_dir / CAPTURE_FOLDER_NAME / run_id, ignore_errors=True)
 
     def cancel(self, run_id: str) -> None:
-        self._cancel_requested_run_ids.add(run_id)  # 묶음 사이에서 멈춤
+        if run_id == self._active_run_id:  # 진행 중 Run만 · 끝난 Run 번호는 쌓지 않음
+            self._cancel_requested_run_ids.add(run_id)
+            self._cancel_event.set()  # 진행 중 Suite도 대기 · 트래픽 반복문에서 바로 멈춤
+
+    def is_cancel_requested(self, run_id: str) -> bool:
+        return run_id in self._cancel_requested_run_ids
+
+    def restart(self, run_id: str) -> str:
+        """끝난 Run과 같은 설정으로 새 Run 시작 · 봇 버전은 지금 버전 · 진행 중 Run 있으면 RunAlreadyActiveError"""
+        summary = self.run_repository.get_summary(run_id)
+        if summary is None:
+            raise RunRestartError("다시 시작할 Run 없음")
+        if summary.status is RunStatus.RUNNING:
+            raise RunRestartError("진행 중 Run은 재시작 불가 · 중지 후 재시작")
+        return self.start_in_background(summary.run_config)
 
     def _reserve_run(self, run_config: RunConfig) -> tuple[str, RunConfig, datetime]:
         # 지금 봇 버전을 기록 · 같은 버전끼리만 04 비교 · B3 · B4가 당시 설정을 다시 읽음
@@ -184,14 +206,44 @@ class RunService:
             started_at = datetime.now(timezone.utc)
             run_id = create_run_id(started_at)
             self._active_run_id = run_id
+            self._cancel_event = threading.Event()
             self._active_estimate = estimate
             self._active_run_ends_at = started_at + timedelta(seconds=self.measurement_window_sec(run_config, run_id))
-        self.run_repository.create_run(run_id, run_config, started_at)
+        try:
+            self.run_repository.create_run(run_id, run_config, started_at)
+        except Exception:  # QA DB 저장 실패 · 잠금 풀지 않으면 다음 Run이 전부 거절됨
+            self._release_run(run_id)
+            raise
         return run_id, run_config, started_at
+
+    def _release_run(self, run_id: str) -> None:
+        with self._lock:
+            self._active_run_id = None
+            self._active_run_ends_at = None
+            self._active_estimate = None
+            self._cancel_requested_run_ids.discard(run_id)
+
+    def _finish_run(self, summary: RunSummary) -> None:
+        """종료 처리 · 한 단계가 실패해도 종료 신호 · 잠금 해제는 반드시 실행"""
+        summary.finished_at = datetime.now(timezone.utc)
+        try:
+            self.run_repository.save_summary(summary)
+        except Exception:  # noqa: BLE001
+            logger.exception("Run 결과 저장 실패 · run %s", summary.run_id)
+        for write_report in (write_json_report, write_html_report):
+            try:
+                write_report(summary, self.settings.report_output_dir)
+            except Exception:  # noqa: BLE001 · 보고서 실패는 Run 결과를 바꾸지 않음
+                logger.exception("보고서 저장 실패 · run %s", summary.run_id)
+        self.progress_stream.publish(
+            summary.run_id, f"Run 종료 · {summary.status.value}", is_finished=True, final_status=summary.status.value
+        )
+        self._release_run(summary.run_id)
 
     def _execute(self, run_id: str, run_config: RunConfig, started_at: datetime) -> RunSummary:
         summary = RunSummary(run_id, run_config, RunStatus.RUNNING, started_at)
         estimate = self._active_estimate
+        bind_cancel_event(self._cancel_event)  # 이 스레드의 Suite가 중지 신호를 봄
         try:
             context = SuiteContext(
                 run_id=run_id,
@@ -242,18 +294,8 @@ class RunService:
             summary.status = RunStatus.ERROR
             summary.suite_results.append(SuiteResult("run", SuiteOutcome.ERROR, message=str(error)))
         finally:
-            summary.finished_at = datetime.now(timezone.utc)
-            self.run_repository.save_summary(summary)
-            write_json_report(summary, self.settings.report_output_dir)
-            write_html_report(summary, self.settings.report_output_dir)
-            self.progress_stream.publish(
-                run_id, f"Run 종료 · {summary.status.value}", is_finished=True, final_status=summary.status.value
-            )
-            with self._lock:
-                self._active_run_id = None
-                self._active_run_ends_at = None
-                self._active_estimate = None
-                self._cancel_requested_run_ids.discard(run_id)
+            bind_cancel_event(None)
+            self._finish_run(summary)
         return summary
 
     def _watch_measurement_window(
@@ -263,13 +305,16 @@ class RunService:
         """1초마다 03 화면에 경과 시간 · 실시간 수치 전달 · 시험이 먼저 끝나면 멈춤
         Mock = 측정 시간에서 끝 · Live = Suite가 끝날 때까지 계속 (121 / 120초처럼 초과 표시)"""
         started_at = time.monotonic()
-        while run_id not in self._cancel_requested_run_ids and not stop_event.is_set():
+        while not stop_event.is_set():
+            is_cancelling = run_id in self._cancel_requested_run_ids
+            if is_cancelling and not keeps_counting_after_window:
+                return  # Mock · 중지 요청 = 흉내 시간 바로 종료
             elapsed_sec = time.monotonic() - started_at
             if not keeps_counting_after_window:
                 elapsed_sec = min(elapsed_sec, window_sec)
             is_over_window = elapsed_sec > window_sec
             self.progress_stream.publish(
-                run_id, "예상 시간 초과 · Suite 진행 중" if is_over_window else "측정 중",
+                run_id, "중지 중 · 진행 중 작업 정리" if is_cancelling else "예상 시간 초과 · Suite 진행 중" if is_over_window else "측정 중",
                 elapsed_sec=round(elapsed_sec, 1),
                 total_sec=window_sec,
                 live_metrics=read_live_metrics_or_none(system_target, run_id, min(elapsed_sec, window_sec)),

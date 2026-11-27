@@ -64,7 +64,11 @@
     <div class="progress-bar"><i id="progress-fill"></i></div>
     <div class="connection-line" id="connection-line"><span class="status-dot" id="connection-dot"></span><b id="connection-text">연결 정상</b><span class="muted">|</span>종료 시 Run 리포트 자동 이동</div>
     <form method="post" action="{{ base_path }}/runs/{{ summary.run_id }}/cancel">
+      {% if is_cancel_requested %}
+      <button class="button is-outline" type="button" style="width:280px" disabled>중지 요청됨 · 진행 중 Suite 종료 후 중지</button>
+      {% else %}
       <button class="button is-outline" type="submit" style="width:280px">Run 중지</button>
+      {% endif %}
     </form>
     <ul class="progress-log" id="progress-log" aria-live="polite"></ul>
   </div>

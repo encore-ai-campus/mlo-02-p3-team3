@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.answer_key.expected_verdicts import build_answer_key, plan_virtual_users
 from ticket_guard_qa.domain.enums import ActorType, SuiteOutcome, TargetKind
 from ticket_guard_qa.domain.models import (
@@ -132,7 +133,7 @@ class DetectionRegressionSuite:
         f"봇별 탐지율 하락 · 정상 오탐률 상승 {ALLOWED_CHANGE_PERCENT_POINT:.0f}%p 이내",
     )
 
-    def __init__(self, live_settle_sec: float = LIVE_VERDICT_SETTLE_SEC, sleep: Callable[[float], None] = time.sleep) -> None:
+    def __init__(self, live_settle_sec: float = LIVE_VERDICT_SETTLE_SEC, sleep: Callable[[float], None] = cancellable_sleep) -> None:
         self.live_settle_sec = live_settle_sec
         self.sleep = sleep
 

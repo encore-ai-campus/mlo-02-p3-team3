@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from ticket_guard_qa.test_runs.run_cancellation import cancellable_sleep
 from ticket_guard_qa.domain.enums import SuiteOutcome
 from ticket_guard_qa.domain.models import SuiteResult
 from ticket_guard_qa.system_targets.target_interfaces import (
@@ -124,7 +125,7 @@ def wait_for_stored_outcomes(
         outcomes = pipeline_reader.read_stored_outcomes(positions)
         if len(outcomes) >= len(positions) or time.monotonic() >= deadline:
             return outcomes
-        time.sleep(poll_interval_sec)
+        cancellable_sleep(poll_interval_sec)
 
 
 def matches_expected_statuses(actual_status_codes: list[int], expected_status_codes: list[int | str]) -> bool:

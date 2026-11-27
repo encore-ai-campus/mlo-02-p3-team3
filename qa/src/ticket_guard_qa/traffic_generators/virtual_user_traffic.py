@@ -19,11 +19,13 @@ from ticket_guard_qa.macro_bots.browser_capture import save_browser_capture_fram
 from ticket_guard_qa.macro_bots.browser_profiles import assign_browser_profiles
 from ticket_guard_qa.macro_bots.behavior_sampling import pick_click_interval_ms, pick_entry_delay_ms, pick_page_dwell_ms
 from ticket_guard_qa.system_targets.target_interfaces import AccountPoolExhaustedError, BookingApi
+from ticket_guard_qa.test_runs.run_cancellation import RunCancelledError, is_cancel_requested
 
 ALL_SEAT_IDS = tuple(f"{row}{number}" for row in "ABCDEFGHIJ" for number in range(1, 11))  # 시스템 지정석 A1 ~ J10
 CLICK_INTERVAL_COUNT = 3  # 좌석 2석 클릭 + 확정 버튼
 PRE_OPEN_LOGIN_SEC = 3.0  # 오픈 전 로그인 시간 · 사람도 미리 로그인
 PROGRESS_REPORT_EVERY = 10
+CANCEL_CHECK_SEC = 0.5  # Run 중지 요청 확인 간격
 TIMEOUT_FAILED_STEP = "time_limit · TIMEOUT"  # Run 설정 시험 시간 초과
 DEVICE_KEY_PREFIX = "device-"
 
@@ -159,27 +161,36 @@ async def run_concurrent_sessions(
     for wave in waves:  # 앞 회차가 모두 끝나야 다음 회차 · 회차마다 새 오픈 시각
         if time.monotonic() >= deadline:
             break
+        if is_cancel_requested():
+            raise RunCancelledError("Run 중지 요청")
         open_at_monotonic = time.monotonic() + calculate_pre_open_sec([session_plans[index] for index in wave])
         index_by_task = {
             asyncio.create_task(booking_api.run_virtual_user_session(session_plans[index], open_at_monotonic)): index
             for index in wave
         }
         pending = set(index_by_task)
+        is_cancelled = False
         while pending:
+            remaining_sec = max(deadline - time.monotonic(), 0.0)
             done, pending = await asyncio.wait(
-                pending, timeout=max(deadline - time.monotonic(), 0.0), return_when=asyncio.FIRST_COMPLETED
+                pending, timeout=min(remaining_sec, CANCEL_CHECK_SEC), return_when=asyncio.FIRST_COMPLETED
             )
-            if not done:
-                break  # 시험 시간 초과
             for task in done:
                 results[index_by_task[task]] = read_task_result(task, index_by_task[task])
             finished_count = sum(result is not None for result in results)
-            if on_progress and (finished_count - reported_count >= PROGRESS_REPORT_EVERY or finished_count == len(results)):
+            if done and on_progress and (finished_count - reported_count >= PROGRESS_REPORT_EVERY or finished_count == len(results)):
                 on_progress(results)
                 reported_count = finished_count
+            if is_cancel_requested():
+                is_cancelled = True
+                break  # Run 중지 · 남은 VU 정리 후 Suite 중단
+            if not done and time.monotonic() >= deadline:
+                break  # 시험 시간 초과
         for task in pending:
             task.cancel()  # 취소돼도 VU마다 예매 취소 정리는 실행
         await asyncio.gather(*pending, return_exceptions=True)
+        if is_cancelled:
+            raise RunCancelledError("Run 중지 요청")
         if pending:
             break  # 시간 초과 · 남은 회차 = TIMEOUT
     return [
