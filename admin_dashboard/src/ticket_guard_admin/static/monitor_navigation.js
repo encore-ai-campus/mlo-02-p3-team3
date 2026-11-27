@@ -12,12 +12,12 @@
   function draw() {
     if(data.flow) {
       window.TGMonitorFlow.draw(data.flow);
-      charts.draw('mp-presence-chart',data.flow.presence,{label:'동시 접속 추이',unit:data.flow.count_unit || '명',range:data.flow.chart_range});
-      charts.draw('mp-booking-chart',data.flow.booking,{label:'예매율 추이',unit:'%',color:'#119e99',percent:true,range:data.flow.chart_range});
+      charts.draw('mp-presence-chart',data.flow.presence,{label:'동시 접속 추이',unit:data.flow.count_unit || '명',range:data.flow.chart_range,fixedSeconds:10});
+      charts.draw('mp-booking-chart',data.flow.booking,{label:'예매율 추이',unit:'%',color:'#119e99',percent:true,range:data.flow.chart_range,fixedSeconds:10});
     }
     if(data.network) {
-      charts.draw('mp-requests-chart',data.network.requestsSeries,{label:'요청 추이',unit:'건',range:data.network.chart_range});
-      charts.draw('mp-errors-chart',data.network.errorsSeries,{label:'HTTP 오류 추이',unit:'건',color:'#ce9232',range:data.network.chart_range});
+      charts.draw('mp-requests-chart',data.network.requestsSeries,{label:'요청 추이',unit:'건',range:data.network.chart_range,fixedSeconds:10});
+      charts.draw('mp-errors-chart',data.network.errorsSeries,{label:'HTTP 오류 추이',unit:'건',color:'#ce9232',range:data.network.chart_range,fixedSeconds:10});
     }
   }
   function route(focus=false) {
