@@ -34,10 +34,11 @@ RECONNECT_DELAY_MS = 2000  # 브라우저 자동 재연결 간격
 RESULT_LIST_LIMIT = 50  # 테스트 결과 목록 · 최신 Run
 RUN_STATUS_FILTERS = {"PASSED": "PASS", "FAILED": "FAIL", "RUNNING": "진행 중", "ERROR": "ERROR", "CANCELLED": "중지"}
 VIRTUAL_USER_PRESETS = (50, 200, 500)
+DEFAULT_VIRTUAL_USER_COUNT = 20  # 02 처음 화면 VU 수 · 서버 메모리 고려
 DURATION_PRESETS_SEC = (120, 300, 600)  # Live · 트래픽 Suite 1개 최대 시간
 AUTO_TIME_LIMIT_VALUE = 0  # 자동 · 예상 시간 기준
 ENTRY_MODE_BURST, ENTRY_MODE_WAVE = "burst", "wave"  # 접속 방식 · 한 번에 전원 진입 · 나눠서 진입
-DEFAULT_WAVE_SIZE = 40  # 나눠서 진입 처음 값
+DEFAULT_WAVE_SIZE = 10  # 나눠서 진입 처음 값 · 02 처음 화면 기본 접속 방식 · 처음 VU 20명 = 10명씩 2회
 TRAFFIC_FIELD_PREFIX = "percent_"  # 폼 이름 · percent_HUMAN · percent_BOT_E
 
 
@@ -127,6 +128,8 @@ def show_test_setup(request: Request, from_run_id: str | None = None, run_servic
     run_config = previous_summary.run_config if previous_summary else RunConfig(
         target_kind=run_service.settings.target_kind,
         suite_names=(),  # 처음 화면 · Suite 전체 해제
+        virtual_user_count=DEFAULT_VIRTUAL_USER_COUNT,
+        wave_size=DEFAULT_WAVE_SIZE,  # 처음 화면 · 나눠서 진입
         duration_sec=AUTO_TIME_LIMIT_VALUE,
         traffic_mix=TrafficMix(build_setup_traffic_percents()),
         random_seed=run_service.settings.random_seed,
