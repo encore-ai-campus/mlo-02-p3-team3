@@ -188,6 +188,8 @@
       </form>
     </section>
     {% endif %}
+    {# DB 대시보드 · Run 시작 = run_id · 종료 = run_to · 관리자 화면이 이 구간만 조회 #}
+    {% set db_dashboard_url = base_path ~ '/db?run_id=' ~ summary.run_id ~ (('&run_to=' ~ (summary.finished_at.isoformat() | urlencode)) if summary.finished_at else '') %}
     {% if first_failed_card %}
     <section class="card side-card failure-card">
       <div class="failure-head">
@@ -196,7 +198,7 @@
           <div class="sub-text" style="font-size:16px"><b style="color:var(--fail-red-text)">{{ first_failed_card.result.measured_value | metric(first_failed_card.criterion.metric_name) }}</b>
             · 기준선 {{ first_failed_card.criterion.comparison.value | threshold(first_failed_card.criterion.threshold, first_failed_card.criterion.metric_name) }}</div></div>
       </div>
-      <a class="button is-db is-wide" style="font-size:17px" href="{{ base_path }}/db?run_id={{ summary.run_id }}"><i data-lucide="database"></i>DB 원인 분석<i data-lucide="chevron-right"></i></a>
+      <a class="button is-db is-wide" style="font-size:17px" href="{{ db_dashboard_url }}"><i data-lucide="database"></i>DB 원인 분석<i data-lucide="chevron-right"></i></a>
       <a class="button is-outline is-wide" style="font-size:17px;margin-top:12px" href="{{ base_path }}/runs/new?from_run_id={{ summary.run_id }}"><i data-lucide="sliders-horizontal"></i>Run 재구성</a>
     </section>
     {% elif summary.failed_suite_count %}
@@ -207,14 +209,15 @@
         <div><h2 class="section-heading" style="font-size:24px">Suite 실패 {{ summary.failed_suite_count }}</h2>
           <div class="sub-text" style="font-size:16px">{{ failed_suite_titles | join(' · ') }} · 합격 기준 실패 없음</div></div>
       </div>
-      <a class="button is-db is-wide" style="font-size:17px" href="{{ base_path }}/db?run_id={{ summary.run_id }}"><i data-lucide="database"></i>DB 원인 분석<i data-lucide="chevron-right"></i></a>
+      <a class="button is-db is-wide" style="font-size:17px" href="{{ db_dashboard_url }}"><i data-lucide="database"></i>DB 원인 분석<i data-lucide="chevron-right"></i></a>
       <a class="button is-outline is-wide" style="font-size:17px;margin-top:12px" href="{{ base_path }}/runs/new?from_run_id={{ summary.run_id }}"><i data-lucide="sliders-horizontal"></i>Run 재구성</a>
     </section>
     {% else %}
     <section class="card side-card pass-card">
       <h2 class="section-heading" style="font-size:24px"><i data-lucide="circle-check" style="color:var(--pass-green)"></i>실패한 합격 기준 없음</h2>
       <div class="sub-text">대상 아님 · 측정 불가 기준은 최종 판정 영향 없음</div>
-      <a class="button is-outline is-wide" style="font-size:17px;margin-top:16px" href="{{ base_path }}/runs/new?from_run_id={{ summary.run_id }}"><i data-lucide="refresh-cw"></i>동일 조건 재실행</a>
+      <a class="button is-db is-wide" style="font-size:17px;margin-top:16px" href="{{ db_dashboard_url }}"><i data-lucide="database"></i>DB 기록 확인<i data-lucide="chevron-right"></i></a>
+      <a class="button is-outline is-wide" style="font-size:17px;margin-top:12px" href="{{ base_path }}/runs/new?from_run_id={{ summary.run_id }}"><i data-lucide="refresh-cw"></i>동일 조건 재실행</a>
     </section>
     {% endif %}
 
@@ -226,7 +229,7 @@
         <div class="mismatch-box"><span class="muted">오탐(FP)</span><b>{{ verdict_details.false_positive_count }}</b></div>
       </div>
       <div class="row">
-        <a style="color:var(--db-orange-text);font-weight:800" href="{{ base_path }}/db?run_id={{ summary.run_id }}">오분류 세션 {{ verdict_details.missed_bot_count + verdict_details.false_positive_count }}건 추적 ›</a>
+        <a style="color:var(--db-orange-text);font-weight:800" href="{{ db_dashboard_url }}">오분류 세션 {{ verdict_details.missed_bot_count + verdict_details.false_positive_count }}건 추적 ›</a>
         <span class="spacer"></span>
         <a class="button is-soft is-small" href="{{ base_path }}/runs/{{ summary.run_id }}/bots"><i data-lucide="bot"></i>탐지 리포트</a>
       </div>
