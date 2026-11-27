@@ -92,3 +92,17 @@ def test_setup_form_checks_wave_size(qa_settings):
     assert client.post("/runs/estimate", data={**form, "wave_size": "40"}).status_code == 200
     page = client.post("/runs", data={**form, "wave_size": "0"}).text
     assert "회차당 인원 1 ~ 200명 사이 입력 필요" in page
+
+
+def test_new_setup_defaults_to_twenty_users_and_wave_entry(qa_settings):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from ticket_guard_qa.dashboard.dashboard_app import create_dashboard_app
+    from ticket_guard_qa.dashboard.dependencies import ADMIN_USER_HEADER
+
+    client = TestClient(create_dashboard_app(qa_settings), headers={ADMIN_USER_HEADER: "qa-admin"})
+    page = client.get("/runs/new").text
+    assert 'name="virtual_user_count" min="1" value="20"' in page  # 처음 VU 20명
+    assert 'value="wave" checked' in page  # 처음 접속 방식 = 나눠서 진입
+    assert 'name="wave_size" min="1" value="10"' in page  # 10명씩 2회
