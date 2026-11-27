@@ -34,6 +34,11 @@ LOGIN_USERNAME = "#username"
 LOGIN_PASSWORD = "#password"
 LOGIN_SUBMIT = "#login-form button[type=submit]"
 SHOW_LIST_READY = "[data-show-link]"
+LOGIN_LOCK_NOTICE = "#login-lock"  # 로그인 5회 오류 잠금 안내
+LOGIN_ERROR_NOTICE = "#login-error"  # 아이디 · 비밀번호 오류 안내
+LOGIN_RESULT_READY = f"{SHOW_LIST_READY}, {LOGIN_LOCK_NOTICE}:not([hidden]), {LOGIN_ERROR_NOTICE}:not([hidden])"
+IS_LOGIN_LOCKED = "(() => { const box = document.querySelector('#login-lock'); return !!box && !box.hidden; })()"
+IS_LOGIN_REJECTED = "(() => { const box = document.querySelector('#login-error'); return !!box && !box.hidden; })()"
 START_BOOKING = "#start-booking"
 QUEUE_READY = "#queue-rank"
 CAPTCHA_INPUT = "#captcha-answer"
@@ -252,10 +257,15 @@ class LiveBrowserBookingClient:
         await self.page.fill(LOGIN_USERNAME, username)
         await self.page.fill(LOGIN_PASSWORD, password)
         await self.page.click(LOGIN_SUBMIT)
-        if not await self.page.wait_for(SHOW_LIST_READY, PAGE_TIMEOUT_MS):
+        if not await self.page.wait_for(LOGIN_RESULT_READY, PAGE_TIMEOUT_MS):
             if f"{LOGIN_USERNAME.removeprefix('#')}=" in self.page.url:  # 화면 스크립트 미동작 → 폼이 주소로 제출됨
                 raise BookingFlowError("login", 0, "BROWSER_SCRIPT_NOT_RUNNING")
             raise BookingFlowError("login", 0, "BROWSER_LOGIN_FAILED")
+        # 잠금 · 오류 안내가 뜨면 15초 기다리지 않고 바로 탈락 · 코드는 HTTP 봇과 같음
+        if await self.page.evaluate(IS_LOGIN_LOCKED):
+            raise BookingFlowError("login", 429, "LOGIN_LOCKED")
+        if await self.page.evaluate(IS_LOGIN_REJECTED):
+            raise BookingFlowError("login", 401, "LOGIN_FAILED")
 
     async def browse_pages(self, page_dwell_ms: tuple[float, ...]) -> None:
         """예매 전 공연 목록 · 상세 · 마지막은 예매하기 버튼 있는 공연 상세"""
